@@ -137,7 +137,7 @@ npm start
 # Registry running at http://localhost:3000
 ```
 
-See [REGISTRY.md](REGISTRY.md) for the full registry specification.
+See the [Registry Specification](/registry) for the full registry specification.
 
 ## Reference Implementations
 

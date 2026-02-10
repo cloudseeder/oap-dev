@@ -158,7 +158,7 @@ Builders register their app by submitting their URL to an open registry.
 The registry fetches the manifest, validates it, verifies DNS, and indexes
 it for search. Registration is instant, free, and requires no approval.
 
-See [REGISTRY.md](REGISTRY.md) for the full registry specification.
+See the [Registry Specification](/registry) for the full registry specification.
 
 ```
 POST registry.oap.dev/api/v1/register

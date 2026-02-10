@@ -25,7 +25,7 @@ export default function Header() {
               Registry
             </a>
             <a
-              href="https://github.com/OpenApplicationProtocol/oap"
+              href="https://github.com/cloudseeder/opa-dev"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-600 hover:text-gray-900"

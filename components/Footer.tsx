@@ -10,7 +10,7 @@ export default function Footer() {
             <Link href="/registry" className="hover:text-gray-700">Registry Spec</Link>
             <Link href="/docs/quickstart" className="hover:text-gray-700">Quick Start</Link>
             <a
-              href="https://github.com/OpenApplicationProtocol/oap"
+              href="https://github.com/cloudseeder/opa-dev"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-700"
