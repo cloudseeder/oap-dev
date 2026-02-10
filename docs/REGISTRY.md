@@ -25,8 +25,8 @@ survives and another registry can rebuild from any mirror.
 │                   AI AGENT                     │
 │  "User needs email-native CRM for small team"  │
 └────────┬──────────────────────────┬────────────┘
-         │ semantic query            │ verify
-         ▼                           ▼
+         │ semantic query           │ verify
+         ▼                          ▼
 ┌──────────────────┐    ┌───────────────────────────┐
 │  OAP REGISTRY    │    │  APP DOMAIN (DNS + TXT)   │
 │                  │    │                           │
