@@ -1,0 +1,86 @@
+{
+  "$schema": "https://oap.dev/schema/v0.1.json",
+  "oap_version": "0.1",
+
+  "identity": {
+    "name": "myNewscast",
+    "tagline": "Making local government meetings searchable with AI",
+    "description": "Civic transparency platform that uses AI to automatically transcribe, process, and make government meetings searchable. Rebuilds the civic content infrastructure that collapsed when classified ad revenue was extracted from local journalism. Processes meetings at $0.40 each.",
+    "url": "https://mynewscast.com",
+    "launched": "2025-12-01"
+  },
+
+  "builder": {
+    "name": "Kevin",
+    "verified_domains": ["mynewscast.com", "xuru.ai", "provexa.ai"]
+  },
+
+  "capabilities": {
+    "summary": "AI-powered platform that ingests government meeting recordings (city council, planning commissions, school boards, etc.), generates accurate transcriptions, identifies speakers and agenda items, extracts key decisions and votes, and makes everything full-text searchable. Enables citizens, journalists, and researchers to find what happened in local government without watching hours of video. B2B API available for media companies and civic tech organizations. Hyperlocal advertising platform for sustainable revenue.",
+    "solves": [
+      "I can't watch 4-hour city council meetings but need to know what was decided",
+      "local news doesn't cover government meetings anymore",
+      "I need to search past government meetings for mentions of a specific topic",
+      "our newsroom can't afford to send reporters to every public meeting",
+      "citizens have no easy way to track what local government is doing",
+      "government transparency requires making public meetings actually accessible"
+    ],
+    "ideal_for": [
+      "local government agencies wanting to improve transparency",
+      "citizens who want to follow local government decisions",
+      "local news organizations needing civic content at scale",
+      "civic tech organizations and transparency advocates",
+      "researchers studying local government policy"
+    ],
+    "categories": ["civic-tech", "government-transparency", "local-news", "ai-transcription", "public-meetings"],
+    "differentiators": [
+      "Processes government meetings at $0.40 each — makes civic content economically viable",
+      "Purpose-built for government meetings, not generic transcription",
+      "Searchable archive of local government decisions",
+      "Addresses the civic content collapse caused by loss of local journalism revenue",
+      "B2B API for media companies plus hyperlocal advertising model"
+    ]
+  },
+
+  "pricing": {
+    "model": "freemium",
+    "starting_price": "Free for citizens",
+    "trial": {
+      "available": true,
+      "duration_days": 0,
+      "requires_credit_card": false
+    },
+    "pricing_url": "https://mynewscast.com/pricing"
+  },
+
+  "trust": {
+    "data_practices": {
+      "collects": ["public government meeting recordings", "user search queries"],
+      "stores_in": "US-based cloud",
+      "shares_with": ["none — meeting content is public record"],
+      "encryption": "at rest and in transit"
+    },
+    "security": {
+      "authentication": ["email/password", "OAuth"],
+      "multi_tenant_isolation": true
+    },
+    "external_connections": ["AI transcription API", "AI language model API for content processing"],
+    "privacy_url": "https://mynewscast.com/privacy",
+    "terms_url": "https://mynewscast.com/terms"
+  },
+
+  "integration": {
+    "api": {
+      "available": true,
+      "docs_url": "https://mynewscast.com/api/docs",
+      "auth_method": "API key"
+    },
+    "webhooks": true,
+    "export_formats": ["JSON", "CSV", "PDF"]
+  },
+
+  "verification": {
+    "health_endpoint": "https://mynewscast.com/api/health",
+    "demo_url": "https://mynewscast.com"
+  }
+}

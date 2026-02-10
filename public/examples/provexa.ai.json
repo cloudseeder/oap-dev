@@ -1,0 +1,89 @@
+{
+  "$schema": "https://oap.dev/schema/v0.1.json",
+  "oap_version": "0.1",
+
+  "identity": {
+    "name": "ProveXa",
+    "tagline": "AI-powered community association management — 7 expert agents for $29/month",
+    "description": "Complete HOA/COA management platform with seven specialized AI agents that replace expensive attorney calls, automate meeting minutes from Zoom, provide double-entry bookkeeping for non-accountants, and deliver 24/7 governance guidance. Saves associations $10,000+ per year.",
+    "url": "https://provexa.ai",
+    "launched": "2025-09-01"
+  },
+
+  "builder": {
+    "name": "Kevin",
+    "verified_domains": ["provexa.ai", "xuru.ai", "mynewscast.com"]
+  },
+
+  "capabilities": {
+    "summary": "Seven AI expert agents for community association management: Legal Expert ($0.50 vs $400 attorney calls, analyzes bylaws/CC&Rs/state laws), Meeting Expert (Zoom recordings to formatted minutes, quorum tracking, compliant announcements), Financial Expert (budget forecasting, spending analysis, reserve recommendations), Compliance Expert (state requirements, filing deadlines, regulatory changes), Management Expert (architectural reviews, violations, maintenance), Rules Expert (AI-assisted rules creation and validation), and Accounting Expert (true double-entry bookkeeping designed for volunteer treasurers). Also includes member portal, document management with AI search, resale package generation, and audit package builder.",
+    "solves": [
+      "attorney fees are eating our HOA budget for simple legal questions",
+      "our volunteer treasurer can't use QuickBooks for association accounting",
+      "meeting minutes take hours to write and are often non-compliant",
+      "we pay $150-300 per resale package to third parties",
+      "we don't know if we're compliant with state HOA regulations",
+      "our board needs legal guidance but can't afford an attorney on retainer",
+      "we need to manage our condo association without hiring a property management company",
+      "annual audits are a nightmare to prepare for"
+    ],
+    "ideal_for": [
+      "self-managed HOA and COA boards",
+      "volunteer board members and treasurers",
+      "small to mid-size community associations (10-500 units)",
+      "property management companies managing multiple communities",
+      "condo associations trying to reduce management costs"
+    ],
+    "categories": ["hoa-management", "community-association", "property-management", "ai-legal", "association-accounting"],
+    "differentiators": [
+      "Seven specialized AI agents vs static document management",
+      "Legal questions at $0.50 vs $200-400 per attorney call",
+      "Double-entry bookkeeping designed for non-accountants",
+      "Zoom recordings automatically become formatted meeting minutes",
+      "Self-generated resale packages save $150-300 each",
+      "$29/month replaces property management company + attorney + bookkeeper"
+    ]
+  },
+
+  "pricing": {
+    "model": "subscription",
+    "starting_price": "$29/month",
+    "trial": {
+      "available": true,
+      "duration_days": 30,
+      "requires_credit_card": false
+    },
+    "pricing_url": "https://provexa.ai/pricing"
+  },
+
+  "trust": {
+    "data_practices": {
+      "collects": ["member contact information", "association financial records", "meeting recordings", "governing documents", "legal queries"],
+      "stores_in": "US-based cloud",
+      "shares_with": ["none"],
+      "encryption": "at rest and in transit"
+    },
+    "security": {
+      "authentication": ["email/password"],
+      "audit_log": true,
+      "multi_tenant_isolation": true
+    },
+    "external_connections": ["AI language model API for expert agents", "Zoom API for meeting recording import"],
+    "privacy_url": "https://provexa.ai/privacy",
+    "terms_url": "https://provexa.ai/terms"
+  },
+
+  "integration": {
+    "api": {
+      "available": false
+    },
+    "webhooks": false,
+    "import_from": ["Zoom recordings", "PDF documents", "CSV member lists"],
+    "export_formats": ["PDF", "CSV"]
+  },
+
+  "verification": {
+    "health_endpoint": "https://provexa.ai/api/health",
+    "demo_url": "https://provexa.ai/signup"
+  }
+}

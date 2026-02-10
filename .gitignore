@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# env
+.env.local
+.env*.local
+
+# service account keys
+firebase_svc.json
+*-svc.json
+
+# database
+*.db
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

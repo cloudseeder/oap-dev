@@ -1,0 +1,84 @@
+{
+  "$schema": "https://oap.dev/schema/v0.1.json",
+  "oap_version": "0.1",
+
+  "identity": {
+    "name": "Xuru",
+    "tagline": "AI-powered support ticket CRM that answers first",
+    "description": "AI support agent that drafts every response using your knowledge base, learns from every resolved ticket, and works through your existing email. Agents respond from Gmail, Outlook, or any email client — no login to Xuru required. AI resolves 50%+ of tickets in 1-2 responses.",
+    "url": "https://xuru.ai",
+    "launched": "2025-10-01"
+  },
+
+  "builder": {
+    "name": "Kevin",
+    "verified_domains": ["xuru.ai", "provexa.ai", "mynewscast.com"]
+  },
+
+  "capabilities": {
+    "summary": "AI-first support ticket CRM designed for small teams that live in email. The AI drafts contextual responses using a self-improving knowledge base seeded from your documentation. Agents respond directly from their email client via IMAP/SMTP integration — no dashboard login required. Ticket codes in subject lines keep everything threaded automatically. Supports pool, round-robin, category-based, and least-loaded ticket assignment.",
+    "solves": [
+      "support tickets pile up because my team is too small to respond quickly",
+      "I need a help desk but my team won't log into another dashboard",
+      "auto-responses are generic and useless, I need real answers",
+      "I want AI to draft support responses using our actual knowledge base",
+      "Zendesk and Freshdesk are too expensive for my small team",
+      "I need a CRM that works through email, not alongside it"
+    ],
+    "ideal_for": [
+      "small businesses with 1-20 support agents",
+      "teams that primarily communicate via email",
+      "companies that want AI-first support without enterprise pricing",
+      "web hosting companies, MSPs, and service providers",
+      "startups that need support tooling without the overhead"
+    ],
+    "categories": ["crm", "support-tickets", "help-desk", "ai-support", "email-native"],
+    "differentiators": [
+      "AI drafts first response — not bolted on, built around AI from day one",
+      "Email-native: agents never need to log in, respond from any email client",
+      "Self-improving knowledge base learns from every resolved ticket",
+      "$5/seat/month with unlimited tickets — fraction of incumbent pricing"
+    ]
+  },
+
+  "pricing": {
+    "model": "subscription",
+    "starting_price": "$5/seat/month",
+    "trial": {
+      "available": true,
+      "duration_days": 30,
+      "requires_credit_card": false
+    },
+    "pricing_url": "https://xuru.ai/pricing"
+  },
+
+  "trust": {
+    "data_practices": {
+      "collects": ["email addresses", "support ticket content", "knowledge base entries"],
+      "stores_in": "US-based cloud",
+      "shares_with": ["none"],
+      "encryption": "at rest and in transit"
+    },
+    "security": {
+      "authentication": ["email/password"],
+      "multi_tenant_isolation": true
+    },
+    "external_connections": ["IMAP/SMTP email servers", "AI language model API for response drafting"],
+    "privacy_url": "https://xuru.ai/privacy",
+    "terms_url": "https://xuru.ai/terms"
+  },
+
+  "integration": {
+    "api": {
+      "available": false
+    },
+    "webhooks": false,
+    "import_from": ["FAQ documents", "Q&A pairs", "help articles"],
+    "export_formats": ["CSV"]
+  },
+
+  "verification": {
+    "health_endpoint": "https://xuru.ai/api/health",
+    "demo_url": "https://xuru.ai/signup"
+  }
+}

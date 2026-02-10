@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://oap.dev/schema/v0.1.json",
+  "title": "OAP Manifest",
+  "description": "Open Application Protocol manifest schema v0.1",
+  "type": "object",
+  "required": ["oap_version", "identity", "builder", "capabilities", "pricing", "trust", "integration", "verification"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "oap_version": { "type": "string", "const": "0.1" },
+    "identity": {
+      "type": "object",
+      "required": ["name", "tagline", "description", "url"],
+      "properties": {
+        "name": { "type": "string" },
+        "tagline": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 500 },
+        "url": { "type": "string", "format": "uri" },
+        "logo": { "type": "string", "format": "uri" },
+        "version": { "type": "string" },
+        "launched": { "type": "string", "format": "date" }
+      }
+    },
+    "builder": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "contact": { "type": "string", "format": "email" },
+        "verified_domains": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["summary", "solves", "ideal_for", "categories", "differentiators"],
+      "properties": {
+        "summary": { "type": "string", "maxLength": 1000 },
+        "solves": { "type": "array", "items": { "type": "string" } },
+        "ideal_for": { "type": "array", "items": { "type": "string" } },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "differentiators": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "required": ["model", "trial"],
+      "properties": {
+        "model": { "type": "string", "enum": ["free", "freemium", "subscription", "one_time", "usage_based"] },
+        "starting_price": { "type": "string" },
+        "trial": {
+          "type": "object",
+          "required": ["available"],
+          "properties": {
+            "available": { "type": "boolean" },
+            "duration_days": { "type": "integer" },
+            "requires_credit_card": { "type": "boolean" }
+          }
+        },
+        "pricing_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "required": ["data_practices", "security", "external_connections"],
+      "properties": {
+        "data_practices": {
+          "type": "object",
+          "required": ["collects", "stores_in", "shares_with"],
+          "properties": {
+            "collects": { "type": "array", "items": { "type": "string" } },
+            "stores_in": { "type": "string" },
+            "shares_with": { "type": "array", "items": { "type": "string" } },
+            "retention": { "type": "string" },
+            "encryption": { "type": "string" }
+          }
+        },
+        "security": {
+          "type": "object",
+          "required": ["authentication"],
+          "properties": {
+            "authentication": { "type": "array", "items": { "type": "string" } },
+            "compliance": { "type": "array", "items": { "type": "string" } },
+            "audit_log": { "type": "boolean" },
+            "multi_tenant_isolation": { "type": "boolean" }
+          }
+        },
+        "external_connections": { "type": "array", "items": { "type": "string" } },
+        "privacy_url": { "type": "string", "format": "uri" },
+        "terms_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "integration": {
+      "type": "object",
+      "required": ["api"],
+      "properties": {
+        "mcp_endpoint": { "type": "string", "format": "uri" },
+        "api": {
+          "type": "object",
+          "required": ["available"],
+          "properties": {
+            "available": { "type": "boolean" },
+            "docs_url": { "type": "string", "format": "uri" },
+            "auth_method": { "type": "string" }
+          }
+        },
+        "webhooks": { "type": "boolean" },
+        "import_from": { "type": "array", "items": { "type": "string" } },
+        "export_formats": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "status_url": { "type": "string", "format": "uri" },
+        "health_endpoint": { "type": "string", "format": "uri" },
+        "demo_url": { "type": "string", "format": "uri" }
+      }
+    }
+  }
+}
