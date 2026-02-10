@@ -21,21 +21,21 @@ survives and another registry can rebuild from any mirror.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  AI AGENT                         │
-│  "User needs email-native CRM for small team"    │
-└─────────┬───────────────────────────┬────────────┘
-          │ semantic query             │ verify
-          ▼                            ▼
-┌──────────────────┐    ┌──────────────────────────┐
-│   OAP REGISTRY   │    │   APP DOMAIN (DNS + TXT)  │
-│                  │    │                          │
-│ - Search index   │    │ _oap.xuru.ai TXT "v=oap1"│
-│ - Cached metadata│    │ /.well-known/oap.json    │
-│ - Category browse│    │                          │
-│ - Health status  │    │ Source of truth           │
-└──────────────────┘    └──────────────────────────┘
-     Discoverable            Verifiable
+┌────────────────────────────────────────────────┐
+│                   AI AGENT                     │
+│  "User needs email-native CRM for small team"  │
+└────────┬──────────────────────────┬────────────┘
+         │ semantic query            │ verify
+         ▼                           ▼
+┌──────────────────┐    ┌───────────────────────────┐
+│  OAP REGISTRY    │    │  APP DOMAIN (DNS + TXT)   │
+│                  │    │                           │
+│ - Search index   │    │ _oap.xuru.ai TXT "v=oap1" │
+│ - Cached metadata│    │ /.well-known/oap.json     │
+│ - Category browse│    │                           │
+│ - Health status  │    │ Source of truth            │
+└──────────────────┘    └───────────────────────────┘
+     Discoverable              Verifiable
 ```
 
 ## Registration Flow
