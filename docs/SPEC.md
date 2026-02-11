@@ -116,7 +116,7 @@ https://{domain}/.well-known/oap.json
 
   "verification": {
     "status_url": "string (optional) — Public status/uptime page",
-    "health_endpoint": "string (optional) — Machine-checkable health endpoint returning HTTP 200",
+    "health_endpoint": "string (optional) — Deep health check URL returning HTTP 200. For apps that want to signal more than basic liveness (e.g. database, API, and dependency health). If omitted, the registry uses the manifest URL (/.well-known/oap.json) as a liveness check.",
     "demo_url": "string (optional) — URL to live demo or sandbox"
   }
 }
@@ -194,7 +194,7 @@ assess trust independently:
 
 **Verifiable signals:**
 - Domain age and history (via WHOIS/DNS)
-- Health endpoint responsiveness
+- Liveness (manifest URL responds with 2xx) and optional deep health endpoint
 - Consistency between declared practices and observable behavior
 - SSL certificate validity
 - Builder's verified domain portfolio

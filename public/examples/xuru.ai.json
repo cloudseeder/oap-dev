@@ -78,7 +78,6 @@
   },
 
   "verification": {
-    "health_endpoint": "https://xuru.ai/api/health",
     "demo_url": "https://xuru.ai/signup"
   }
 }

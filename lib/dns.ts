@@ -25,7 +25,13 @@ export async function verifyDNS(domain: string): Promise<boolean> {
 
 export async function checkHealth(manifest: Record<string, unknown>): Promise<boolean | null> {
   const verification = manifest.verification as Record<string, unknown> | undefined
-  const endpoint = verification?.health_endpoint as string | undefined
+  const identity = manifest.identity as Record<string, unknown> | undefined
+
+  // Use declared health_endpoint for deep health check, otherwise fall back
+  // to the manifest URL as a basic liveness check
+  const endpoint = (verification?.health_endpoint as string | undefined)
+    || (identity?.url ? (identity.url as string).replace(/\/$/, '') + '/.well-known/oap.json' : null)
+
   if (!endpoint) return null
   try {
     const response = await fetch(endpoint, {

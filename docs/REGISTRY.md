@@ -57,8 +57,8 @@ The registry performs automated verification (not approval) on registration:
 - **Domain ownership**: The manifest must be served from the domain being registered
 - **DNS TXT record**: _oap TXT record must exist and point to the manifest
 - **Manifest validity**: Must pass schema validation
-- **Liveness**: The app's URL must respond with 2xx
-- **Health endpoint**: If declared, must respond with 2xx
+- **Liveness**: The manifest URL (`/.well-known/oap.json`) must respond with 2xx. This is the default health check for all apps.
+- **Deep health check**: If `verification.health_endpoint` is declared, the registry also checks that endpoint. Use this to signal that your app's core services (database, API, dependencies) are operational, not just that the domain is serving files.
 
 These checks run on registration AND periodically (daily) thereafter.
 Apps that fail checks get flagged, not removed.
@@ -219,7 +219,7 @@ Response 200:
 The registry is a **cache**, not the source of truth.
 
 - Manifests are re-fetched from source every 24 hours
-- Health endpoints are checked every 6 hours
+- Liveness checks (manifest fetch) run every 6 hours; deep health endpoints, if declared, are checked on the same schedule
 - DNS verification runs every 24 hours
 - If source manifest changes, registry updates automatically
 - If source goes down for 7+ days, app is flagged (not removed)
