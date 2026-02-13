@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/firebase'
 import { checkHealth } from '@/lib/dns'
 import { updateStats } from '@/lib/firestore'
+import { timingSafeCompare } from '@/lib/security'
 import type { AppDocument } from '@/lib/types'
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const expected = `Bearer ${process.env.CRON_SECRET}`
+  if (!authHeader || !timingSafeCompare(authHeader, expected)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

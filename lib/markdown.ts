@@ -5,7 +5,18 @@ import remarkRehype from 'remark-rehype'
 import rehypeSlug from 'rehype-slug'
 import rehypeAutolinkHeadings from 'rehype-autolink-headings'
 import rehypeHighlight from 'rehype-highlight'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import rehypeStringify from 'rehype-stringify'
+
+// Allow highlight.js classes through sanitization
+const sanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    code: [...(defaultSchema.attributes?.code || []), 'className'],
+    span: [...(defaultSchema.attributes?.span || []), 'className'],
+  },
+}
 
 export interface Heading {
   id: string
@@ -17,11 +28,12 @@ export async function renderMarkdown(content: string): Promise<{ html: string; h
   const result = await unified()
     .use(remarkParse)
     .use(remarkGfm)
-    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(remarkRehype)
     .use(rehypeSlug)
     .use(rehypeAutolinkHeadings, { behavior: 'wrap' })
     .use(rehypeHighlight, { detect: true })
-    .use(rehypeStringify, { allowDangerousHtml: true })
+    .use(rehypeSanitize, sanitizeSchema)
+    .use(rehypeStringify)
     .process(content)
 
   const html = String(result)

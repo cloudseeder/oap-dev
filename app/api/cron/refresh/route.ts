@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/firebase'
-import { fetchManifest, verifyDNS, checkHealth, hashManifest } from '@/lib/dns'
+import { fetchManifestForDomain, verifyDNS, checkHealth, hashManifest } from '@/lib/dns'
 import { validateManifest } from '@/lib/manifest'
 import { updateStats, updateCategoryAggregates } from '@/lib/firestore'
+import { timingSafeCompare } from '@/lib/security'
 import type { AppDocument, PricingModel } from '@/lib/types'
 
 const FLAG_THRESHOLD_DAYS = 7
 const DELIST_THRESHOLD_DAYS = 30
+const MAX_BUILDER_VERIFIED_DOMAINS = 10
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const expected = `Bearer ${process.env.CRON_SECRET}`
+  if (!authHeader || !timingSafeCompare(authHeader, expected)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -27,7 +30,8 @@ export async function GET(request: NextRequest) {
 
   for (const { id, data } of apps) {
     try {
-      const { json: manifest } = await fetchManifest(data.app_url)
+      // Use fetchManifestForDomain to prevent domain spoofing
+      const { json: manifest } = await fetchManifestForDomain(id)
       const { errors } = validateManifest(manifest)
 
       if (errors.length > 0) {
@@ -44,6 +48,7 @@ export async function GET(request: NextRequest) {
       const pricing = manifest.pricing as Record<string, unknown>
       const builder = manifest.builder as Record<string, unknown>
       const newCategories = ((capabilities?.categories as string[]) || []).map(c => c.toLowerCase())
+      const builderVerifiedDomains = ((builder?.verified_domains as string[]) || []).slice(0, MAX_BUILDER_VERIFIED_DOMAINS)
 
       // Handle category aggregate changes
       const oldCategories = data.categories || []
@@ -68,7 +73,7 @@ export async function GET(request: NextRequest) {
         pricing_model: (pricing?.model as PricingModel) || 'free',
         starting_price: (pricing?.starting_price as string) || null,
         builder_name: (builder?.name as string) || '',
-        builder_verified_domains: (builder?.verified_domains as string[]) || [],
+        builder_verified_domains: builderVerifiedDomains,
         dns_verified: dnsVerified,
         health_ok: healthOk !== false,
         manifest_valid: true,

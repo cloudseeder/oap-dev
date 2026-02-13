@@ -7,8 +7,10 @@ export async function GET(
   { params }: { params: Promise<{ category: string }> }
 ) {
   const { category } = await params
-  const page = parseInt(request.nextUrl.searchParams.get('page') || '1')
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '20'), 100)
+  const rawPage = parseInt(request.nextUrl.searchParams.get('page') || '1')
+  const rawLimit = parseInt(request.nextUrl.searchParams.get('limit') || '20')
+  const page = Math.max(1, Number.isFinite(rawPage) ? rawPage : 1)
+  const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 20, 100))
 
   const { apps, total } = await getAppsByCategory(category, page, limit)
 

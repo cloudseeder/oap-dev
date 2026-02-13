@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getApp, updateApp } from '@/lib/firestore'
-import { fetchManifest, verifyDNS, checkHealth, hashManifest } from '@/lib/dns'
+import { fetchManifestForDomain, verifyDNS, checkHealth, hashManifest } from '@/lib/dns'
 import { validateManifest } from '@/lib/manifest'
+import { refreshLimiter, getClientIP } from '@/lib/security'
 import type { PricingModel } from '@/lib/types'
 
+const MAX_BUILDER_VERIFIED_DOMAINS = 10
+
 export async function PUT(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ domain: string }> }
 ) {
+  // Rate limiting
+  const ip = getClientIP(request)
+  const { allowed, retryAfterMs } = refreshLimiter.check(ip)
+  if (!allowed) {
+    return NextResponse.json(
+      { status: 'error', errors: ['Too many requests'] },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) } }
+    )
+  }
+
   const { domain } = await params
   const existing = await getApp(domain)
 
@@ -16,7 +29,8 @@ export async function PUT(
   }
 
   try {
-    const { json: manifest } = await fetchManifest(existing.app_url)
+    // Use fetchManifestForDomain to prevent domain spoofing
+    const { json: manifest } = await fetchManifestForDomain(domain)
 
     const { errors } = validateManifest(manifest)
     if (errors.length > 0) {
@@ -33,6 +47,7 @@ export async function PUT(
     const pricing = manifest.pricing as Record<string, unknown>
     const builder = manifest.builder as Record<string, unknown>
     const categories = ((capabilities?.categories as string[]) || []).map(c => c.toLowerCase())
+    const builderVerifiedDomains = ((builder?.verified_domains as string[]) || []).slice(0, MAX_BUILDER_VERIFIED_DOMAINS)
 
     await updateApp(domain, {
       manifest_json: JSON.stringify(manifest),
@@ -49,7 +64,7 @@ export async function PUT(
       pricing_model: (pricing?.model as PricingModel) || 'free',
       starting_price: (pricing?.starting_price as string) || null,
       builder_name: (builder?.name as string) || '',
-      builder_verified_domains: (builder?.verified_domains as string[]) || [],
+      builder_verified_domains: builderVerifiedDomains,
       dns_verified: dnsVerified,
       health_ok: healthOk !== false,
       manifest_valid: true,
@@ -58,8 +73,7 @@ export async function PUT(
     })
 
     return NextResponse.json({ status: 'refreshed', domain, manifest_hash: manifestHash })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Unknown error'
-    return NextResponse.json({ status: 'error', errors: [msg] }, { status: 500 })
+  } catch {
+    return NextResponse.json({ status: 'error', errors: ['Failed to refresh manifest'] }, { status: 500 })
   }
 }

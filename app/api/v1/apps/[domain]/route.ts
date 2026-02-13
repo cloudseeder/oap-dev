@@ -3,6 +3,8 @@ import { getApp } from '@/lib/firestore'
 import { db } from '@/lib/firebase'
 import type { AppDocument } from '@/lib/types'
 
+const MAX_BUILDER_VERIFIED_DOMAINS_LOOKUP = 10
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ domain: string }> }
@@ -18,8 +20,8 @@ export async function GET(
     ? parseFloat(((app.uptime_checks_passed / app.uptime_checks_total) * 100).toFixed(1))
     : undefined
 
-  // Find other apps by same builder
-  const builderDomains = app.builder_verified_domains || []
+  // Find other apps by same builder (capped to prevent abuse)
+  const builderDomains = (app.builder_verified_domains || []).slice(0, MAX_BUILDER_VERIFIED_DOMAINS_LOOKUP)
   let otherApps: { domain: string; name: string }[] = []
   if (builderDomains.length > 0) {
     const otherDomains = builderDomains.filter(d => d !== domain)

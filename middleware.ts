@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+function addCorsHeaders(response: NextResponse): NextResponse {
+  response.headers.set('Access-Control-Allow-Origin', '*')
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  return response
+}
+
 export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   const { pathname } = request.nextUrl
 
-  // API routes pass through from any domain
+  // Handle CORS preflight for API routes
+  if (pathname.startsWith('/api/') && request.method === 'OPTIONS') {
+    const response = new NextResponse(null, { status: 204 })
+    return addCorsHeaders(response)
+  }
+
+  // API routes pass through from any domain with CORS headers
   if (pathname.startsWith('/api/')) {
-    return NextResponse.next()
+    const response = NextResponse.next()
+    return addCorsHeaders(response)
   }
 
   // Registry subdomain detection

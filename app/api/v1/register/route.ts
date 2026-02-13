@@ -2,10 +2,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import { extractDomain, fetchManifest, verifyDNS, checkHealth, hashManifest } from '@/lib/dns'
 import { validateManifest } from '@/lib/manifest'
 import { getApp, createApp } from '@/lib/firestore'
+import { registerLimiter, getClientIP } from '@/lib/security'
 import type { AppDocument, PricingModel } from '@/lib/types'
+
+const MAX_BUILDER_VERIFIED_DOMAINS = 10
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting
+    const ip = getClientIP(request)
+    const { allowed, retryAfterMs } = registerLimiter.check(ip)
+    if (!allowed) {
+      return NextResponse.json(
+        { status: 'error', errors: ['Too many requests'] },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) } }
+      )
+    }
+
     const body = await request.json()
     const { url } = body
 
@@ -32,11 +45,10 @@ export async function POST(request: NextRequest) {
     let manifestUrl: string
     try {
       ({ json: manifest, manifestUrl } = await fetchManifest(url))
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unknown error'
+    } catch {
       return NextResponse.json({
         status: 'error',
-        errors: [`Could not fetch manifest from ${url}/.well-known/oap.json: ${msg}`],
+        errors: ['Could not fetch manifest'],
       }, { status: 400 })
     }
 
@@ -44,6 +56,16 @@ export async function POST(request: NextRequest) {
     const { errors } = validateManifest(manifest)
     if (errors.length > 0) {
       return NextResponse.json({ status: 'error', errors }, { status: 400 })
+    }
+
+    // Domain match validation: manifest identity.url must match the registered domain
+    const identity = manifest.identity as Record<string, unknown>
+    const manifestDomain = extractDomain(identity?.url as string)
+    if (manifestDomain !== domain) {
+      return NextResponse.json({
+        status: 'error',
+        errors: ['Manifest identity.url domain does not match the registered domain'],
+      }, { status: 400 })
     }
 
     // Verify DNS (non-blocking)
@@ -55,11 +77,11 @@ export async function POST(request: NextRequest) {
     // Build app document
     const manifestHash = hashManifest(manifest)
     const now = new Date().toISOString()
-    const identity = manifest.identity as Record<string, unknown>
     const capabilities = manifest.capabilities as Record<string, unknown>
     const pricing = manifest.pricing as Record<string, unknown>
     const builder = manifest.builder as Record<string, unknown>
     const categories = (capabilities?.categories as string[]) || []
+    const builderVerifiedDomains = ((builder?.verified_domains as string[]) || []).slice(0, MAX_BUILDER_VERIFIED_DOMAINS)
 
     const appDoc: AppDocument = {
       domain,
@@ -78,7 +100,7 @@ export async function POST(request: NextRequest) {
       pricing_model: (pricing?.model as PricingModel) || 'free',
       starting_price: (pricing?.starting_price as string) || null,
       builder_name: (builder?.name as string) || '',
-      builder_verified_domains: (builder?.verified_domains as string[]) || [],
+      builder_verified_domains: builderVerifiedDomains,
       dns_verified: dnsVerified,
       health_ok: healthOk !== false,
       manifest_valid: true,
