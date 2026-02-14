@@ -1,0 +1,26 @@
+{
+  "oap": "1.0",
+  "name": "Summarize",
+  "description": "Accepts any text and returns a concise summary. Handles documents up to 100,000 words. Returns plain text, not markdown. Optimized for meeting transcripts and legal documents but works on anything.",
+  "input": {
+    "format": "text/plain",
+    "description": "The text to summarize. Any length up to 100k words."
+  },
+  "output": {
+    "format": "text/plain",
+    "description": "A concise summary, typically 10-20% of the original length."
+  },
+  "invoke": {
+    "method": "POST",
+    "url": "https://summarize.example.com/api/v1/summarize",
+    "auth": "api_key",
+    "auth_url": "https://summarize.example.com/developers"
+  },
+  "examples": [
+    {
+      "input": "The quarterly earnings report showed a 12% increase in revenue...",
+      "output": "Revenue grew 12% with margins expanding to 34%. Management raised full-year guidance.",
+      "description": "Financial document summarization"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# Seed domains for the OAP crawler.
+# One domain per line. Lines starting with # are comments.
+# The crawler fetches https://<domain>/.well-known/oap.json for each entry.
+
+# Example:
+# summarize.example.com
+# api.mynewscast.com

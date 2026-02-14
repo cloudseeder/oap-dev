@@ -1,0 +1,25 @@
+# OAP Discovery — default configuration
+# Override any value with OAP_<SECTION>_<KEY> environment variables.
+# Example: OAP_OLLAMA_BASE_URL=http://remote:11434
+
+ollama:
+  base_url: "http://localhost:11434"
+  embed_model: "nomic-embed-text"
+  generate_model: "qwen3:4b"
+  timeout: 30
+
+chromadb:
+  path: "./oap_data"
+  collection: "manifests"
+
+crawler:
+  seeds_file: "seeds.txt"
+  seeds_dir: "seeds"
+  interval: 3600         # seconds between crawl cycles
+  concurrency: 5
+  user_agent: "oap-crawler/0.1"
+  request_timeout: 10
+
+api:
+  host: "0.0.0.0"
+  port: 8300

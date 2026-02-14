@@ -1,0 +1,93 @@
+"""YAML + environment variable configuration loading."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field, fields
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+@dataclass
+class OllamaConfig:
+    base_url: str = "http://localhost:11434"
+    embed_model: str = "nomic-embed-text"
+    generate_model: str = "qwen3:4b"
+    timeout: int = 30
+
+
+@dataclass
+class ChromaDBConfig:
+    path: str = "./oap_data"
+    collection: str = "manifests"
+
+
+@dataclass
+class CrawlerConfig:
+    seeds_file: str = "seeds.txt"
+    seeds_dir: str = "seeds"
+    interval: int = 3600
+    concurrency: int = 5
+    user_agent: str = "oap-crawler/0.1"
+    request_timeout: int = 10
+
+
+@dataclass
+class APIConfig:
+    host: str = "0.0.0.0"
+    port: int = 8300
+
+
+@dataclass
+class Config:
+    ollama: OllamaConfig = field(default_factory=OllamaConfig)
+    chromadb: ChromaDBConfig = field(default_factory=ChromaDBConfig)
+    crawler: CrawlerConfig = field(default_factory=CrawlerConfig)
+    api: APIConfig = field(default_factory=APIConfig)
+
+
+def _apply_env_overrides(cfg: Config) -> None:
+    """Override config values with OAP_<SECTION>_<KEY> env vars."""
+    section_map = {
+        "ollama": cfg.ollama,
+        "chromadb": cfg.chromadb,
+        "crawler": cfg.crawler,
+        "api": cfg.api,
+    }
+    for section_name, section_obj in section_map.items():
+        for f in fields(section_obj):
+            env_key = f"OAP_{section_name.upper()}_{f.name.upper()}"
+            env_val = os.environ.get(env_key)
+            if env_val is not None:
+                # Cast to the field's type
+                setattr(section_obj, f.name, f.type(env_val))
+
+
+def _build_section(dataclass_type: type, data: dict[str, Any]) -> Any:
+    """Build a dataclass from a dict, ignoring unknown keys."""
+    known = {f.name for f in fields(dataclass_type)}
+    return dataclass_type(**{k: v for k, v in data.items() if k in known})
+
+
+def load_config(path: str | Path | None = None) -> Config:
+    """Load config from YAML file (optional) then apply env var overrides."""
+    cfg = Config()
+
+    if path is not None:
+        p = Path(path)
+        if p.exists():
+            with open(p) as f:
+                raw = yaml.safe_load(f) or {}
+            if "ollama" in raw:
+                cfg.ollama = _build_section(OllamaConfig, raw["ollama"])
+            if "chromadb" in raw:
+                cfg.chromadb = _build_section(ChromaDBConfig, raw["chromadb"])
+            if "crawler" in raw:
+                cfg.crawler = _build_section(CrawlerConfig, raw["crawler"])
+            if "api" in raw:
+                cfg.api = _build_section(APIConfig, raw["api"])
+
+    _apply_env_overrides(cfg)
+    return cfg
