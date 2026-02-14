@@ -4,102 +4,83 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Open Application Protocol (OAP) — a decentralized discovery and trust layer for web applications, designed for AI agents. Three components:
+Open Application Protocol (OAP) — a cognitive API layer for artificial intelligence. A manifest spec that lets AI learn about capabilities that weren't in its training data, at runtime, without retraining.
 
-1. **Manifest** (`/.well-known/oap.json`) — JSON file apps host declaring identity, capabilities, pricing, trust signals
-2. **DNS Discovery** — TXT record at `_oap.{domain}` signals protocol participation
-3. **Registry** — Optional open registry (npm model: no approval, anyone can run one)
+OAP is a **pure spec** with a reference architecture for discovery. It is **not** a registry, service, or platform.
 
-Protocol version: 0.1 (draft). License: CC0 1.0 (Public Domain).
+- **Manifest** (`/.well-known/oap.json`) — JSON file describing what a capability does, what it accepts, what it produces, and how to invoke it. Designed to be read and reasoned about by LLMs.
+- **Discovery** — Not prescribed by the spec. Reference architecture uses crawlers + local vector DB + small LLM for intent-to-manifest matching. The web model, not the registry model.
+- **Trust** — Separate companion overlay (like TLS is to HTTP). Graduated levels: domain attestation, capability attestation, compliance certification.
+
+Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 
 ## Repository Structure
 
-### Next.js Application (oap.dev + registry.oap.dev)
+### Spec & Documentation
 
-- `app/(marketing)/` — Marketing site pages (oap.dev): landing, spec, registry spec, quickstart
-- `app/r/` — Registry UI pages (registry.oap.dev): search, app detail, categories, API docs
-- `app/api/v1/` — Registry API routes (shared across both domains)
-- `components/` — Shared React components (Header, Footer, AppCard, SearchBar, etc.)
-- `lib/` — Shared TypeScript libraries:
-  - `lib/types.ts` — All TypeScript interfaces (OAPManifest, AppDocument, etc.)
-  - `lib/firebase.ts` — Firebase Admin singleton
-  - `lib/firestore.ts` — Firestore data access layer (CRUD, categories, stats)
-  - `lib/manifest.ts` — Manifest validation (ported from tools/validate.js)
-  - `lib/dns.ts` — DNS verification, manifest fetch, health check, hashing
-  - `lib/search.ts` — Keyword search algorithm, result formatting
-  - `lib/markdown.ts` — Markdown → HTML rendering with TOC extraction
-- `middleware.ts` — Hostname-based routing (registry.* → /r/*)
-- `scripts/seed.ts` — Firestore seed script for example data
-- `public/schema/v0.1.json` — JSON Schema for IDE validation
-- `public/examples/` — Example manifests for download
+- `README.md` — Project overview and vision (the public face)
+- `docs/SPEC.md` — Manifest specification v1.0 (the authoritative reference)
+- `docs/ARCHITECTURE.md` — Reference discovery architecture (local vector DB + small LLM + crawler)
+- `docs/TRUST.md` — Trust overlay specification (companion protocol)
+- `docs/MANIFESTO.md` — Why manifests are the cognitive API for AI
+- `docs/old/` — Archived v0.1 registry-era docs (PRD, registry spec, etc.)
 
-### Protocol & Reference Implementation
+### Next.js Application (oap.dev)
 
-- `docs/SPEC.md` — Full protocol specification (the authoritative reference)
-- `docs/REGISTRY.md` — Registry API specification
-- `docs/OAP_PRD.md` — Product requirements document
-- `registry/server.js` — Reference registry server (Express + SQLite)
-- `registry/package.json` — Registry dependencies
-- `tools/generate.js` — Interactive manifest generator CLI
-- `tools/validate.js` — Manifest validator (file or URL)
-- `examples/` — Reference manifests (xuru.ai, provexa.ai, mynewscast.com)
+The marketing/spec site is still a Next.js app, but the registry functionality has been moved to the `registry-v1` branch.
+
+- `app/(marketing)/` — Marketing site pages (oap.dev): landing, spec
+- `app/api/v1/` — API routes (legacy registry, preserved on `registry-v1` branch)
+- `components/` — Shared React components
+- `lib/` — Shared TypeScript libraries
+- `middleware.ts` — Hostname-based routing
+
+### Legacy Registry
+
+The full registry implementation (Firestore-backed, with search, categories, health checks) is preserved on the **`registry-v1`** branch. It includes:
+- Registry UI (registry.oap.dev)
+- Registry API routes
+- Firestore data layer
+- CLI tools (manifest generator, validator)
+- Reference Express server
 
 ## Commands
-
-### Next.js App
 
 ```bash
 npm install
 npm run dev          # Development server on http://localhost:3000
 npm run build        # Production build
 npm run start        # Start production server
-npm run seed         # Seed Firestore with example apps
 ```
 
-### Environment Variables (.env.local)
+## Key Design Principles
 
-```
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_CLIENT_EMAIL=your-client-email@your-project.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-```
+1. **One-page spec.** If it doesn't fit on one page, it's too complex.
+2. **Five-minute adoption.** A solo developer can add OAP in the time it takes to write a README.
+3. **No gatekeepers.** No registration, no approval, no fees. Publish and you're in.
+4. **Machine-first, human-readable.** Designed for AI to consume, but any developer can read and write a manifest.
+5. **Unix philosophy.** Describe what you accept and what you produce. Let the invoker handle composition.
+6. **The web model.** Standardize the format. Let the ecosystem build the discovery.
+7. **No agent/app distinction.** A capability is a capability — `grep` is an agent with a man page.
 
-### Reference Registry Server
+## Manifest Format (v1.0)
 
-```bash
-cd registry
-npm install
-npm start            # Runs on http://localhost:3000
-```
+Only four fields are required: `oap`, `name`, `description`, `invoke`. The `description` field is the most important — it's the text an LLM reads to decide if a capability fits a task.
 
-### CLI Tools
-
-```bash
-node tools/validate.js examples/xuru.ai/oap.json
-node tools/validate.js https://myapp.com/.well-known/oap.json
-node tools/generate.js
+```json
+{
+  "oap": "1.0",
+  "name": "Capability Name",
+  "description": "Plain English description — write it like a man page.",
+  "input": { "format": "text/plain", "description": "What this needs" },
+  "output": { "format": "application/json", "description": "What this produces" },
+  "invoke": { "method": "POST", "url": "https://example.com/api/endpoint" }
+}
 ```
 
 ## Architecture Notes
 
-- **Next.js App Router** with TypeScript, Tailwind CSS, and Firebase Admin SDK
-- **Two-domain architecture**: `oap.dev` (marketing) and `registry.oap.dev` (registry UI + API), routed via middleware hostname detection
-- **Firestore collections**: `apps/{domain}`, `categories/{category}`, `stats/global`
-- **Registry UI pages** call Firestore directly (server components, no HTTP round-trip to own API)
-- **API routes** are identical to the reference Express implementation, ported to Next.js route handlers
-- **Search** is keyword-based (split query, match across text fields, name/tagline bonus). Designed to be upgraded to vector/semantic search.
-- **DNS verification is non-blocking** — apps can register without DNS records set up
+- **Next.js App Router** with TypeScript and Tailwind CSS
 - **Markdown rendering** uses unified/remark/rehype pipeline for spec pages with auto-generated TOC
 - **No test framework** currently configured
 - **No linter/formatter** currently configured
-
-## Registry API Endpoints
-
-- `POST /api/v1/register` — Register app (validates manifest, checks DNS)
-- `GET /api/v1/search?q=...` — Keyword search
-- `GET /api/v1/categories` — List categories with counts
-- `GET /api/v1/categories/:category` — Browse by category
-- `GET /api/v1/apps/:domain` — App details
-- `PUT /api/v1/apps/:domain/refresh` — Force manifest re-fetch
-- `GET /api/v1/all` — Paginated registry dump (for mirroring)
-- `GET /api/v1/stats` — Registry statistics
