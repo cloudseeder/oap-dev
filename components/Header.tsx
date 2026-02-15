@@ -1,10 +1,23 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export default function Header() {
   const [docsOpen, setDocsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDocsOpen(false)
+      }
+    }
+    if (docsOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [docsOpen])
 
   return (
     <header className="border-b border-gray-200 bg-white">
@@ -26,10 +39,9 @@ export default function Header() {
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
               Dashboard
             </Link>
-            <div className="relative">
+            <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDocsOpen(!docsOpen)}
-                onBlur={() => setTimeout(() => setDocsOpen(false), 150)}
                 className="flex items-center gap-1 text-gray-600 hover:text-gray-900"
               >
                 Docs
@@ -39,16 +51,16 @@ export default function Header() {
               </button>
               {docsOpen && (
                 <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                  <Link href="/docs/quickstart" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  <Link href="/docs/quickstart" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Quick Start
                   </Link>
-                  <Link href="/docs/architecture" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  <Link href="/docs/architecture" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Architecture
                   </Link>
-                  <Link href="/docs/trust" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  <Link href="/docs/trust" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Trust Overlay
                   </Link>
-                  <Link href="/docs/manifesto" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  <Link href="/docs/manifesto" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Manifesto
                   </Link>
                 </div>

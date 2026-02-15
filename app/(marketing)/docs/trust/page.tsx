@@ -41,7 +41,7 @@ export default async function TrustDocPage() {
         </aside>
 
         <article
-          className="prose prose-slate max-w-none prose-headings:scroll-mt-20"
+          className="prose prose-slate min-w-0 max-w-none overflow-hidden prose-headings:scroll-mt-20"
           dangerouslySetInnerHTML={{ __html: html }}
         />
       </div>

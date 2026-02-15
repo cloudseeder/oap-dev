@@ -40,10 +40,19 @@ body {
 .prose pre {
   background: #1e293b;
   border-radius: 0.5rem;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.prose table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
 }
 
 .prose code {
   font-size: 0.875em;
+  word-break: break-word;
 }
 
 .prose :where(code):not(:where(pre *)) {
