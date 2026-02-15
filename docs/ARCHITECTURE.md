@@ -229,39 +229,65 @@ Compare to running an equivalent stack in the cloud: a GPU-capable VM for the lo
 # 1. Install Homebrew (if not present)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# 2. Install Ollama and pull models
+# 2. Install Ollama (local LLM runtime)
 brew install ollama
 ollama serve &
-ollama pull qwen3:4b
-ollama pull nomic-embed-text
 
-# 3. Clone the OAP repository
+# 3. Pull the two models the discovery stack needs:
+#    - qwen3:4b — small LLM that reads manifests and picks the best match
+#    - nomic-embed-text — embedding model that converts descriptions to vectors
+ollama pull qwen3:4b              # ~2.5 GB, reasoning model
+ollama pull nomic-embed-text      # ~274 MB, vector embeddings
+
+# 4. Clone the OAP repository
 git clone https://github.com/cloudseeder/oap-dev.git
 cd oap-dev
 
-# 4. Set up Python virtual environment and install services
+# 5. Set up Python virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install -e reference/oap_discovery   # discovery API + crawler
-pip install -e reference/oap_trust       # trust provider API
-pip install -e reference/oap_dashboard   # dashboard API + crawler
+# 6. Install the reference services
+#    Each is a Python package with entry-point commands
+pip install -e reference/oap_discovery   # provides: oap-api, oap-crawl, oap
+pip install -e reference/oap_trust       # provides: oap-trust-api, oap-trust
+pip install -e reference/oap_dashboard   # provides: oap-dashboard-api, oap-dashboard-crawl
 
-# 5. Start the discovery stack
-#    oap-crawl indexes manifests from seeds.txt into ChromaDB
-#    oap-api serves the discovery API on :8300
+# 7. Add seed domains for the crawler
+#    The crawler fetches https://<domain>/.well-known/oap.json for each
 cd reference/oap_discovery
-oap-crawl --once                         # initial index
-oap-api &                                # runs on http://localhost:8300
+echo "example.com" >> seeds.txt          # add domains you want to index
 
-# 6. Start the trust provider (optional)
+# 8. Run the initial crawl
+#    This fetches manifests, embeds descriptions via nomic-embed-text,
+#    and stores the vectors in a local ChromaDB database (./oap_data/)
+oap-crawl --once
+
+# 9. Start the discovery API
+#    Accepts natural-language queries, searches ChromaDB by vector similarity,
+#    then uses qwen3:4b to pick the best manifest match
+oap-api &                                # http://localhost:8300
+
+# 10. Start the trust provider (optional)
 cd ../oap_trust
-oap-trust-api &                          # runs on http://localhost:8301
+oap-trust-api &                          # http://localhost:8301
 
-# 7. Start the dashboard (optional)
+# 11. Start the dashboard (optional)
 cd ../oap_dashboard
-oap-dashboard-crawl --once               # initial crawl
-oap-dashboard-api &                      # runs on http://localhost:8302
+oap-dashboard-crawl --once               # initial crawl into SQLite
+oap-dashboard-api &                      # http://localhost:8302
+```
+
+You can verify the stack is running:
+
+```bash
+# Check discovery health (should show ollama: true, index_count > 0)
+curl http://localhost:8300/health
+
+# Try a discovery query
+curl -X POST http://localhost:8300/v1/discover \
+  -H "Content-Type: application/json" \
+  -d '{"task": "summarize text"}'
 ```
 
 From unboxing to a running discovery stack: under two hours. Most of that is downloading models.
