@@ -1,3 +1,0 @@
-oap_discovery
-seeds
-tests

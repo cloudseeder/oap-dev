@@ -1,4 +1,0 @@
-[console_scripts]
-oap = oap_discovery.cli:cli
-oap-api = oap_discovery.api:main
-oap-crawl = oap_discovery.crawler:main

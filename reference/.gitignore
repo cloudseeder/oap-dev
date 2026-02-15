@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .pytest_cache/
 oap_data/
+oap_trust_data/
