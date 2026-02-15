@@ -60,13 +60,6 @@ Knowledge lives where it belongs. Manifests stay on publishers' domains. Discove
 
 The key insight: discovery and execution are different cognitive tasks requiring different levels of intelligence. Don't waste a frontier model on finding work. Don't trust a tiny model with doing the work.
 
-## Three Cognitive Jobs, Three Cost Points
-
-The key insight: discovery and execution are different cognitive 
-tasks requiring different levels of intelligence. Don't waste a 
-frontier model on finding work. Don't trust a tiny model with 
-doing the work.
-
 **Similarity search** finds candidate manifests matching the 
 agent's intent. This is pure vector math — no LLM involved. 
 Embed the query, compare against the index, return the nearest 
@@ -87,10 +80,6 @@ The expensive model never wastes tokens on discovery. The cheap model never atte
 ---
 
 ## Minimum Hardware
-
-### Tier 1: Laptop (Development / Personal Agent)
-
-For a developer running their own discovery stack locally.
 
 ### Tier 1: Laptop (Development / Personal Agent)
 
@@ -124,10 +113,6 @@ This runs the small LLM for manifest reasoning, the vector database for similari
 
 For a team running a shared discovery service.
 
-### Tier 2: Server (Team / Production)
-
-For a team running a shared discovery service.
-
 **CPU:** 8 cores minimum, 16+ recommended. Concurrent 
 discovery queries from multiple agents need parallel 
 processing headroom.
@@ -150,12 +135,6 @@ crawler is constantly fetching manifests and the discovery
 API is serving results — bandwidth matters at production 
 scale.
 
-Supports concurrent discovery queries from multiple agents. Can index millions of manifests. Runs the small LLM with GPU acceleration for sub-100ms manifest reasoning.
-
-### Tier 3: Virtual / Cloud
-
-Any of the above can run in cloud VMs. Recommended instances:
-
 ### Tier 3: Virtual / Cloud
 
 Any of the above can run in cloud VMs.
@@ -172,8 +151,6 @@ Any of the above can run in cloud VMs.
 **Budget:** Any 8-core, 32GB RAM VPS with CPU-only inference. 
 $50-100/month. The small LLM runs slower but discovery latency 
 remains acceptable for most use cases.
-
-A CPU-only VPS works fine for moderate loads — the small LLM runs slower but discovery latency remains acceptable for most use cases.
 
 ### Reference Platform: The $599 Mac Mini
 
@@ -198,29 +175,29 @@ A base-model Mac Mini (M4, 16GB unified memory, 256GB SSD, $599) runs the entire
 |                   Mac Mini (M4 / 16GB)                    |
 |                                                           |
 |  +-----------------------------------------------------+  |
-|  |               OpenClaw Gateway                       | |
-|  |  WhatsApp / Telegram / iMessage / Slack / etc.       | |
-|  |  Persistent memory - Cron jobs - Skills engine       | |
-|  |  ~200MB RAM                                          | |
+|  |               OpenClaw Gateway                      |  |
+|  |  WhatsApp / Telegram / iMessage / Slack / etc.      |  |
+|  |  Persistent memory - Cron jobs - Skills engine      |  |
+|  |  ~200MB RAM                                         |  |
 |  +---------------------------+-------------------------+  |
 |                              |                            |
 |  +---------------------------v-------------------------+  |
-|  |              OAP Discovery Layer                     | |
-|  |                                                      | |
-|  |  +----------------+    +--------------------------+  | |
-|  |  | Ollama         |    | ChromaDB / LanceDB       |  | |
-|  |  | Qwen 3 4B      |    | Manifest vector index    |  | |
-|  |  | + nomic        |    | ~100MB for 10K           |  | |
-|  |  |   embed-text   |    |   manifests              |  | |
-|  |  | ~4GB RAM       |    | ~500MB RAM               |  | |
-|  |  +----------------+    +--------------------------+  | |
-|  |                                                      | |
-|  |  +----------------+    +--------------------------+  | |
-|  |  | Crawler        |    | Discovery API            |  | |
-|  |  | (background    |    | (FastAPI)                |  | |
-|  |  |  process)      |    | ~100MB RAM               |  | |
-|  |  | ~50MB RAM      |    |                          |  | |
-|  |  +----------------+    +--------------------------+  | |
+|  |              OAP Discovery Layer                    |  |
+|  |                                                     |  |
+|  |  +----------------+    +--------------------------+ |  |
+|  |  | Ollama         |    | ChromaDB / LanceDB       | |  |
+|  |  | Qwen 3 4B      |    | Manifest vector index    | |  |
+|  |  | + nomic        |    | ~100MB for 10K           | |  |
+|  |  |   embed-text   |    |   manifests              | |  |
+|  |  | ~4GB RAM       |    | ~500MB RAM               | |  |
+|  |  +----------------+    +--------------------------+ |  |
+|  |                                                     |  |
+|  |  +----------------+    +--------------------------+ |  |
+|  |  | Crawler        |    | Discovery API            | |  |
+|  |  | (background    |    | (FastAPI)                | |  |
+|  |  |  process)      |    | ~100MB RAM               | |  |
+|  |  | ~50MB RAM      |    |                          | |  |
+|  |  +----------------+    +--------------------------+ |  |
 |  +------------------------------------------------------+ |
 |                                                           |
 |  RAM budget: ~5GB active (11GB free for OS + headroom)    |
@@ -294,19 +271,23 @@ The discovery LLM has one job: read a handful of manifest descriptions and decid
 
 ### Recommended Models (as of February 2026)
 
-| Model | Parameters | VRAM (quantized) | Why |
-|-------|-----------|-------------------|-----|
-| **Qwen 3 4B** | 4B | ~3 GB (Q4) | Best balance of size and reasoning. Hybrid think/no-think modes — use fast mode for manifest matching. Apache 2.0 license. |
-| **Phi-4-mini-instruct** | 3.8B | ~3 GB (Q4) | Strong instruction following and reasoning at minimal size. 128K context window. MIT license. |
-| **Llama 3.2 3B** | 3B | ~2 GB (Q4) | Smallest viable option. Runs on almost anything. Good enough for manifest matching. Meta license. |
-| **SmolLM3 3B** | 3B | ~2 GB (Q4) | Fully open from Hugging Face. Outperforms Llama 3.2 3B on most benchmarks. Transparent training methodology. |
-| **Qwen 2.5 7B Instruct** | 7B | ~5 GB (Q4) | If you have the VRAM, best-in-class instruction following at this size. Strong at structured reasoning. |
+**Qwen 3 4B** — 4 billion parameters, roughly 3GB VRAM quantized at Q4. The recommended default. Best balance of size and reasoning for the discovery task. Hybrid think/no-think modes let you use fast mode for manifest matching where deep chain-of-thought isn't needed. Apache 2.0 license.
+
+**Phi-4-mini-instruct** — 3.8 billion parameters, roughly 3GB VRAM quantized. Strong instruction following and reasoning at minimal size, with a 128K context window that handles large manifests easily. MIT license.
+
+**Llama 3.2 3B** — 3 billion parameters, roughly 2GB VRAM quantized. The smallest viable option. Runs on almost anything including underpowered hardware. Good enough for manifest matching even if it occasionally stumbles on edge cases. Meta license.
+
+**SmolLM3 3B** — 3 billion parameters, roughly 2GB VRAM quantized. Fully open from Hugging Face with transparent training methodology. Outperforms Llama 3.2 3B on most benchmarks while maintaining the same footprint.
+
+**Qwen 2.5 7B Instruct** — 7 billion parameters, roughly 5GB VRAM quantized. The best option if you have the VRAM. Best-in-class instruction following at this size with strong structured reasoning. Overkill for manifest matching, but handles every edge case gracefully.
 
 ### Model Selection Guidance
 
-- **Constrained hardware (laptop, edge):** Llama 3.2 3B or SmolLM3 3B. They run on CPU with 16GB system RAM.
-- **Good hardware (M-series Mac, gaming GPU):** Qwen 3 4B or Phi-4-mini. Best reasoning per parameter.
-- **Server with GPU:** Qwen 2.5 7B Instruct. Overkill for manifest matching, but fast with GPU acceleration and handles edge cases better.
+**Constrained hardware** — laptop or edge device with 16GB system RAM. Use Llama 3.2 3B or SmolLM3 3B. They run on CPU without consuming too much memory.
+
+**Good hardware** — M-series Mac or a machine with a gaming GPU. Use Qwen 3 4B or Phi-4-mini. Best reasoning per parameter at a size that still leaves plenty of headroom.
+
+**Server with GPU** — dedicated machine with 12+ GB VRAM. Use Qwen 2.5 7B Instruct. Fast with GPU acceleration and handles edge cases better than the smaller models.
 
 ### Runtime
 
@@ -333,35 +314,29 @@ The vector database stores embedded manifest descriptions and performs similarit
 
 ### Recommended Options
 
-| Database | Best For | Deployment | License |
-|----------|---------|-----------|---------|
-| **ChromaDB** | Getting started, prototyping, small indexes (<1M manifests) | Embedded (in-process), no server needed | Apache 2.0 |
-| **Qdrant** | Production, larger indexes, filtered search | Docker container or embedded (Rust) | Apache 2.0 |
-| **LanceDB** | Edge/embedded, serverless, zero-ops | Embedded (in-process), no server | Apache 2.0 |
-| **Milvus Lite** | Local development with path to enterprise scale | Embedded (Python library) | Apache 2.0 |
+**ChromaDB** — best for getting started, prototyping, and small indexes under a million manifests. Runs embedded in-process with no server needed. `pip install chromadb` and you're running. In-memory mode eliminates all setup friction. Rewritten in Rust in 2025 — 4x faster than the original. Apache 2.0 license.
 
-### Selection Guidance
-
-- **Weekend prototype:** ChromaDB. `pip install chromadb` and you're running. In-memory mode eliminates all setup friction. Rewritten in Rust in 2025 — 4x faster than original.
-- **Production local service:** Qdrant. Written in Rust. Sub-100ms queries on millions of vectors. Excellent metadata filtering for narrowing results by tags, capability type, or trust level. Run via Docker:
+**Qdrant** — best for production and larger indexes. Written in Rust with sub-100ms queries on millions of vectors. Excellent metadata filtering for narrowing results by tags, capability type, or trust level. Run via Docker:
 
 ```bash
 docker run -p 6333:6333 qdrant/qdrant
 ```
 
-- **Embedded/edge:** LanceDB. No server process at all — it's a library that reads/writes directly to disk. Perfect for agents running on laptops or edge devices. Zero operational overhead.
+Apache 2.0 license.
+
+**LanceDB** — best for edge and embedded deployments. No server process at all — it's a library that reads/writes directly to disk. Perfect for agents running on laptops or edge devices. Zero operational overhead. Apache 2.0 license.
+
+**Milvus Lite** — best for local development when you want a path to enterprise scale. Runs as an embedded Python library for development, then scales to a distributed cluster for production without changing your code. Apache 2.0 license.
 
 ### Embedding Model
 
 Manifests need to be converted to vectors before storage. The embedding model determines how well similarity search matches intent to capability.
 
-| Model | Dimensions | Size | Notes |
-|-------|-----------|------|-------|
-| **all-MiniLM-L6-v2** | 384 | 80 MB | Fast, good enough for most cases. The default starting point. |
-| **nomic-embed-text** | 768 | 274 MB | Better semantic understanding. Runs via Ollama: `ollama pull nomic-embed-text` |
-| **mxbai-embed-large** | 1024 | 670 MB | Highest quality local embeddings. Use if accuracy matters more than speed. |
+**all-MiniLM-L6-v2** — 384 dimensions, 80MB. Fast and good enough for most cases. The default starting point if you want minimal resource usage.
 
-For the OAP use case, `nomic-embed-text` via Ollama is the sweet spot — good quality, runs locally alongside your discovery LLM with no additional infrastructure.
+**nomic-embed-text** — 768 dimensions, 274MB. Better semantic understanding than MiniLM. Runs via Ollama (`ollama pull nomic-embed-text`) alongside your discovery LLM with no additional infrastructure. The recommended sweet spot for OAP.
+
+**mxbai-embed-large** — 1024 dimensions, 670MB. Highest quality local embeddings available. Use if discovery accuracy matters more than speed and you have the memory budget.
 
 ---
 
@@ -389,21 +364,25 @@ The crawler is the background process that builds and maintains your local manif
 
 Where does the initial list of domains come from?
 
-- **Manual curation:** Start with domains you know. Your own apps. Partner services. Community lists.
-- **DNS TXT scanning:** Look for `_oap` TXT records on known domains.
-- **Sitemap-style submission:** Accept domain submissions via a simple API or web form.
-- **Referral crawling:** When a manifest includes a `publisher.url`, crawl that domain too.
-- **Web crawl piggyback:** If you're running a general web crawler, check for `/.well-known/oap.json` on every domain you visit.
+**Manual curation.** Start with domains you know. Your own apps. Partner services. Community lists.
+
+**DNS TXT scanning.** Look for `_oap` TXT records on known domains.
+
+**Sitemap-style submission.** Accept domain submissions via a simple API or web form.
+
+**Referral crawling.** When a manifest includes a `publisher.url`, crawl that domain too.
+
+**Web crawl piggyback.** If you're running a general web crawler, check for `/.well-known/oap.json` on every domain you visit.
 
 ### Crawl Frequency
 
-| Manifest Status | Crawl Interval |
-|----------------|---------------|
-| New / recently changed | Every 6 hours |
-| Stable (unchanged for 7+ days) | Every 24-48 hours |
-| Inactive (health check failing) | Every 72 hours, then prune |
+**New or recently changed manifests** — every 6 hours. Freshness matters most when a capability first appears or its description is actively being refined.
 
-Respect `updated` field in manifests — if it hasn't changed, don't re-embed.
+**Stable manifests** unchanged for 7+ days — every 24-48 hours. Frequent enough to catch updates, infrequent enough to be polite.
+
+**Inactive manifests** where the health check is failing — every 72 hours, then prune. Don't waste crawl cycles on dead capabilities.
+
+Respect the `updated` field in manifests — if it hasn't changed, don't re-embed.
 
 ---
 
