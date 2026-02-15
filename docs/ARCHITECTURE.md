@@ -152,7 +152,7 @@ Any of the above can run in cloud VMs.
 $50-100/month. The small LLM runs slower but discovery latency 
 remains acceptable for most use cases.
 
-### Reference Platform: The $599 Mac Mini
+### Reference Platform: The $549 Mac Mini
 
 In January 2026, an open-source personal agent called OpenClaw made Mac Minis hard to buy. Within weeks it had over 145,000 GitHub stars and people were buying dedicated Mac Minis as always-on personal agent hardware. The reasons turn out to be architecturally significant, not just convenient — and the same machine runs the entire OAP discovery stack alongside the agent itself.
 
@@ -168,7 +168,7 @@ In January 2026, an open-source personal agent called OpenClaw made Mac Minis ha
 
 #### The Complete Stack on One Machine
 
-A base-model Mac Mini (M4, 16GB unified memory, 256GB SSD, $599) runs the entire personal agent + OAP discovery stack simultaneously:
+A base-model Mac Mini (M4, 16GB unified memory, 256GB SSD, $549) runs the entire personal agent + OAP discovery stack simultaneously:
 
 ```
 +-----------------------------------------------------------+
@@ -211,7 +211,7 @@ A base-model Mac Mini (M4, 16GB unified memory, 256GB SSD, $599) runs the entire
 
 | Component | Cost |
 |-----------|------|
-| Mac Mini (M4, 16GB, 256GB) | $599 (one-time) |
+| Mac Mini (M4, 16GB, 256GB) | $549 (one-time) |
 | Ollama (LLM runtime) | Free |
 | Qwen 3 4B + nomic-embed-text (discovery models) | Free |
 | ChromaDB or LanceDB (vector database) | Free |
@@ -219,9 +219,9 @@ A base-model Mac Mini (M4, 16GB unified memory, 256GB SSD, $599) runs the entire
 | OpenClaw (personal agent) | Free |
 | Claude / GPT API (frontier model for task execution) | ~$5-20/month |
 | Electricity (always-on operation) | ~$0.50/month |
-| **Total first year** | **~$660-780** |
+| **Total first year** | **~$610-730** |
 
-Compare to running an equivalent stack in the cloud: a GPU-capable VM for the local LLM ($400-500/month) plus the same frontier API costs. That's $5,000-6,000 per year. The Mac Mini pays for itself in five weeks.
+Compare to running an equivalent stack in the cloud: a GPU-capable VM for the local LLM ($400-500/month) plus the same frontier API costs. That's $5,000-6,000 per year. The Mac Mini pays for itself in under five weeks.
 
 #### Setup
 
@@ -261,7 +261,7 @@ A personal agent running on Google's servers serves Google's interests alongside
 
 Apple probably doesn't realize they've built the default hardware platform for the personal agent era. They think they're selling a budget desktop. They're actually selling the home server for AI — a Unix machine with consumer UX, local ML acceleration, negligible power draw, and a price point that makes the whole stack accessible to anyone.
 
-One box. $599. Your agent. Your data. Your discovery. No one else's agenda.
+One box. $549. Your agent. Your data. Your discovery. No one else's agenda.
 
 ---
 
