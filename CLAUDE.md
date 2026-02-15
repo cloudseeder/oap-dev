@@ -23,26 +23,94 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/ARCHITECTURE.md` — Reference discovery architecture (local vector DB + small LLM + crawler)
 - `docs/TRUST.md` — Trust overlay specification (companion protocol)
 - `docs/MANIFESTO.md` — Why manifests are the cognitive API for AI
-- `docs/old/` — Archived v0.1 registry-era docs (PRD, registry spec, etc.)
 
 ### Next.js Application (oap.dev)
 
-The marketing/spec site is still a Next.js app, but the registry functionality has been moved to the `registry-v1` branch.
+The site serves as a developer tool: manifest playground, hosted discovery/trust reference services, and an adoption dashboard. Deployed on Vercel.
 
-- `app/(marketing)/` — Marketing site pages (oap.dev): landing, spec
-- `app/api/v1/` — API routes (legacy registry, preserved on `registry-v1` branch)
-- `components/` — Shared React components
-- `lib/` — Shared TypeScript libraries
-- `middleware.ts` — Hostname-based routing
+#### Routes
+
+- `app/(marketing)/` — Landing page, spec, doc pages (quickstart, architecture, trust, manifesto)
+- `app/playground/` — Manifest playground: validate JSON or fetch+validate from URL
+- `app/discover/` — Discovery reference UI: natural language task-to-manifest matching
+- `app/trust/` — Trust reference UI: attestation flow + lookup
+- `app/dashboard/` — Adoption dashboard: stats, growth chart, manifest list
+- `app/api/playground/validate/` — POST: validate manifest JSON or fetch from URL
+- `app/api/discover/` — POST proxy to discovery service (:8300)
+- `app/api/trust/[...path]/` — Catch-all proxy to trust service (:8301)
+- `app/api/dashboard/` — GET proxy to dashboard service (:8302)
+
+#### Key Libraries
+
+- `lib/manifest-v1.ts` — v1.0 manifest validation (ported from Python reference)
+- `lib/types-v1.ts` — v1.0 TypeScript types (ported from Python reference)
+- `lib/proxy.ts` — Reusable proxy helper for backend services (via `BACKEND_URL` env var)
+- `lib/markdown.ts` — Markdown rendering with unified/remark/rehype pipeline + auto-generated TOC
+- `lib/dns.ts` — Manifest fetching (`fetchManifest`, `fetchManifestForDomain`) + DNS verification
+- `lib/security.ts` — SSRF protection (private IP blocking, DNS resolution) + rate limiting
+
+#### Key Components
+
+- `components/PlaygroundEditor.tsx` — Client-side JSON editor + URL fetch + validation
+- `components/PlaygroundResult.tsx` — Validation results (errors/warnings) + manifest preview
+- `components/ManifestViewer.tsx` — Structured v1.0 manifest display
+- `components/DiscoverSearch.tsx` — Natural language discovery input + results
+- `components/TrustFlow.tsx` — Step-by-step domain attestation (Layer 0 checks → challenge → verify)
+- `components/TrustLookup.tsx` — Look up existing attestations for any domain
+- `components/DashboardStats.tsx` — Stat cards + inline SVG growth chart
+- `components/DashboardManifestList.tsx` — Paginated manifest table with health badges
+
+### Python Reference Services
+
+All three services live under `reference/` and install as editable Python packages with entry-point commands.
+
+#### Discovery (`reference/oap_discovery/`)
+
+Crawls domains for manifests, embeds descriptions into ChromaDB via Ollama (nomic-embed-text), and serves a discovery API that matches natural language tasks to manifests using vector search + small LLM (qwen3:4b).
+
+- Entry points: `oap-api` (:8300), `oap-crawl`, `oap`
+- Config: `config.yaml` (Ollama URL, ChromaDB path, crawler settings)
+- Key files: `models.py` (Pydantic types), `validate.py` (validation), `crawler.py`, `db.py` (ChromaDB), `discovery.py` (vector search + LLM), `api.py` (FastAPI)
+
+#### Trust (`reference/oap_trust/`)
+
+Reference trust provider implementing Layers 0-2: baseline checks, domain attestation via DNS/HTTP challenge, capability testing.
+
+- Entry points: `oap-trust-api` (:8301), `oap-trust`
+- Key files: `models.py` (trust types), `attestation.py`, `dns_challenge.py`, `capability_test.py`, `api.py` (FastAPI)
+
+#### Dashboard (`reference/oap_dashboard/`)
+
+Adoption tracker: crawls seed domains, stores results in SQLite, serves stats and manifest list.
+
+- Entry points: `oap-dashboard-api` (:8302), `oap-dashboard-crawl`
+- Config: `config.yaml` (SQLite path, crawler settings)
+- Key files: `db.py` (SQLite schema + CRUD), `crawler.py`, `api.py` (FastAPI)
+
+### Infrastructure
+
+```
+Vercel (free tier)                    Mac Mini (M4, 16GB)
+┌─────────────────────┐               ┌──────────────────────────────┐
+│  Next.js App        │               │  Ollama (qwen3:4b + nomic)   │
+│  ├─ Marketing pages │  Cloudflare   │  Discovery API (:8300)       │
+│  ├─ Spec docs       │◄── Tunnel ──► │  Trust API (:8301)           │
+│  ├─ /playground     │               │  Dashboard API (:8302)       │
+│  ├─ /discover       │               │  Crawler (cron)              │
+│  ├─ /trust          │               │  ChromaDB (local dir)        │
+│  ├─ /dashboard      │               │  SQLite (dashboard.db)       │
+│  └─ /api/* (proxy)  │               └──────────────────────────────┘
+└─────────────────────┘
+```
+
+- **Vercel**: Next.js frontend + API route handlers that proxy to the Mac Mini
+- **Mac Mini**: All Python services, Ollama, ChromaDB, SQLite
+- **Cloudflare Tunnel**: Public hostname (e.g., `api.oap.dev`) that Vercel API routes reach
+- **Env var**: `BACKEND_URL` — Cloudflare Tunnel hostname for proxy routes
 
 ### Legacy Registry
 
-The full registry implementation (Firestore-backed, with search, categories, health checks) is preserved on the **`registry-v1`** branch. It includes:
-- Registry UI (registry.oap.dev)
-- Registry API routes
-- Firestore data layer
-- CLI tools (manifest generator, validator)
-- Reference Express server
+The full registry implementation (Firestore-backed) is preserved on the **`registry-v1`** branch.
 
 ## Commands
 
@@ -51,6 +119,15 @@ npm install
 npm run dev          # Development server on http://localhost:3000
 npm run build        # Production build
 npm run start        # Start production server
+```
+
+### Python Services (local development)
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e reference/oap_discovery
+pip install -e reference/oap_trust
+pip install -e reference/oap_dashboard
 ```
 
 ## Key Design Principles
@@ -80,7 +157,11 @@ Only four fields are required: `oap`, `name`, `description`, `invoke`. The `desc
 
 ## Architecture Notes
 
-- **Next.js App Router** with TypeScript and Tailwind CSS
-- **Markdown rendering** uses unified/remark/rehype pipeline for spec pages with auto-generated TOC
+- **Next.js 16 App Router** with TypeScript and Tailwind CSS 4
+- **Markdown rendering** uses unified/remark/rehype pipeline with rehype-slug for heading IDs, rehype-sanitize for XSS protection, and auto-generated TOC extracted from rendered HTML
+- **API proxy pattern**: Next.js API routes proxy to Python backend services. `lib/proxy.ts` handles routing via `BACKEND_URL` env var with optional port override
+- **Client components** (`'use client'`): PlaygroundEditor, DiscoverSearch, TrustFlow, TrustLookup, DashboardStats, DashboardManifestList, Header (dropdown state)
+- **SSRF protection**: All URL fetching goes through `lib/security.ts` (private IP blocking, DNS resolution checks)
+- **Rate limiting**: In-memory per-IP rate limiters on all API routes
 - **No test framework** currently configured
 - **No linter/formatter** currently configured
