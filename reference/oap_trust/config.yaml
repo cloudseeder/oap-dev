@@ -1,0 +1,16 @@
+keys:
+  path: ./oap_trust_data/keys
+  rotation_days: 365
+
+database:
+  path: ./oap_trust_data/trust.db
+
+attestation:
+  layer1_expiry_days: 90
+  layer2_expiry_days: 7
+  challenge_ttl_seconds: 3600
+  request_timeout: 10
+
+api:
+  host: 0.0.0.0
+  port: 8301
