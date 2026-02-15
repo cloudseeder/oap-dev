@@ -229,29 +229,42 @@ Compare to running an equivalent stack in the cloud: a GPU-capable VM for the lo
 # 1. Install Homebrew (if not present)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# 2. Install Ollama
+# 2. Install Ollama and pull models
 brew install ollama
 ollama serve &
-
-# 3. Pull discovery models
 ollama pull qwen3:4b
 ollama pull nomic-embed-text
 
-# 4. Install Python dependencies
-pip3 install chromadb fastapi uvicorn httpx
+# 3. Clone the OAP repository
+git clone https://github.com/cloudseeder/oap-dev.git
+cd oap-dev
 
-# 5. Install OpenClaw (see openclaw.com for current instructions)
-npm install -g openclaw
+# 4. Set up Python virtual environment and install services
+python3 -m venv .venv
+source .venv/bin/activate
 
-# 6. Run the OAP crawler + discovery API
-# (reference implementation at github.com/cloudseeder/oap-dev/discovery)
-python3 oap_discovery.py &
+pip install -e reference/oap_discovery   # discovery API + crawler
+pip install -e reference/oap_trust       # trust provider API
+pip install -e reference/oap_dashboard   # dashboard API + crawler
 
-# 7. Start OpenClaw with OAP discovery skill enabled
-openclaw start
+# 5. Start the discovery stack
+#    oap-crawl indexes manifests from seeds.txt into ChromaDB
+#    oap-api serves the discovery API on :8300
+cd reference/oap_discovery
+oap-crawl --once                         # initial index
+oap-api &                                # runs on http://localhost:8300
+
+# 6. Start the trust provider (optional)
+cd ../oap_trust
+oap-trust-api &                          # runs on http://localhost:8301
+
+# 7. Start the dashboard (optional)
+cd ../oap_dashboard
+oap-dashboard-crawl --once               # initial crawl
+oap-dashboard-api &                      # runs on http://localhost:8302
 ```
 
-From unboxing to a personal agent with open internet discovery: under two hours. Most of that is downloading models.
+From unboxing to a running discovery stack: under two hours. Most of that is downloading models.
 
 #### Why This Matters
 
