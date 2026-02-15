@@ -290,7 +290,24 @@ curl -X POST http://localhost:8300/v1/discover \
   -d '{"task": "summarize text"}'
 ```
 
-From unboxing to a running discovery stack: under two hours. Most of that is downloading models.
+#### Connecting an Agent: OpenClaw Example
+
+The discovery stack is useful on its own, but the real payoff is when an agent uses it at runtime. [OpenClaw](https://openclaw.com) is an open-source personal agent that runs locally on the Mac Mini — the same machine running the discovery stack. With OAP discovery enabled, OpenClaw can find and invoke capabilities that weren't in its training data.
+
+```bash
+# 12. Install OpenClaw (see openclaw.com for current instructions)
+npm install -g openclaw
+
+# 13. Start OpenClaw with OAP discovery pointed at the local stack
+export OAP_DISCOVERY_URL=http://localhost:8300
+openclaw start
+```
+
+When a user asks OpenClaw to do something it doesn't have a built-in tool for, it queries the local discovery API, gets back a manifest with invocation details, and calls the endpoint directly. The agent never phones home — discovery happens entirely on your machine.
+
+This is the pattern OAP enables for any agent, not just OpenClaw. Any agent that can make an HTTP POST to `/v1/discover` and read the manifest response can use the discovery stack. The integration is one API call.
+
+From unboxing to a personal agent with open internet discovery: under two hours. Most of that is downloading models.
 
 #### Why This Matters
 
