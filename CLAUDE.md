@@ -108,6 +108,16 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
 - **Cloudflare Tunnel**: Public hostname (e.g., `api.oap.dev`) that Vercel API routes reach
 - **Env var**: `BACKEND_URL` — Cloudflare Tunnel hostname for proxy routes
 
+### OpenClaw Skill (`skills/oap-discover/`)
+
+Workspace skill for [OpenClaw](https://openclaw.ai) that lets the agent discover and invoke OAP capabilities at runtime. When the agent needs a tool it doesn't have built-in, it queries the local discovery API, evaluates the best manifest match, and invokes the capability directly.
+
+- `skills/oap-discover/SKILL.md` — Skill definition: YAML frontmatter + agent instructions
+- Install: `cp -r skills/oap-discover ~/.openclaw/workspace/skills/`
+- Requires: `OAP_DISCOVERY_URL` env var (e.g., `http://localhost:8300`), `curl` on PATH
+- Flow: query `/v1/discover` → evaluate match → invoke via manifest's `invoke` spec → present result
+- Handles all auth types (api_key, bearer, oauth2) and invoke methods (GET, POST, stdio)
+
 ### Legacy Registry
 
 The full registry implementation (Firestore-backed) is preserved on the **`registry-v1`** branch.
