@@ -1,86 +1,90 @@
-import type { OAPManifest } from '@/lib/types'
+import type { OAPManifest } from '@/lib/types-v1'
 
 export default function ManifestViewer({ manifest }: { manifest: OAPManifest }) {
   return (
-    <div className="space-y-6">
-      {/* Identity */}
-      <Section title="Identity">
-        <Field label="Name" value={manifest.identity.name} />
-        <Field label="Tagline" value={manifest.identity.tagline} />
-        <Field label="Description" value={manifest.identity.description} />
-        <Field label="URL" value={manifest.identity.url} link />
-        {manifest.identity.launched && <Field label="Launched" value={manifest.identity.launched} />}
+    <div className="space-y-5">
+      {/* Core */}
+      <Section title="Core">
+        <Field label="OAP Version" value={manifest.oap} />
+        <Field label="Name" value={manifest.name} />
+        <Field label="Description" value={manifest.description} />
       </Section>
 
-      {/* Builder */}
-      <Section title="Builder">
-        <Field label="Name" value={manifest.builder.name} />
-        {manifest.builder.url && <Field label="URL" value={manifest.builder.url} link />}
-        {manifest.builder.verified_domains && (
-          <Field label="Verified Domains" value={manifest.builder.verified_domains.join(', ')} />
+      {/* Invoke */}
+      <Section title="Invoke">
+        <Field label="Method" value={manifest.invoke.method} />
+        <Field label="URL" value={manifest.invoke.url} link={manifest.invoke.method !== 'stdio'} />
+        {manifest.invoke.auth && <Field label="Auth" value={manifest.invoke.auth} />}
+        {manifest.invoke.auth_url && <Field label="Auth URL" value={manifest.invoke.auth_url} link />}
+        {manifest.invoke.auth_in && <Field label="Auth In" value={manifest.invoke.auth_in} />}
+        {manifest.invoke.auth_name && <Field label="Auth Name" value={manifest.invoke.auth_name} />}
+        {manifest.invoke.streaming !== undefined && (
+          <Field label="Streaming" value={manifest.invoke.streaming ? 'Yes' : 'No'} />
         )}
-      </Section>
-
-      {/* Capabilities */}
-      <Section title="Capabilities">
-        <Field label="Summary" value={manifest.capabilities.summary} />
-        <ListField label="Solves" items={manifest.capabilities.solves} />
-        <ListField label="Ideal For" items={manifest.capabilities.ideal_for} />
-        <ListField label="Differentiators" items={manifest.capabilities.differentiators} />
-      </Section>
-
-      {/* Pricing */}
-      <Section title="Pricing">
-        <Field label="Model" value={manifest.pricing.model} />
-        {manifest.pricing.starting_price && <Field label="Starting Price" value={manifest.pricing.starting_price} />}
-        <Field label="Trial Available" value={manifest.pricing.trial.available ? 'Yes' : 'No'} />
-        {manifest.pricing.trial.duration_days !== undefined && (
-          <Field label="Trial Duration" value={`${manifest.pricing.trial.duration_days} days`} />
+        {manifest.invoke.headers && (
+          <Field label="Headers" value={Object.entries(manifest.invoke.headers).map(([k, v]) => `${k}: ${v}`).join(', ')} />
         )}
       </Section>
 
-      {/* Trust */}
-      <Section title="Trust & Security">
-        <ListField label="Data Collected" items={manifest.trust.data_practices.collects} />
-        <Field label="Data Stored In" value={manifest.trust.data_practices.stores_in} />
-        <ListField label="Shared With" items={manifest.trust.data_practices.shares_with} />
-        {manifest.trust.data_practices.encryption && (
-          <Field label="Encryption" value={manifest.trust.data_practices.encryption} />
-        )}
-        <ListField label="Authentication" items={manifest.trust.security.authentication} />
-        {manifest.trust.security.compliance && (
-          <ListField label="Compliance" items={manifest.trust.security.compliance} />
-        )}
-        <ListField label="External Connections" items={manifest.trust.external_connections} />
-        {manifest.trust.privacy_url && <Field label="Privacy Policy" value={manifest.trust.privacy_url} link />}
-        {manifest.trust.terms_url && <Field label="Terms of Service" value={manifest.trust.terms_url} link />}
-      </Section>
+      {/* Input/Output */}
+      {manifest.input && (
+        <Section title="Input">
+          <Field label="Format" value={manifest.input.format} />
+          <Field label="Description" value={manifest.input.description} />
+          {manifest.input.schema && <Field label="Schema" value={manifest.input.schema} link />}
+        </Section>
+      )}
+      {manifest.output && (
+        <Section title="Output">
+          <Field label="Format" value={manifest.output.format} />
+          <Field label="Description" value={manifest.output.description} />
+          {manifest.output.schema && <Field label="Schema" value={manifest.output.schema} link />}
+        </Section>
+      )}
 
-      {/* Integration */}
-      <Section title="Integration">
-        <Field label="API Available" value={manifest.integration.api.available ? 'Yes' : 'No'} />
-        {manifest.integration.api.docs_url && <Field label="API Docs" value={manifest.integration.api.docs_url} link />}
-        {manifest.integration.mcp_endpoint && <Field label="MCP Endpoint" value={manifest.integration.mcp_endpoint} />}
-        {manifest.integration.webhooks !== undefined && (
-          <Field label="Webhooks" value={manifest.integration.webhooks ? 'Yes' : 'No'} />
-        )}
-        {manifest.integration.export_formats && (
-          <Field label="Export Formats" value={manifest.integration.export_formats.join(', ')} />
-        )}
-      </Section>
+      {/* Publisher */}
+      {manifest.publisher && (
+        <Section title="Publisher">
+          {manifest.publisher.name && <Field label="Name" value={manifest.publisher.name} />}
+          {manifest.publisher.contact && <Field label="Contact" value={manifest.publisher.contact} />}
+          {manifest.publisher.url && <Field label="URL" value={manifest.publisher.url} link />}
+        </Section>
+      )}
 
-      {/* Verification */}
-      <Section title="Verification">
-        {manifest.verification.health_endpoint && (
-          <Field label="Health Endpoint" value={manifest.verification.health_endpoint} link />
-        )}
-        {manifest.verification.status_url && (
-          <Field label="Status Page" value={manifest.verification.status_url} link />
-        )}
-        {manifest.verification.demo_url && (
-          <Field label="Demo URL" value={manifest.verification.demo_url} link />
-        )}
-      </Section>
+      {/* Examples */}
+      {manifest.examples && manifest.examples.length > 0 && (
+        <Section title="Examples">
+          {manifest.examples.map((ex, i) => (
+            <div key={i} className="rounded border border-gray-200 p-3 text-sm">
+              {ex.description && <p className="mb-1 text-gray-600">{ex.description}</p>}
+              {ex.input && (
+                <div className="mt-1">
+                  <span className="text-xs font-medium text-gray-500">Input:</span>
+                  <pre className="mt-0.5 overflow-x-auto rounded bg-gray-50 p-2 text-xs">{typeof ex.input === 'string' ? ex.input : JSON.stringify(ex.input, null, 2)}</pre>
+                </div>
+              )}
+              {ex.output && (
+                <div className="mt-1">
+                  <span className="text-xs font-medium text-gray-500">Output:</span>
+                  <pre className="mt-0.5 overflow-x-auto rounded bg-gray-50 p-2 text-xs">{typeof ex.output === 'string' ? ex.output : JSON.stringify(ex.output, null, 2)}</pre>
+                </div>
+              )}
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {/* Metadata */}
+      {(manifest.tags || manifest.health || manifest.docs || manifest.version || manifest.updated || manifest.url) && (
+        <Section title="Metadata">
+          {manifest.url && <Field label="URL" value={manifest.url} link />}
+          {manifest.version && <Field label="Version" value={manifest.version} />}
+          {manifest.updated && <Field label="Updated" value={manifest.updated} />}
+          {manifest.health && <Field label="Health" value={manifest.health} link />}
+          {manifest.docs && <Field label="Docs" value={manifest.docs} link />}
+          {manifest.tags && <Field label="Tags" value={manifest.tags.join(', ')} />}
+        </Section>
+      )}
     </div>
   )
 }
@@ -88,8 +92,8 @@ export default function ManifestViewer({ manifest }: { manifest: OAPManifest }) 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">{title}</h3>
-      <div className="space-y-2">{children}</div>
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-500">{title}</h3>
+      <div className="space-y-1.5">{children}</div>
     </div>
   )
 }
@@ -97,27 +101,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, value, link }: { label: string; value: string; link?: boolean }) {
   return (
     <div className="flex gap-3 text-sm">
-      <span className="w-36 shrink-0 text-gray-500">{label}</span>
+      <span className="w-28 shrink-0 text-gray-500">{label}</span>
       {link ? (
-        <a href={value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+        <a href={value} target="_blank" rel="noopener noreferrer" className="truncate text-primary hover:underline">
           {value}
         </a>
       ) : (
         <span className="text-gray-900">{value}</span>
       )}
-    </div>
-  )
-}
-
-function ListField({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div className="flex gap-3 text-sm">
-      <span className="w-36 shrink-0 text-gray-500">{label}</span>
-      <ul className="list-inside list-disc space-y-0.5 text-gray-900">
-        {items.map((item, i) => (
-          <li key={i}>{item}</li>
-        ))}
-      </ul>
     </div>
   )
 }

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "oap-dashboard"
+version = "0.1.0"
+description = "OAP adoption dashboard — crawler + API for tracking manifest adoption"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "httpx>=0.28",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+oap-dashboard-api = "oap_dashboard.api:main"
+oap-dashboard-crawl = "oap_dashboard.crawler:main"

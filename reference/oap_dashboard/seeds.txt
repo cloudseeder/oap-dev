@@ -1,0 +1,2 @@
+# OAP manifest seed domains — one per line
+# The crawler fetches https://{domain}/.well-known/oap.json for each

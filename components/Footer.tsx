@@ -7,10 +7,12 @@ export default function Footer() {
         <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
           <div className="flex items-center gap-6 text-sm text-gray-500">
             <Link href="/spec" className="hover:text-gray-700">Spec</Link>
-            <Link href="/registry" className="hover:text-gray-700">Registry Spec</Link>
+            <Link href="/playground" className="hover:text-gray-700">Playground</Link>
+            <Link href="/discover" className="hover:text-gray-700">Discover</Link>
+            <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
             <Link href="/docs/quickstart" className="hover:text-gray-700">Quick Start</Link>
             <a
-              href="https://github.com/cloudseeder/opa-dev"
+              href="https://github.com/cloudseeder/oap"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-700"

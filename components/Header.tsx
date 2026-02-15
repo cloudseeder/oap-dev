@@ -1,6 +1,11 @@
+'use client'
+
 import Link from 'next/link'
+import { useState } from 'react'
 
 export default function Header() {
+  const [docsOpen, setDocsOpen] = useState(false)
+
   return (
     <header className="border-b border-gray-200 bg-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -12,20 +17,45 @@ export default function Header() {
             <Link href="/spec" className="text-gray-600 hover:text-gray-900">
               Spec
             </Link>
-            <Link href="/registry" className="text-gray-600 hover:text-gray-900">
-              Registry Spec
+            <Link href="/playground" className="text-gray-600 hover:text-gray-900">
+              Playground
             </Link>
-            <Link href="/docs/quickstart" className="text-gray-600 hover:text-gray-900">
-              Quick Start
+            <Link href="/discover" className="text-gray-600 hover:text-gray-900">
+              Discover
             </Link>
+            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
+              Dashboard
+            </Link>
+            <div className="relative">
+              <button
+                onClick={() => setDocsOpen(!docsOpen)}
+                onBlur={() => setTimeout(() => setDocsOpen(false), 150)}
+                className="flex items-center gap-1 text-gray-600 hover:text-gray-900"
+              >
+                Docs
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {docsOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                  <Link href="/docs/quickstart" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Quick Start
+                  </Link>
+                  <Link href="/docs/architecture" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Architecture
+                  </Link>
+                  <Link href="/docs/trust" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Trust Overlay
+                  </Link>
+                  <Link href="/docs/manifesto" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Manifesto
+                  </Link>
+                </div>
+              )}
+            </div>
             <a
-              href="https://registry.oap.dev"
-              className="text-gray-600 hover:text-gray-900"
-            >
-              Registry
-            </a>
-            <a
-              href="https://github.com/cloudseeder/opa-dev"
+              href="https://github.com/cloudseeder/oap"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-600 hover:text-gray-900"

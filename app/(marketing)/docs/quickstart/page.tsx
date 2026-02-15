@@ -1,9 +1,10 @@
 import CodeBlock from '@/components/CodeBlock'
+import Link from 'next/link'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Quick Start — OAP',
-  description: 'Get your app discoverable by AI agents in 5 minutes.',
+  description: 'Get your capability discoverable by AI agents in 5 minutes.',
 }
 
 export default function QuickStartPage() {
@@ -11,7 +12,7 @@ export default function QuickStartPage() {
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
       <h1 className="text-3xl font-bold text-gray-900">Quick Start</h1>
       <p className="mt-2 text-gray-600">
-        Get your app discoverable by AI agents in 5 minutes.
+        Make your capability discoverable by AI agents in 5 minutes.
       </p>
 
       {/* Step 1 */}
@@ -19,63 +20,41 @@ export default function QuickStartPage() {
         <StepHeader number={1} title="Create your manifest" />
         <p className="mt-2 text-sm text-gray-600">
           Create a file at <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">/.well-known/oap.json</code> in your app&apos;s public root.
-          Use the interactive generator or write it by hand:
+          Only four fields are required: <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">oap</code>,{' '}
+          <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">name</code>,{' '}
+          <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">description</code>,{' '}
+          <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">invoke</code>.
         </p>
         <div className="mt-4">
           <CodeBlock
             title="/.well-known/oap.json"
             code={`{
-  "oap_version": "0.1",
-  "identity": {
-    "name": "Your App Name",
-    "tagline": "One-line description (max 120 chars)",
-    "description": "What your app does — written for AI comprehension (max 500 chars)",
-    "url": "https://yourapp.com"
+  "oap": "1.0",
+  "name": "Your Capability",
+  "description": "What this does, what it accepts, what it produces. Write it like a man page — specific, clear, action-oriented. Max 1000 chars.",
+  "input": {
+    "format": "application/json",
+    "description": "JSON object with a text field"
   },
-  "builder": {
-    "name": "Your Name or Company"
+  "output": {
+    "format": "application/json",
+    "description": "JSON object with a result field"
   },
-  "capabilities": {
-    "summary": "Detailed natural language description for semantic matching...",
-    "solves": [
-      "problem your app solves #1",
-      "problem your app solves #2",
-      "problem your app solves #3"
-    ],
-    "ideal_for": [
-      "target user #1",
-      "target user #2"
-    ],
-    "categories": ["your-category"],
-    "differentiators": ["what makes you unique"]
+  "invoke": {
+    "method": "POST",
+    "url": "https://yourapp.com/api/endpoint"
   },
-  "pricing": {
-    "model": "freemium",
-    "trial": { "available": true }
-  },
-  "trust": {
-    "data_practices": {
-      "collects": ["email addresses"],
-      "stores_in": "US-based cloud",
-      "shares_with": ["none"]
-    },
-    "security": {
-      "authentication": ["email/password"]
-    },
-    "external_connections": ["AI language model API"]
-  },
-  "integration": {
-    "api": { "available": false }
-  },
-  "verification": {
-    "health_endpoint": "https://yourapp.com/api/health"
-  }
+  "tags": ["your-category"],
+  "publisher": { "name": "Your Name" }
 }`}
           />
         </div>
-        <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-          Or use the CLI generator: <code className="rounded bg-blue-100 px-1.5 py-0.5 text-xs">node tools/generate.js</code>
-        </div>
+        <p className="mt-3 text-sm text-gray-500">
+          The <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">description</code> field
+          is the most important &mdash; it&apos;s the text an LLM reads to decide if your capability
+          fits a task.{' '}
+          <Link href="/spec" className="text-primary hover:underline">Read the full spec</Link>.
+        </p>
       </div>
 
       {/* Step 2 */}
@@ -88,59 +67,42 @@ export default function QuickStartPage() {
         <div className="mt-4">
           <CodeBlock
             code={`# Test that your manifest is accessible
-curl https://yourapp.com/.well-known/oap.json | jq .
-
-# Validate it against the spec
-node tools/validate.js https://yourapp.com/.well-known/oap.json`}
+curl https://yourapp.com/.well-known/oap.json | jq .`}
           />
         </div>
       </div>
 
       {/* Step 3 */}
       <div className="mt-10">
-        <StepHeader number={3} title="Add DNS TXT record (optional)" />
+        <StepHeader number={3} title="Validate" />
         <p className="mt-2 text-sm text-gray-600">
-          Add a TXT record at <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">_oap.yourapp.com</code> to prove domain ownership.
-          This is optional but increases trust signals for AI agents.
+          Use the <Link href="/playground" className="text-primary hover:underline">Playground</Link> to
+          validate your manifest against the v1.0 spec. Paste the JSON or enter your URL.
         </p>
-        <div className="mt-4">
-          <CodeBlock
-            title="DNS TXT Record"
-            code={`_oap.yourapp.com  TXT  "v=oap1; cat=your-category; manifest=https://yourapp.com/.well-known/oap.json"`}
-          />
-        </div>
       </div>
 
       {/* Step 4 */}
       <div className="mt-10">
-        <StepHeader number={4} title="Register with the OAP Registry" />
+        <StepHeader number={4} title="Get discovered" />
         <p className="mt-2 text-sm text-gray-600">
-          Register your app with a single API call. No approval needed &mdash; it&apos;s like publishing to npm.
+          That&apos;s it. Crawlers index manifests at the well-known path. Anyone running a{' '}
+          <Link href="/docs/architecture" className="text-primary hover:underline">discovery stack</Link>{' '}
+          will find your capability via vector search + LLM matching.
         </p>
-        <div className="mt-4">
-          <CodeBlock
-            code={`curl -X POST https://registry.oap.dev/api/v1/register \\
-  -H "Content-Type: application/json" \\
-  -d '{"url": "https://yourapp.com"}'`}
-          />
-        </div>
+        <p className="mt-2 text-sm text-gray-600">
+          No registration, no approval, no fees. The web model, not the registry model.
+        </p>
       </div>
 
-      {/* Step 5 */}
+      {/* Optional: Trust */}
       <div className="mt-10">
-        <StepHeader number={5} title="Verify" />
+        <StepHeader number={5} title="Build trust (optional)" />
         <p className="mt-2 text-sm text-gray-600">
-          Check that your app appears in the registry:
+          Add a <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">health</code> endpoint
+          to your manifest for liveness checks. For higher trust, use the{' '}
+          <Link href="/trust" className="text-primary hover:underline">trust overlay</Link> to
+          get domain and capability attestations.
         </p>
-        <div className="mt-4">
-          <CodeBlock
-            code={`# Check your app details
-curl https://registry.oap.dev/api/v1/apps/yourapp.com | jq .
-
-# Search for your app
-curl "https://registry.oap.dev/api/v1/search?q=your+app+name" | jq .`}
-          />
-        </div>
       </div>
 
       {/* AI Agent Callout */}

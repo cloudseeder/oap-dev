@@ -244,7 +244,7 @@ pip3 install chromadb fastapi uvicorn httpx
 npm install -g openclaw
 
 # 6. Run the OAP crawler + discovery API
-# (reference implementation at github.com/oap-dev/discovery)
+# (reference implementation at github.com/cloudseeder/oap-dev/discovery)
 python3 oap_discovery.py &
 
 # 7. Start OpenClaw with OAP discovery skill enabled

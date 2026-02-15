@@ -124,10 +124,7 @@ export class RateLimiter {
 }
 
 // Pre-configured rate limiters
-export const registerLimiter = new RateLimiter(5, 15 * 60 * 1000) // 5 per 15 min
-export const refreshLimiter = new RateLimiter(10, 15 * 60 * 1000) // 10 per 15 min
-export const searchLimiter = new RateLimiter(30, 60 * 1000) // 30 per min
-export const allAppsLimiter = new RateLimiter(10, 60 * 1000) // 10 per min
+export const playgroundLimiter = new RateLimiter(20, 60 * 1000) // 20 per min
 
 export function getClientIP(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for')

@@ -1,0 +1,12 @@
+database:
+  path: dashboard.db
+
+api:
+  host: 0.0.0.0
+  port: 8302
+
+crawler:
+  seeds_file: seeds.txt
+  timeout_seconds: 10
+  concurrency: 10
+  interval_seconds: 21600  # 6 hours

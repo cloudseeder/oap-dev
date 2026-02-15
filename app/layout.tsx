@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'OAP — Open Application Protocol',
-  description: 'A decentralized discovery and trust layer for web applications, designed for AI agents.',
+  description: 'A cognitive API layer for artificial intelligence. Manifest spec that lets AI learn about capabilities at runtime.',
 }
 
 export default function RootLayout({
