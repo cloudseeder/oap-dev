@@ -4,7 +4,7 @@
 
 Training data is what AI knows. A manifest is how it learns something new — right now, without retraining.
 
-[oap.dev](https://oap.dev) · [Spec](docs/SPEC.md) · [Architecture](docs/ARCHITECTURE.md) · [Trust](docs/TRUST.md) · [Manifesto](docs/MANIFESTO.md) · [CC0 1.0 Universal](LICENSE)
+[oap.dev](https://oap.dev) · [Spec](SPEC.md) · [Architecture](ARCHITECTURE.md) · [Trust](TRUST.md) · [Manifesto](MANIFESTO.md) · [OpenClaw Integration](OPENCLAW.md) · [CC0 1.0 Universal](LICENSE)
 
 ---
 
@@ -90,7 +90,7 @@ This architecture couldn't have worked five years ago. The missing piece was alw
 
 ## What OAP Is
 
-- **A manifest spec.** How capabilities describe themselves — input, output, invocation, and a description an LLM can reason about. See [SPEC.md](docs/SPEC.md).
+- **A manifest spec.** How capabilities describe themselves — input, output, invocation, and a description an LLM can reason about. See [SPEC.md](SPEC.md).
 - **A publishing convention.** Put your manifest at `/.well-known/oap.json`. Done.
 
 ## What OAP Is Not
@@ -137,7 +137,7 @@ Create `/.well-known/oap.json` on your domain:
 
 That's it. You're discoverable. Any AI that reads your manifest can reason about whether your capability fits a task — and invoke it if it does.
 
-For the complete manifest format, see [SPEC.md](docs/SPEC.md).
+For the complete manifest format, see [SPEC.md](SPEC.md).
 
 ## Design Principles
 
@@ -157,6 +157,10 @@ OAP starts from a different premise: there's no meaningful difference between an
 Training data is the equivalent of tools that came pre-installed with the OS. OAP manifests are how AI learns about everything that got published after. The manifest is a cognitive bridge between frozen knowledge and the living internet.
 
 This is why the `description` field is the most important field in the spec. It's not metadata for a search index. It's the text an LLM actually reasons about when deciding whether to use a capability. It's the `--help` output for a tool the AI has never seen before. Write it well.
+
+## See It In Practice
+
+[OPENCLAW.md](OPENCLAW.md) shows how OAP integrates with OpenClaw — the open-source personal agent with 145,000+ GitHub stars. It's a concrete case study: how a personal agent goes from being bound to its computer to discovering and using any capability on the open internet. If you want to understand what OAP enables, start there.
 
 ## Origin
 

@@ -16,6 +16,12 @@ firebase_svc.json
 # database
 *.db
 
+# claude code
+.claude/
+
+# legacy registry archive
+/registry/
+
 # misc
 .DS_Store
 *.pem

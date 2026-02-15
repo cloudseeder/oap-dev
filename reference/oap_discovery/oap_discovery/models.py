@@ -15,6 +15,9 @@ class InvokeSpec(BaseModel):
     url: str = Field(description="Endpoint URL or command path for stdio")
     auth: str | None = None
     auth_url: str | None = None
+    auth_in: str | None = Field(default=None, description="Where to send credentials: header or query")
+    auth_name: str | None = Field(default=None, description="Header or query param name for the credential")
+    headers: dict[str, str] | None = Field(default=None, description="Additional required headers as key-value pairs")
     streaming: bool | None = None
 
 

@@ -114,6 +114,74 @@ Let's be precise about what OAP asserts, because the claim is genuinely new:
 
 **5. The enabling technology only just arrived.** A format designed for AI comprehension requires AI capable of comprehension. LLMs crossed that threshold recently. OAP is the first protocol designed specifically for the post-threshold world — where the consumer of the specification is an artificial intelligence, not a parser or a registry.
 
+## What's Worth Discovering
+
+There's an honest question embedded in OAP that deserves a direct answer: in a world where frontier LLMs can do OCR, summarization, categorization, translation, sentiment analysis, and a hundred other cognitive tasks with a single API call — what's actually left to discover?
+
+The answer matters because it defines OAP's real surface area.
+
+### The Commodity Layer Is Absorbed
+
+A company that builds a product around receipt OCR and expense categorization — and nothing else — is building on a capability that frontier LLMs already perform natively. By 2026, this is a single API call. No manifest needed. No discovery needed. The intelligence is already inside the model. Publishing a manifest that says "I scan receipts and categorize expenses" is publishing a manifest for something every LLM already knows how to do. An agent reading that manifest would shrug and do it itself.
+
+This isn't theoretical. It's happening now. Entire product categories — text summarizers, language translators, sentiment analyzers, basic chatbots, simple OCR tools — are being absorbed into the commodity intelligence layer of frontier models. Their capabilities don't need to be discovered because they don't need to exist as separate services. The LLM *is* the service.
+
+OAP doesn't pretend otherwise. Discovery is only valuable for capabilities an LLM can't replicate with a raw API call.
+
+### What Agents Actually Need to Find
+
+A personal agent could be asked to do anything. "Find me a contractor who does pool resurfacing in Conroe." "Get transcripts from last week's Portland city council meeting." "File my HOA's quarterly report with the state." "Compare commercial lease rates in the Pearl District to the Alberta Arts District."
+
+None of these are commodity LLM tasks. Each requires a *service* — something with its own data, its own domain expertise, its own state, its own relationships with the real world. An LLM can reason about pool resurfacing, but it can't dispatch a contractor. It can summarize a meeting, but it can't access video archives from a specific municipality. It can explain HOA filing requirements, but it can't submit documents to a state agency.
+
+These are the capabilities worth discovering. They share common properties:
+
+**They maintain state that no LLM has.** A contractor matching platform knows which contractors are licensed, insured, available, and within range. A civic transparency platform has processed and indexed specific government meetings. A community association management system holds a specific community's financial history, governing documents, and allocation rules. This state is the capability. Without it, the LLM is just reasoning in a vacuum.
+
+**They have relationships with the physical or institutional world.** They connect to government databases, municipal video archives, contractor licensing boards, state regulatory systems, financial institutions. These connections can't be replicated by a model — they require integrations, credentials, partnerships, and ongoing maintenance.
+
+**They encode domain logic that must be deterministic.** When a shared expense between two community associations must be allocated at a specific ratio with specific liability implications, or when a contractor bid must comply with state licensing requirements, or when a government meeting transcript must include legally accurate voting records — probabilistic intelligence isn't enough. You need code that enforces rules exactly, every time. The LLM provides understanding. The service provides precision.
+
+**They combine multiple models, data sources, and workflows into a single coherent capability.** A community association management platform doesn't just call one LLM. It uses OCR models for receipt processing, language models for legal document analysis, retrieval systems grounded in state-specific regulatory databases, multiple AI specialists that consult each other internally, and deterministic accounting logic that ties it all together. That composite capability is what gets discovered — not any individual model call inside it.
+
+### The Builder's Discovery Problem
+
+There's a second discovery scenario beyond the personal agent. A developer building a specialized application — say, an HOA management platform — needs to integrate external capabilities: state regulatory data, document parsing services, compliance checking, payment processing. Today, finding these services is manual. You search the web, ask colleagues, read forums, stumble across things accidentally. You build what you can't find, even when what you need already exists somewhere.
+
+OAP serves this scenario too. Not because the developer's agent is looking for services at runtime, but because the developer's agent can search the manifest index during development. "I need current HOA statutes for Texas" returns a manifest for a regulatory data service — one the developer would have built a scraper for if they hadn't known it existed.
+
+This is the same discovery mechanism serving two different moments — and there's a third.
+
+### Consumer Search
+
+A person — not an agent, not a developer — searches for "HOA management software Texas." Today, that search returns a wall of SEO-optimized landing pages, paid ads, and review sites gaming the algorithm. The results are ranked by marketing spend, not by capability.
+
+A manifest changes that equation. A search engine — or an AI assistant — that indexes OAP manifests can match the consumer's intent against what services actually *do*, described in language written for comprehension rather than for keyword stuffing. The manifest isn't marketing copy. It's a capability declaration. The description says what the service does, what it takes as input, what it produces as output. A consumer searching for "file quarterly HOA reports in Texas" gets matched to capabilities that actually do that — not to the company with the biggest ad budget.
+
+This isn't a new idea. It's what Google was supposed to be before SEO turned search into an advertising marketplace. OAP manifests, indexed and searchable, restore the original promise: find what you need based on what it does.
+
+### Three Actors, One Manifest
+
+The beauty of this design is that the same manifest serves all three discovery moments:
+
+- **Agents at runtime.** "Find me a service that can process this government meeting video into structured transcripts." The personal agent searches the manifest index, finds the capability, invokes it — all without human intervention.
+
+- **Builders during development.** "I need current HOA statutes for Texas and Oregon." The developer's agent searches the index, finds a regulatory data service, saves three weeks of building a scraper. Discovery happens once, integration persists.
+
+- **Consumers searching directly.** "HOA management software that handles shared expenses between associations." The person finds the right service based on what it actually does, not based on who spent the most on Google Ads.
+
+One manifest format. One publishing convention. Three completely different discovery patterns. The manifest doesn't know or care who's reading it — an autonomous agent, a developer's copilot, or a person with a search bar. It just describes what exists and lets the reader decide if it's relevant.
+
+This is why OAP is infrastructure, not a product. Products serve one audience. Infrastructure serves any audience that shows up.
+
+### What This Means for OAP
+
+The commodity intelligence layer will keep expanding. Tasks that require a specialized service today may be absorbed by frontier models tomorrow. But the frontier keeps moving too — every new model capability enables new composite services that combine that capability with domain-specific state, data, and logic.
+
+The manifests that matter in 2026 are not manifests for raw intelligence. They're manifests for **capabilities that combine intelligence with something an LLM doesn't have: specialized data, maintained state, institutional relationships, deterministic domain logic, and real-world integrations.** The agent doesn't need to discover that OCR exists. It needs to discover that a specific service processes HOA receipts against a specific community's chart of accounts and produces audit-ready ledger entries.
+
+The value has moved to the edges. OAP is how agents find the edges.
+
 ## The Reference Architecture
 
 OAP is deliberately silent on how discovery should work. But it's worth illustrating what the ecosystem enables — not as prescription, but as proof that the web model works for capabilities the same way it works for documents.
@@ -159,6 +227,60 @@ This is also why the `description` field is the most important field in the mani
 
 The manifest is simultaneously a cognitive interface (readable by LLMs), a search document (embeddable as a vector), and a machine contract (parseable by code). One format serving three functions. That's not an accident. That's what happens when you design for the simplest possible representation of truth.
 
+## Why the Open Personal Agent Wins
+
+There's an obvious question that anyone reading this should be asking: why won't Google just win?
+
+Gemini is on every Android phone. That's over 3 billion devices. It's pushing into iPhone through the Google app and Safari integration. Google already has your email, calendar, contacts, search history, location history, maps, photos, documents, and browsing data. They don't need to build a personal agent that *learns* about you. They already know you. They have the best distribution, the deepest data moat, and a frontier model that doesn't need to route through a third-party API. The vertical integration is extraordinary: "What time is my flight and will traffic make me late?" answered instantly because Gemini has both your booking confirmation and real-time traffic.
+
+If you're building personal agent infrastructure, you need to stare at this directly. Google *can* win. Probably *will* win — for most users, most of the time.
+
+But there are structural reasons they can't win for everyone. And those reasons are why OAP exists.
+
+### The Advertising Conflict
+
+Google is an advertising company. This is not an insult — it's a business model. Google's revenue requires knowing everything about you *and monetizing that knowledge by selling access to your attention.*
+
+A personal agent that truly works for you is in direct conflict with this model. When you ask your agent "find me a pool resurfacing contractor in Conroe," the correct answer is the best contractor for your job. The profitable answer is the contractor who paid for a Google Ads placement. Google has never, in its entire history, resolved this conflict in favor of the user when real money was at stake. Search used to return the best results. Now it returns four ads, a sponsored panel, and then results optimized for engagement rather than accuracy.
+
+There is no reason to believe Gemini will be different. The incentive structure hasn't changed. If anything, a personal agent with deep access to your life creates an even more valuable advertising surface — one where the "ad" is indistinguishable from the "recommendation." Your agent suggests a restaurant. Was that the best restaurant for you, or the one that paid for placement? You'll never know. And that's the point.
+
+An open personal agent — one running on your hardware, using OAP to discover capabilities on the open internet — has no advertising revenue to protect. When it searches for a contractor, it finds the best match because it has no financial incentive to find anything else. The alignment is structural, not aspirational. The agent works for you because nothing else is paying it.
+
+### The Lock-In Incentive
+
+Google's incentive is to make Gemini work best within the Google ecosystem. Gmail, Calendar, Drive, Maps — seamless. Notion, Slack, your HOA's custom portal, your local government's meeting archives — that's someone else's problem. Google has no interest in making Gemini great at discovering and using services that aren't Google services. Every capability you use outside Google's ecosystem is a missed data collection opportunity.
+
+This is the walled garden problem applied to personal agents. Google will build the best agent for *Google's internet*. Not for *your internet*.
+
+OAP is architecturally incapable of creating a walled garden. The manifest format is CC0. The publishing convention is open. Any agent framework can read manifests. Any service can publish them. The discovery layer has no platform allegiance. An OAP-enabled agent discovers capabilities from Google, Microsoft, independent developers, local businesses, government agencies — wherever the best capability lives. No lock-in. No ecosystem tax.
+
+### The Trust Paradox
+
+A personal agent requires a level of trust more intimate than any Google product has ever achieved. You'll tell it your health concerns, your financial situation, your legal issues, your relationship problems. You'll ask it to read your private documents, manage your money, and communicate on your behalf.
+
+Google's track record on trust is Google's track record on trust. They've killed Reader, Inbox, Stadia, and dozens of products people relied on. They change privacy policies regularly. They scan email for ad targeting. They've been fined billions for privacy violations in multiple jurisdictions. The question isn't whether Google's engineering is good enough — it is. The question is whether people will give an advertising company, with a documented history of prioritizing monetization over user interests, the most intimate digital access imaginable.
+
+Some will. Many will. But a meaningful market segment won't. And that segment — people who want a personal agent that is structurally aligned with their interests, running on their hardware, under their control — is the market that open personal agents serve.
+
+### The History Lesson
+
+The bundled option has lost before. Internet Explorer was on every Windows machine. It lost to Firefox and then Chrome. Windows Media Player was bundled. It lost to iTunes and Spotify. Apple Maps was pre-installed on every iPhone. People downloaded Google Maps. Bundled means default, but default doesn't mean best. When the bundled option serves the platform's interests over the user's interests, people switch.
+
+The platform that wins isn't the one with the most distribution. It's the one with the best alignment. In February 2026, an open-source personal agent running on a $599 Mac Mini — with OAP discovery connecting it to every capability on the open internet — is more aligned with the user's interests than a free agent from an advertising company with 3 billion device installs.
+
+Distribution gets you the first billion users. Alignment keeps the ones who matter most.
+
+### What OAP Provides
+
+OAP doesn't compete with Google. It makes the open alternative viable.
+
+Without OAP, an open personal agent like OpenClaw is powerful on the computer and blind to the internet. It can only do what its community has pre-built skills for. That's a toy compared to Gemini's vertical integration.
+
+With OAP, an open personal agent can discover any capability published anywhere on the internet — without platform-specific integrations, without a centralized registry, without anyone's permission. The agent searches a local manifest index, finds capabilities that match the user's intent, and invokes them directly. The discovery is private. The results are unbiased. The agent serves the user and only the user.
+
+This is the missing piece that makes the open personal agent competitive with the bundled one. Not on distribution — Google wins that permanently. On capability breadth and alignment. An open agent with OAP discovery can do anything any published capability enables. A Google agent can do anything Google wants it to do. Those aren't the same set.
+
 ## The One-Sentence Version
 
 **OAP is how AI learns about capabilities that weren't in its training data.**
@@ -173,4 +295,4 @@ One file. One location. One page spec. Public infrastructure.
 
 ---
 
-*This document was written to accompany the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), and [trust overlay](TRUST.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document was written to accompany the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

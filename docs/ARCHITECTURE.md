@@ -11,60 +11,76 @@ Knowledge lives where it belongs. Manifests stay on publishers' domains. Discove
 ## The Stack
 
 ```
-┌─────────────────────────────────────────────────┐
-│                   Agent Task                     │
-│         "Transcribe last week's Portland         │
-│          city council meeting"                   │
-└─────────────────┬───────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────┐
-│            Discovery Layer (local)               │
-│                                                  │
-│  ┌───────────┐    ┌──────────────────────────┐  │
-│  │ Small LLM │◄──►│  Vector DB               │  │
-│  │ (3B-8B)   │    │  (embedded manifest      │  │
-│  │           │    │   index)                  │  │
-│  └───────────┘    └──────────────────────────┘  │
-│                                                  │
-│  "myNewscast Meeting Processor matches this      │
-│   task with 0.94 similarity"                     │
-└─────────────────┬───────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────┐
-│           Execution Layer (local or cloud)        │
-│                                                  │
-│  ┌─────────────┐    ┌────────────────────────┐  │
-│  │ Frontier LLM│───►│ Invoke capability via   │  │
-│  │ (Claude,    │    │ manifest's invoke field  │  │
-│  │  GPT, etc.) │    │                          │  │
-│  └─────────────┘    └────────────────────────┘  │
-│                                                  │
-│  Reads manifest, constructs request, reasons     │
-│  about output, composes next step if needed       │
-└─────────────────┬───────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────┐
-│               Crawl Layer (background)           │
-│                                                  │
-│  Periodically fetches /.well-known/oap.json      │
-│  from known domains. Embeds new/updated          │
-│  manifests. Refreshes vector index.              │
-│  Checks health endpoints. Prunes dead entries.   │
-└─────────────────────────────────────────────────┘
++---------------------------------------------------+
+|                    Agent Task                     |
+|          "Transcribe last week's Portland         |
+|           city council meeting"                   |
++-------------------------+-------------------------+
+                          |
+                          v
++---------------------------------------------------+
+|             Discovery Layer (local)               |
+|                                                   |
+|  +--------------+    +-------------------------+  |
+|  | Small LLM    |<-->| Vector DB               |  |
+|  | (3B-8B)      |    | (embedded manifest      |  |
+|  |              |    |  index)                 |  |
+|  +--------------+    +-------------------------+  |
+|                                                   |
+|  "myNewscast Meeting Processor matches this       |
+|   task with 0.94 similarity"                      |
++-------------------------+-------------------------+
+                          |
+                          v
++---------------------------------------------------+
+|          Execution Layer (local or cloud)         |
+|                                                   |
+|  +--------------+    +-------------------------+  |
+|  | Frontier LLM |--->| Invoke capability via   |  |
+|  | (Claude,     |    | manifest's invoke field |  |
+|  |  GPT, etc.)  |    |                         |  |
+|  +--------------+    +-------------------------+  |
+|                                                   |
+|  Reads manifest, constructs request, reasons      |
+|  about output, composes next step if needed       |
++-------------------------+-------------------------+
+                          |
+                          v
++---------------------------------------------------+
+|              Crawl Layer (background)             |
+|                                                   |
+|  Periodically fetches /.well-known/oap.json       |
+|  from known domains. Embeds new/updated           |
+|  manifests. Refreshes vector index.               |
+|  Checks health endpoints. Prunes dead entries.    |
++---------------------------------------------------+
 ```
 
 ## Three Cognitive Jobs, Three Cost Points
 
 The key insight: discovery and execution are different cognitive tasks requiring different levels of intelligence. Don't waste a frontier model on finding work. Don't trust a tiny model with doing the work.
 
-| Job | What It Does | Model Size | Cost |
-|-----|-------------|-----------|------|
-| **Similarity search** | Finds candidate manifests matching agent intent | No LLM — pure vector math | Near zero |
-| **Manifest reasoning** | Reads top candidates, picks the best fit for the task | Small LLM (3B-8B) | Minimal |
-| **Task execution** | Invokes capability, reasons about output, composes pipeline | Frontier LLM | Standard |
+## Three Cognitive Jobs, Three Cost Points
+
+The key insight: discovery and execution are different cognitive 
+tasks requiring different levels of intelligence. Don't waste a 
+frontier model on finding work. Don't trust a tiny model with 
+doing the work.
+
+**Similarity search** finds candidate manifests matching the 
+agent's intent. This is pure vector math — no LLM involved. 
+Embed the query, compare against the index, return the nearest 
+neighbors. Sub-50ms. Near zero cost.
+
+**Manifest reasoning** reads the top candidates and picks the 
+best fit for the task. A small local LLM (3B-8B parameters) 
+handles this — reading descriptions, evaluating fit, selecting 
+the winner. Runs on CPU. Minimal cost.
+
+**Task execution** invokes the selected capability, reasons 
+about the output, and composes the next step if needed. This 
+is the frontier model's job — Claude, GPT, Gemini. The only 
+step that costs real money. The only step that should.
 
 The expensive model never wastes tokens on discovery. The cheap model never attempts complex reasoning. Each model does what it's good at.
 
@@ -76,13 +92,29 @@ The expensive model never wastes tokens on discovery. The cheap model never atte
 
 For a developer running their own discovery stack locally.
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| CPU | Any modern 4-core | 8+ cores (Apple M-series, AMD Ryzen 7, Intel i7) |
-| RAM | 16 GB | 32 GB |
-| GPU | Not required (CPU inference works) | Apple M-series unified memory, or NVIDIA GPU with 8+ GB VRAM |
-| Storage | 20 GB free (SSD) | 50 GB free (NVMe SSD) |
-| OS | macOS, Linux, Windows (WSL2) | macOS or Linux |
+### Tier 1: Laptop (Development / Personal Agent)
+
+For a developer running their own discovery stack locally.
+
+**CPU:** Any modern 4-core works. An 8+ core chip is better — 
+Apple M-series, AMD Ryzen 7, or Intel i7. The small LLM 
+benefits from more cores during CPU inference.
+
+**RAM:** 16GB minimum. 32GB recommended. The LLM, vector DB, 
+and crawler all share memory — 16GB is tight but functional, 
+32GB gives comfortable headroom.
+
+**GPU:** Not required. CPU inference works for the small 
+discovery LLM. Apple M-series unified memory is ideal since 
+the GPU shares system RAM with no copy overhead. An NVIDIA 
+GPU with 8+ GB VRAM accelerates inference but isn't necessary.
+
+**Storage:** 20GB free on an SSD. 50GB on NVMe preferred. 
+Models, the vector index, and cached manifests all live on 
+disk. SSDs matter — spinning disks bottleneck vector search.
+
+**OS:** macOS or Linux recommended. Windows works through 
+WSL2 but adds a layer of friction.
 
 This runs the small LLM for manifest reasoning, the vector database for similarity search, and the crawler — all locally. The frontier model for task execution is called via API (Claude, GPT, etc.) or runs locally if you have the hardware.
 
@@ -92,13 +124,31 @@ This runs the small LLM for manifest reasoning, the vector database for similari
 
 For a team running a shared discovery service.
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| CPU | 8 cores | 16+ cores |
-| RAM | 32 GB | 64 GB |
-| GPU | NVIDIA with 12+ GB VRAM (RTX 3060 or better) | NVIDIA A10 / L4 (24 GB VRAM) |
-| Storage | 100 GB NVMe SSD | 500 GB NVMe SSD |
-| Network | 100 Mbps | 1 Gbps |
+### Tier 2: Server (Team / Production)
+
+For a team running a shared discovery service.
+
+**CPU:** 8 cores minimum, 16+ recommended. Concurrent 
+discovery queries from multiple agents need parallel 
+processing headroom.
+
+**RAM:** 32GB minimum. 64GB recommended. The larger index 
+(millions of manifests) and concurrent queries consume 
+significantly more memory than a personal setup.
+
+**GPU:** NVIDIA with 12+ GB VRAM minimum — an RTX 3060 or 
+better. Recommended: NVIDIA A10 or L4 with 24GB VRAM. GPU 
+acceleration drops manifest reasoning from seconds to 
+sub-100ms, which matters when serving multiple agents.
+
+**Storage:** 100GB NVMe SSD minimum. 500GB recommended. 
+A million-manifest index with cached raw manifests, 
+embeddings, and crawl logs adds up.
+
+**Network:** 100 Mbps minimum. 1 Gbps recommended. The 
+crawler is constantly fetching manifests and the discovery 
+API is serving results — bandwidth matters at production 
+scale.
 
 Supports concurrent discovery queries from multiple agents. Can index millions of manifests. Runs the small LLM with GPU acceleration for sub-100ms manifest reasoning.
 
@@ -106,14 +156,135 @@ Supports concurrent discovery queries from multiple agents. Can index millions o
 
 Any of the above can run in cloud VMs. Recommended instances:
 
-| Provider | Instance Type | Monthly Cost (approx.) |
-|----------|--------------|----------------------|
-| AWS | g5.xlarge (1x A10G, 24GB VRAM, 4 vCPU, 16GB RAM) | ~$500 |
-| GCP | g2-standard-4 (1x L4, 24GB VRAM, 4 vCPU, 16GB RAM) | ~$450 |
-| Azure | Standard_NC4as_T4_v3 (1x T4, 16GB VRAM, 4 vCPU, 28GB RAM) | ~$400 |
-| Budget | Any 8-core, 32GB RAM VPS (CPU-only inference) | ~$50-100 |
+### Tier 3: Virtual / Cloud
+
+Any of the above can run in cloud VMs.
+
+**AWS:** g5.xlarge — one A10G GPU with 24GB VRAM, 4 vCPU, 
+16GB RAM. Roughly $500/month.
+
+**GCP:** g2-standard-4 — one L4 GPU with 24GB VRAM, 4 vCPU, 
+16GB RAM. Roughly $450/month.
+
+**Azure:** Standard_NC4as_T4_v3 — one T4 GPU with 16GB VRAM, 
+4 vCPU, 28GB RAM. Roughly $400/month.
+
+**Budget:** Any 8-core, 32GB RAM VPS with CPU-only inference. 
+$50-100/month. The small LLM runs slower but discovery latency 
+remains acceptable for most use cases.
 
 A CPU-only VPS works fine for moderate loads — the small LLM runs slower but discovery latency remains acceptable for most use cases.
+
+### Reference Platform: The $599 Mac Mini
+
+In January 2026, an open-source personal agent called OpenClaw made Mac Minis hard to buy. Within weeks it had over 145,000 GitHub stars and people were buying dedicated Mac Minis as always-on personal agent hardware. The reasons turn out to be architecturally significant, not just convenient — and the same machine runs the entire OAP discovery stack alongside the agent itself.
+
+**Why the Mac Mini is almost suspiciously perfect for this moment:**
+
+**Unix under the hood.** macOS is BSD. Terminal, shell scripts, cron jobs, process daemons, file system permissions — all native. The entire OAP stack assumes Unix primitives: a background crawler process, a database, a local API server. That's not something you bolt onto Windows. It's the native environment on macOS.
+
+**Apple Silicon changed the economics.** The M4 chip in the base Mac Mini runs local LLMs in a way that was impossible three years ago. Unified memory means the CPU and GPU share the same RAM — no copying tensors between system memory and VRAM. A 4B parameter model runs entirely in the chip's neural engine and GPU cores, leaving CPU headroom for everything else. No discrete GPU. No CUDA. No thermal throttling in a closet.
+
+**Always-on at consumer power draw.** A Mac Mini idles at 5-7 watts. That's less than a nightlight. Running 24/7 costs roughly $5-8 per year in electricity. Compare that to a cloud VM at $50-100 per month. The Mac Mini pays for itself versus cloud hosting in under six months and runs for years.
+
+**No Linux expertise required.** A Raspberry Pi or NUC running Ubuntu could technically run the same stack. But OpenClaw hit 145,000 stars because normal people can set it up. macOS has automatic updates, Time Machine backups, and a setup wizard. The barrier to running your own personal agent went from "be a Linux sysadmin" to "buy a Mac Mini and follow a tutorial."
+
+#### The Complete Stack on One Machine
+
+A base-model Mac Mini (M4, 16GB unified memory, 256GB SSD, $599) runs the entire personal agent + OAP discovery stack simultaneously:
+
+```
++-----------------------------------------------------------+
+|                   Mac Mini (M4 / 16GB)                    |
+|                                                           |
+|  +-----------------------------------------------------+  |
+|  |               OpenClaw Gateway                       | |
+|  |  WhatsApp / Telegram / iMessage / Slack / etc.       | |
+|  |  Persistent memory - Cron jobs - Skills engine       | |
+|  |  ~200MB RAM                                          | |
+|  +---------------------------+-------------------------+  |
+|                              |                            |
+|  +---------------------------v-------------------------+  |
+|  |              OAP Discovery Layer                     | |
+|  |                                                      | |
+|  |  +----------------+    +--------------------------+  | |
+|  |  | Ollama         |    | ChromaDB / LanceDB       |  | |
+|  |  | Qwen 3 4B      |    | Manifest vector index    |  | |
+|  |  | + nomic        |    | ~100MB for 10K           |  | |
+|  |  |   embed-text   |    |   manifests              |  | |
+|  |  | ~4GB RAM       |    | ~500MB RAM               |  | |
+|  |  +----------------+    +--------------------------+  | |
+|  |                                                      | |
+|  |  +----------------+    +--------------------------+  | |
+|  |  | Crawler        |    | Discovery API            |  | |
+|  |  | (background    |    | (FastAPI)                |  | |
+|  |  |  process)      |    | ~100MB RAM               |  | |
+|  |  | ~50MB RAM      |    |                          |  | |
+|  |  +----------------+    +--------------------------+  | |
+|  +------------------------------------------------------+ |
+|                                                           |
+|  RAM budget: ~5GB active (11GB free for OS + headroom)    |
+|  Storage: ~8GB (models + index + manifests)               |
+|  Power: 7-15W under typical load                          |
+|  Network: Outbound only (API calls + crawler fetches)     |
++-----------------------------------------------------------+
+```
+
+#### Bill of Materials
+
+| Component | Cost |
+|-----------|------|
+| Mac Mini (M4, 16GB, 256GB) | $599 (one-time) |
+| Ollama (LLM runtime) | Free |
+| Qwen 3 4B + nomic-embed-text (discovery models) | Free |
+| ChromaDB or LanceDB (vector database) | Free |
+| Python + FastAPI (discovery API) | Free |
+| OpenClaw (personal agent) | Free |
+| Claude / GPT API (frontier model for task execution) | ~$5-20/month |
+| Electricity (always-on operation) | ~$0.50/month |
+| **Total first year** | **~$660-780** |
+
+Compare to running an equivalent stack in the cloud: a GPU-capable VM for the local LLM ($400-500/month) plus the same frontier API costs. That's $5,000-6,000 per year. The Mac Mini pays for itself in five weeks.
+
+#### Setup
+
+```bash
+# 1. Install Homebrew (if not present)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 2. Install Ollama
+brew install ollama
+ollama serve &
+
+# 3. Pull discovery models
+ollama pull qwen3:4b
+ollama pull nomic-embed-text
+
+# 4. Install Python dependencies
+pip3 install chromadb fastapi uvicorn httpx
+
+# 5. Install OpenClaw (see openclaw.com for current instructions)
+npm install -g openclaw
+
+# 6. Run the OAP crawler + discovery API
+# (reference implementation at github.com/oap-dev/discovery)
+python3 oap_discovery.py &
+
+# 7. Start OpenClaw with OAP discovery skill enabled
+openclaw start
+```
+
+From unboxing to a personal agent with open internet discovery: under two hours. Most of that is downloading models.
+
+#### Why This Matters
+
+The Mac Mini isn't just convenient hardware. It's a statement about who controls the personal agent.
+
+A personal agent running on Google's servers serves Google's interests alongside yours. A personal agent running on your Mac Mini, in your house, on your network, serves you. The discovery is private — your queries never leave the machine during the discovery phase. The manifest index is yours — no one decides what capabilities you can or can't find. The agent's memory is a folder on your SSD — not a row in someone else's database.
+
+Apple probably doesn't realize they've built the default hardware platform for the personal agent era. They think they're selling a budget desktop. They're actually selling the home server for AI — a Unix machine with consumer UX, local ML acceleration, negligible power draw, and a price point that makes the whole stack accessible to anyone.
+
+One box. $599. Your agent. Your data. Your discovery. No one else's agenda.
 
 ---
 
@@ -146,7 +317,7 @@ The discovery LLM has one job: read a handful of manifest descriptions and decid
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull your chosen model
-ollama pull qwen3:4b          # Recommended default
+ollama pull qwen3:4b           # Recommended default
 ollama pull phi4-mini          # Alternative
 ollama pull llama3.2:3b        # Minimal option
 ollama pull qwen2.5:7b         # If you have the VRAM
@@ -243,24 +414,24 @@ Respect `updated` field in manifests — if it hasn't changed, don't re-embed.
 A working OAP discovery system in four components:
 
 ```
-┌──────────────┐     ┌──────────────┐
-│   Crawler    │────►│  ChromaDB    │
-│  (Python     │     │  (embedded)  │
-│   script)    │     │              │
-└──────────────┘     └──────┬───────┘
-                            │
-                     ┌──────▼───────┐
-                     │   Ollama     │
-                     │  (Qwen 3 4B │
-                     │   + nomic   │
-                     │   embed)    │
-                     └──────┬───────┘
-                            │
-                     ┌──────▼───────┐
-                     │  Discovery   │
-                     │  API         │
-                     │  (FastAPI)   │
-                     └──────────────┘
++----------------+     +----------------+
+|   Crawler      |---->|   ChromaDB     |
+|   (Python      |     |   (embedded)   |
+|    script)     |     |                |
++----------------+     +-------+--------+
+                               |
+                        +------v--------+
+                        |   Ollama      |
+                        |   (Qwen 3 4B  |
+                        |    + nomic    |
+                        |    embed)     |
+                        +------+--------+
+                               |
+                        +------v--------+
+                        |   Discovery   |
+                        |   API         |
+                        |   (FastAPI)   |
+                        +---------------+
 ```
 
 **Total dependencies:** Python, Ollama, ChromaDB (pip install). No Docker required. No Kubernetes. No cloud account.
@@ -306,24 +477,24 @@ selected_manifest = get_manifest(best_match.name)
 For a team or service handling concurrent discovery queries:
 
 ```
-┌──────────────┐     ┌──────────────┐
-│   Crawler    │────►│   Qdrant     │
-│  (scheduled, │     │  (Docker)    │
-│   distributed│     │              │
-│   workers)   │     └──────┬───────┘
-└──────────────┘            │
-                     ┌──────▼───────┐
-                     │   Ollama     │
-                     │  (Qwen 2.5  │
-                     │   7B + GPU) │
-                     └──────┬───────┘
-                            │
-                     ┌──────▼───────┐
-                     │  Discovery   │
-                     │  Service     │
-                     │  (FastAPI +  │
-                     │   caching)   │
-                     └──────────────┘
++----------------+     +----------------+
+|   Crawler      |---->|   Qdrant       |
+|   (scheduled,  |     |   (Docker)     |
+|    distributed |     |                |
+|    workers)    |     +-------+--------+
++----------------+             |
+                        +------v--------+
+                        |   Ollama      |
+                        |   (Qwen 2.5   |
+                        |    7B + GPU)  |
+                        +------+--------+
+                               |
+                        +------v--------+
+                        |   Discovery   |
+                        |   Service     |
+                        |   (FastAPI +  |
+                        |    caching)   |
+                        +---------------+
 ```
 
 Add Redis for caching frequent queries. Add a queue (Celery, etc.) for crawl job distribution. Same architecture, just hardened for concurrent load.
@@ -350,4 +521,4 @@ We publish this reference architecture to prove the ecosystem is buildable — b
 
 ---
 
-*This document accompanies the [Open Application Protocol specification](SPEC.md), [trust overlay](TRUST.md), and [manifesto](MANIFESTO.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

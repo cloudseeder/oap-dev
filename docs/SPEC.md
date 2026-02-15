@@ -30,6 +30,9 @@ Host a JSON file at `/.well-known/oap.json` on your domain over HTTPS.
     "url": "string — Endpoint URL, or command path for stdio",
     "auth": "string (optional) — none | api_key | oauth2 | bearer",
     "auth_url": "string (optional) — Where to get credentials if auth is required",
+    "auth_in": "string (optional) — header | query. Where to send credentials. Default: header.",
+    "auth_name": "string (optional) — Header or query parameter name for the credential. Defaults: 'Authorization' for bearer/oauth2, 'X-API-Key' for api_key.",
+    "headers": "object (optional) — Additional required headers as key-value pairs. For API versioning, custom requirements, etc. Do not put secrets here.",
     "streaming": "boolean (optional) — Whether this supports streaming responses"
   },
 
@@ -69,6 +72,30 @@ Only four things are required. Everything else is optional.
 
 Input and output descriptions are technically optional but strongly recommended. A capability without described input/output is like a Unix tool without a `man` page — it works, but nobody will use it.
 
+## Writing Effective Descriptions
+
+The `description` field is the most important thing you write. It's the cognitive interface — the text an LLM reads to decide whether your capability fits a task. It's also the search document — the text that gets embedded as a vector for similarity matching. A good description gets discovered. A vague one doesn't.
+
+Write it like a man page, not a marketing page.
+
+**Say what it does, specifically.** "Processes data" is useless. "Searches text for lines matching a regular expression pattern" is useful. An LLM choosing between ten capabilities needs to know exactly what yours does and doesn't do.
+
+**State inputs and outputs upfront.** Even though `input` and `output` have their own fields, the description should be self-contained. "Takes JSON on stdin, applies a filter expression, produces transformed JSON on stdout" tells the whole story in one sentence.
+
+**Name what makes you different.** If there are five summarizers, say what's different about yours. "Optimized for meeting transcripts and legal documents" is a differentiator. "AI-powered summarization" is not.
+
+**Include scope and limits.** "Handles documents up to 100,000 words." "Covers city councils, planning commissions, school boards." Boundaries help an LLM decide fit as much as capabilities do.
+
+**Use plain English.** No jargon. No buzzwords. The reader is an LLM that needs to reason about whether this capability matches "transcribe last week's Portland city council meeting." Write for that reader.
+
+**Keep it under 1000 characters.** This is a practical limit, not an arbitrary one. Longer descriptions don't embed better — they dilute the signal. If you can't describe what you do in 1000 characters, you're either doing too many things or not thinking clearly about what you do.
+
+The grep manifest is the gold standard:
+
+> Searches text for lines matching a pattern. Accepts regular expressions or fixed strings. Reads from stdin or named files. Returns matching lines to stdout, one per line. Exit code 0 if matches found, 1 if not. Supports recursive directory search, case-insensitive matching, inverted matching (lines that don't match), and context lines before/after matches. The most common text search tool in Unix.
+
+Every sentence carries information. No filler. An LLM reading this knows exactly what grep does, what it accepts, what it returns, and how it signals success or failure.
+
 ## Examples
 
 ### Simple: A text summarizer
@@ -90,6 +117,7 @@ Input and output descriptions are technically optional but strongly recommended.
     "method": "POST",
     "url": "https://summarize.example.com/api/v1/summarize",
     "auth": "api_key",
+    "auth_name": "X-Api-Key",
     "auth_url": "https://summarize.example.com/developers"
   },
   "examples": [
@@ -179,6 +207,21 @@ Input and output descriptions are technically optional but strongly recommended.
   "tags": ["json", "transform", "filter", "cli"]
 }
 ```
+
+## Constructing a Request
+
+An agent reading a manifest has everything it needs to build an HTTP request:
+
+1. **Method and URL** — `invoke.method` and `invoke.url`.
+2. **Content-Type** — `input.format` (e.g., `text/plain` → `Content-Type: text/plain`).
+3. **Accept** — `output.format` (e.g., `application/json` → `Accept: application/json`).
+4. **Auth credential** — determined by `invoke.auth`:
+   - Look up where to send it: `invoke.auth_in` (`header` or `query`). Default: `header`.
+   - Look up the parameter name: `invoke.auth_name`. Defaults: `Authorization` for `bearer`/`oauth2`, `X-API-Key` for `api_key`.
+   - For `bearer`/`oauth2` in a header, send `Authorization: Bearer <token>`. For `api_key`, send the named header or query parameter with the raw key.
+5. **Extra headers** — merge `invoke.headers` into the request. These are static, non-secret headers (API versions, required content flags, etc.).
+
+What's intentionally **not** in the manifest: error formats, rate limits, pagination, retry logic. Those are operational details — the agent reads `docs` for them.
 
 ## Discovery
 
