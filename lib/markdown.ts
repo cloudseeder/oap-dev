@@ -38,20 +38,17 @@ export async function renderMarkdown(content: string): Promise<{ html: string; h
 
   const html = String(result)
 
-  // Extract headings from the markdown source
+  // Extract headings from the rendered HTML so IDs match rehype-slug exactly
   const headings: Heading[] = []
-  const headingRegex = /^(#{1,4})\s+(.+)$/gm
+  const headingRegex = /<h([1-4])\s+id="([^"]+)"[^>]*>(?:<a[^>]*>)?([^<]*(?:<code>[^<]*<\/code>[^<]*)*)(?:<\/a>)?<\/h[1-4]>/g
   let match
-  while ((match = headingRegex.exec(content)) !== null) {
-    const level = match[1].length
-    const text = match[2].replace(/\*\*/g, '').replace(/`/g, '').trim()
-    const id = text
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-    headings.push({ id, text, level })
+  while ((match = headingRegex.exec(html)) !== null) {
+    const level = parseInt(match[1], 10)
+    const id = match[2]
+    const text = match[3].replace(/<[^>]+>/g, '').trim()
+    if (id && text) {
+      headings.push({ id, text, level })
+    }
   }
 
   return { html, headings }
