@@ -60,6 +60,9 @@ export default function Header() {
                   <Link href="/docs/trust" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Trust Overlay
                   </Link>
+                  <Link href="/docs/a2a" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    OAP + A2A
+                  </Link>
                   <Link href="/docs/manifesto" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Manifesto
                   </Link>
