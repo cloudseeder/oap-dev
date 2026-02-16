@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Header
 
 from .attestation import AttestationService
 from .config import Config, load_config
@@ -30,6 +31,16 @@ _service: AttestationService | None = None
 _keys: KeyManager | None = None
 _store: TrustStore | None = None
 _cfg: Config | None = None
+
+
+def verify_backend_token(x_backend_token: str | None = Header(None)) -> None:
+    """Verify X-Backend-Token header matches OAP_BACKEND_SECRET env var.
+
+    Skip validation if OAP_BACKEND_SECRET is not set (local dev mode).
+    """
+    secret = os.environ.get("OAP_BACKEND_SECRET")
+    if secret and x_backend_token != secret:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _find_config() -> str:
@@ -69,6 +80,7 @@ app = FastAPI(
     description="Reference trust provider for Open Application Protocol — domain and capability attestation",
     version="0.1.0",
     lifespan=lifespan,
+    dependencies=[Depends(verify_backend_token)],
 )
 
 

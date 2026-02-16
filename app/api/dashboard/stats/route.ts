@@ -8,7 +8,11 @@ export async function GET(request: NextRequest) {
   const history = searchParams.get('history')
 
   try {
-    const path = history ? `/stats/history?days=${history}` : '/stats'
+    let path = '/stats'
+    if (history) {
+      const days = Math.min(Math.max(parseInt(history, 10) || 30, 1), 365)
+      path = `/stats/history?days=${days}`
+    }
     const response = await proxyFetch(path, {}, { port: DASHBOARD_PORT })
     const data = await response.json()
     return NextResponse.json(data, { status: response.status })

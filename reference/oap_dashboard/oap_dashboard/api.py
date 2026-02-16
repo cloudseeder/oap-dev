@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 import yaml
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Header
 
 from .db import DashboardDB
 
@@ -18,8 +19,18 @@ _db: DashboardDB | None = None
 
 DEFAULT_CONFIG = {
     "database": {"path": "dashboard.db"},
-    "api": {"host": "0.0.0.0", "port": 8302},
+    "api": {"host": "127.0.0.1", "port": 8302},
 }
+
+
+def verify_backend_token(x_backend_token: str | None = Header(None)) -> None:
+    """Verify X-Backend-Token header matches OAP_BACKEND_SECRET env var.
+
+    Skip validation if OAP_BACKEND_SECRET is not set (local dev mode).
+    """
+    secret = os.environ.get("OAP_BACKEND_SECRET")
+    if secret and x_backend_token != secret:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def load_config(config_path: str = "config.yaml") -> dict:
@@ -50,6 +61,7 @@ app = FastAPI(
     title="OAP Dashboard API",
     version="0.1.0",
     lifespan=lifespan,
+    dependencies=[Depends(verify_backend_token)],
 )
 
 

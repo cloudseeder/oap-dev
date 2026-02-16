@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
+import stat
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -55,6 +57,8 @@ class KeyManager:
                 format=serialization.PublicFormat.SubjectPublicKeyInfo,
             )
             private_path.write_bytes(private_pem)
+            # Set restrictive permissions on private key (600: owner read/write only)
+            os.chmod(str(private_path), stat.S_IRUSR | stat.S_IWUSR)
             public_path.write_bytes(public_pem)
             log.info("Keypair saved")
 

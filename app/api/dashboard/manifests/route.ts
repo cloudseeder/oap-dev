@@ -5,8 +5,8 @@ const DASHBOARD_PORT = 8302
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  const page = searchParams.get('page') || '1'
-  const limit = searchParams.get('limit') || '50'
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10) || 50, 1), 100)
+  const page = Math.max(parseInt(searchParams.get('page') || '1', 10) || 1, 1)
 
   try {
     const response = await proxyFetch(`/manifests?page=${page}&limit=${limit}`, {}, { port: DASHBOARD_PORT })

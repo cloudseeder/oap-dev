@@ -25,6 +25,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/MANIFESTO.md` — Why manifests are the cognitive API for AI
 - `docs/A2A.md` — OAP + A2A integration: how discovery (OAP) and conversation (A2A) complement each other
 - `docs/ROBOTICS.md` — OAP for robotics: manifests as the cognitive interface for physical capabilities (sensors, actuators, tools)
+- `docs/OPENCLAW.md` — OpenClaw integration: workspace skill for runtime capability discovery
 
 ### Next.js Application (oap.dev)
 
@@ -39,8 +40,11 @@ The site serves as a developer tool: manifest playground, hosted discovery/trust
 - `app/dashboard/` — Adoption dashboard: stats, growth chart, manifest list
 - `app/api/playground/validate/` — POST: validate manifest JSON or fetch from URL
 - `app/api/discover/` — POST proxy to discovery service (:8300)
+- `app/api/discover/health/` — GET proxy for discovery health check
+- `app/api/discover/manifests/` — GET proxy for manifest listing
 - `app/api/trust/[...path]/` — Catch-all proxy to trust service (:8301)
-- `app/api/dashboard/` — GET proxy to dashboard service (:8302)
+- `app/api/dashboard/stats/` — GET proxy for dashboard statistics (:8302)
+- `app/api/dashboard/manifests/` — GET proxy for dashboard manifest list (:8302)
 
 #### Key Libraries
 
@@ -61,6 +65,10 @@ The site serves as a developer tool: manifest playground, hosted discovery/trust
 - `components/TrustLookup.tsx` — Look up existing attestations for any domain
 - `components/DashboardStats.tsx` — Stat cards + inline SVG growth chart
 - `components/DashboardManifestList.tsx` — Paginated manifest table with health badges
+- `components/DiscoverResult.tsx` — Discovery search result cards
+- `components/CodeBlock.tsx` — Syntax-highlighted code display
+- `components/Footer.tsx` — Site footer with navigation links
+- `components/TrustBadges.tsx` — Trust level badge display
 
 ### Python Reference Services
 
@@ -72,14 +80,14 @@ Crawls domains for manifests, embeds descriptions into ChromaDB via Ollama (nomi
 
 - Entry points: `oap-api` (:8300), `oap-crawl`, `oap`
 - Config: `config.yaml` (Ollama URL, ChromaDB path, crawler settings)
-- Key files: `models.py` (Pydantic types), `validate.py` (validation), `crawler.py`, `db.py` (ChromaDB), `discovery.py` (vector search + LLM), `api.py` (FastAPI)
+- Key files: `models.py` (Pydantic types), `validate.py` (validation), `crawler.py`, `db.py` (ChromaDB), `discovery.py` (vector search + LLM), `api.py` (FastAPI), `ollama_client.py` (Ollama API client), `config.py` (configuration), `cli.py` (CLI entry point)
 
 #### Trust (`reference/oap_trust/`)
 
 Reference trust provider implementing Layers 0-2: baseline checks, domain attestation via DNS/HTTP challenge, capability testing.
 
 - Entry points: `oap-trust-api` (:8301), `oap-trust`
-- Key files: `models.py` (trust types), `attestation.py`, `dns_challenge.py`, `capability_test.py`, `api.py` (FastAPI)
+- Key files: `models.py` (trust types), `attestation.py`, `dns_challenge.py`, `capability_test.py`, `api.py` (FastAPI), `cli.py` (CLI entry point), `config.py` (configuration), `db.py` (SQLite persistence), `keys.py` (Ed25519 key management), `manifest.py` (manifest validation)
 
 #### Dashboard (`reference/oap_dashboard/`)
 
@@ -88,6 +96,7 @@ Adoption tracker: crawls seed domains, stores results in SQLite, serves stats an
 - Entry points: `oap-dashboard-api` (:8302), `oap-dashboard-crawl`
 - Config: `config.yaml` (SQLite path, crawler settings)
 - Key files: `db.py` (SQLite schema + CRUD), `crawler.py`, `api.py` (FastAPI)
+- Note: Dashboard README to be created during site transition Phase 5.
 
 ### Infrastructure
 
@@ -175,5 +184,5 @@ Only four fields are required: `oap`, `name`, `description`, `invoke`. The `desc
 - **Client components** (`'use client'`): PlaygroundEditor, DiscoverSearch, TrustFlow, TrustLookup, DashboardStats, DashboardManifestList, Header (dropdown state)
 - **SSRF protection**: All URL fetching goes through `lib/security.ts` (private IP blocking, DNS resolution checks)
 - **Rate limiting**: In-memory per-IP rate limiters on all API routes
-- **No test framework** currently configured
-- **No linter/formatter** currently configured
+- **No test framework** for the Next.js frontend. Python reference services use pytest.
+- **next lint** script exists but ESLint is not explicitly configured. No formatter currently configured.

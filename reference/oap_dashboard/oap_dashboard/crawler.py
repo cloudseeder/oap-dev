@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
+import socket
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 import yaml
@@ -19,6 +22,23 @@ import yaml
 from .db import DashboardDB
 
 log = logging.getLogger("oap.dashboard.crawler")
+
+
+def validate_url(url: str) -> None:
+    """Check that URL doesn't resolve to a private IP (SSRF protection)."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError(f"Invalid URL: {url}")
+    try:
+        addrinfo = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        raise ValueError(f"Cannot resolve hostname: {hostname}")
+    for family, type_, proto, canonname, sockaddr in addrinfo:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            raise ValueError(f"URL resolves to private IP: {ip}")
+
 
 DEFAULT_CONFIG = {
     "database": {"path": "dashboard.db"},
@@ -34,9 +54,17 @@ DEFAULT_CONFIG = {
 async def crawl_domain(client: httpx.AsyncClient, domain: str, db: DashboardDB) -> bool:
     """Crawl a single domain. Returns True if manifest was found and stored."""
     url = f"https://{domain}/.well-known/oap.json"
+
+    # SSRF protection: validate URL doesn't resolve to private IP
+    try:
+        validate_url(url)
+    except ValueError as e:
+        log.warning("%s — blocked: %s", domain, e)
+        return False
+
     start = time.monotonic()
     try:
-        resp = await client.get(url, follow_redirects=True)
+        resp = await client.get(url, follow_redirects=False)  # Disable redirects for SSRF protection
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
         if resp.status_code != 200:
@@ -61,7 +89,9 @@ async def crawl_domain(client: httpx.AsyncClient, domain: str, db: DashboardDB) 
         health_url = data.get("health")
         if health_url:
             try:
-                h = await client.get(health_url, follow_redirects=True)
+                # SSRF protection for health check URLs
+                validate_url(health_url)
+                h = await client.get(health_url, follow_redirects=False)
                 health_ok = h.status_code == 200
             except Exception:
                 health_ok = False

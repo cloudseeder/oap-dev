@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
+import socket
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import click
 import httpx
@@ -19,6 +22,22 @@ from .ollama_client import OllamaClient
 from .validate import validate_manifest
 
 log = logging.getLogger("oap.crawler")
+
+
+def validate_url(url: str) -> None:
+    """Check that URL doesn't resolve to a private IP (SSRF protection)."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError(f"Invalid URL: {url}")
+    try:
+        addrinfo = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        raise ValueError(f"Cannot resolve hostname: {hostname}")
+    for family, type_, proto, canonname, sockaddr in addrinfo:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            raise ValueError(f"URL resolves to private IP: {ip}")
 
 
 class Crawler:
@@ -87,6 +106,13 @@ class Crawler:
     async def crawl_domain(self, domain: str) -> bool:
         """Fetch and index a manifest from a single domain."""
         url = f"https://{domain}/.well-known/oap.json"
+
+        # SSRF protection: validate URL doesn't resolve to private IP
+        try:
+            validate_url(url)
+        except ValueError as e:
+            log.warning("Blocked URL %s: %s", url, e)
+            return False
 
         async with self._semaphore:
             try:

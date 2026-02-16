@@ -164,3 +164,7 @@ OAP's core principle is separation of concerns:
 - **The protocol communicates.** HTTP for simple capabilities. A2A for conversational agents. MCP for tool-use contexts.
 
 OAP is the DNS of capabilities — it resolves "I need X" to "here's where X lives and how to reach it." What happens after resolution is up to the communication protocol. A2A is one excellent answer for the conversation layer, and OAP makes sure agents can find A2A agents in the first place.
+
+---
+
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [robotics](ROBOTICS.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

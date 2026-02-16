@@ -5,6 +5,7 @@ import { RateLimiter, getClientIP } from '@/lib/security'
 const limiter = new RateLimiter(30, 60 * 1000)
 
 const TRUST_PORT = 8301
+const ALLOWED_PREFIXES = ['/v1/attest/', '/v1/attestations/', '/v1/keys', '/health']
 
 async function handler(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const ip = getClientIP(request)
@@ -15,6 +16,10 @@ async function handler(request: NextRequest, { params }: { params: Promise<{ pat
 
   const { path } = await params
   const backendPath = '/' + path.join('/')
+
+  if (!ALLOWED_PREFIXES.some(p => backendPath.startsWith(p))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   try {
     const init: RequestInit = { method: request.method }

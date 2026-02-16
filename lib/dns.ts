@@ -8,12 +8,19 @@ const MAX_MANIFEST_SIZE = 1024 * 1024 // 1MB
 export async function fetchManifest(url: string): Promise<{ json: Record<string, unknown>; manifestUrl: string }> {
   const manifestUrl = url.replace(/\/$/, '') + '/.well-known/oap.json'
 
-  // SSRF protection: validate URL before fetching
-  await validateUrl(manifestUrl)
+  // SSRF protection: validate URL and get resolved IP to prevent DNS rebinding (TOCTOU fix)
+  const validated = await validateUrl(manifestUrl)
 
-  const response = await fetch(manifestUrl, {
+  // Construct URL with resolved IP to prevent DNS rebinding attack
+  const originalHostname = validated.url.hostname
+  const ipBasedUrl = manifestUrl.replace(originalHostname, validated.resolvedIp)
+
+  const response = await fetch(ipBasedUrl, {
     signal: AbortSignal.timeout(10000),
-    headers: { 'User-Agent': 'OAP-Registry/0.1' },
+    headers: {
+      'User-Agent': 'OAP-Registry/0.1',
+      'Host': originalHostname, // Preserve original hostname for virtual hosting and TLS SNI
+    },
   })
   if (!response.ok) throw new Error('Failed to fetch manifest')
 
@@ -35,12 +42,18 @@ export async function fetchManifest(url: string): Promise<{ json: Record<string,
 export async function fetchManifestForDomain(domain: string): Promise<{ json: Record<string, unknown>; manifestUrl: string }> {
   const manifestUrl = `https://${domain}/.well-known/oap.json`
 
-  // SSRF protection: validate URL before fetching
-  await validateUrl(manifestUrl)
+  // SSRF protection: validate URL and get resolved IP to prevent DNS rebinding (TOCTOU fix)
+  const validated = await validateUrl(manifestUrl)
 
-  const response = await fetch(manifestUrl, {
+  // Construct URL with resolved IP to prevent DNS rebinding attack
+  const ipBasedUrl = manifestUrl.replace(domain, validated.resolvedIp)
+
+  const response = await fetch(ipBasedUrl, {
     signal: AbortSignal.timeout(10000),
-    headers: { 'User-Agent': 'OAP-Registry/0.1' },
+    headers: {
+      'User-Agent': 'OAP-Registry/0.1',
+      'Host': domain, // Preserve original hostname for virtual hosting and TLS SNI
+    },
   })
   if (!response.ok) throw new Error('Failed to fetch manifest')
 
@@ -80,12 +93,19 @@ export async function checkHealth(manifest: Record<string, unknown>): Promise<bo
 
   if (!endpoint) return null
   try {
-    // SSRF protection: validate URL before fetching
-    await validateUrl(endpoint)
+    // SSRF protection: validate URL and get resolved IP to prevent DNS rebinding (TOCTOU fix)
+    const validated = await validateUrl(endpoint)
 
-    const response = await fetch(endpoint, {
+    // Construct URL with resolved IP to prevent DNS rebinding attack
+    const originalHostname = validated.url.hostname
+    const ipBasedUrl = endpoint.replace(originalHostname, validated.resolvedIp)
+
+    const response = await fetch(ipBasedUrl, {
       signal: AbortSignal.timeout(5000),
-      headers: { 'User-Agent': 'OAP-Registry/0.1' },
+      headers: {
+        'User-Agent': 'OAP-Registry/0.1',
+        'Host': originalHostname, // Preserve original hostname for virtual hosting and TLS SNI
+      },
     })
     return response.ok
   } catch {

@@ -1,6 +1,7 @@
 /** Reusable proxy helper for forwarding requests to the backend services via Cloudflare Tunnel. */
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8300'
+const BACKEND_SECRET = process.env.BACKEND_SECRET
 
 export interface ProxyOptions {
   /** Backend service port override (default: uses BACKEND_URL as-is) */
@@ -34,13 +35,20 @@ export async function proxyFetch(
   }
 
   const url = `${base}${path}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...init.headers as Record<string, string>,
+  }
+
+  // Add backend secret if configured
+  if (BACKEND_SECRET) {
+    headers['X-Backend-Token'] = BACKEND_SECRET
+  }
+
   const response = await fetch(url, {
     ...init,
     signal: AbortSignal.timeout(timeout),
-    headers: {
-      'Content-Type': 'application/json',
-      ...init.headers,
-    },
+    headers,
   })
 
   return response

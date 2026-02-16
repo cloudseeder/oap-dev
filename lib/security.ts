@@ -27,7 +27,12 @@ function isPrivateIPv6(ip: string): boolean {
   )
 }
 
-export async function validateUrl(url: string): Promise<void> {
+export interface ValidatedUrl {
+  url: URL
+  resolvedIp: string
+}
+
+export async function validateUrl(url: string): Promise<ValidatedUrl> {
   let parsed: URL
   try {
     parsed = new URL(url)
@@ -52,7 +57,7 @@ export async function validateUrl(url: string): Promise<void> {
     if (isPrivateIPv4(hostname)) {
       throw new Error('Private IP addresses are not allowed')
     }
-    return
+    return { url: parsed, resolvedIp: hostname }
   }
 
   try {
@@ -69,6 +74,10 @@ export async function validateUrl(url: string): Promise<void> {
         throw new Error('Private IP addresses are not allowed')
       }
     }
+
+    // Return the first resolved IP (prefer IPv4)
+    const resolvedIp = ipv4Addresses[0] || ipv6Addresses[0]
+    return { url: parsed, resolvedIp }
   } catch (e) {
     if (e instanceof Error && e.message === 'Private IP addresses are not allowed') {
       throw e

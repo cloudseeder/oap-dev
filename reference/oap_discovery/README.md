@@ -1,6 +1,6 @@
 # OAP Reference Discovery Stack
 
-A working implementation of the [OAP architecture](../docs/ARCHITECTURE.md): crawl manifests, index as vectors, query with natural language, match intent to capability.
+A working implementation of the [OAP architecture](../../docs/ARCHITECTURE.md): crawl manifests, index as vectors, query with natural language, match intent to capability.
 
 Runs on a laptop. No cloud. No API keys for discovery.
 
@@ -26,7 +26,7 @@ ollama pull qwen3:4b
 ### 2. Install the package
 
 ```bash
-cd reference
+cd reference/oap_discovery
 pip install -e ".[dev]"
 ```
 
@@ -119,4 +119,4 @@ Task ("search for regex")
   └─ Result: manifest + reasoning
 ```
 
-See [ARCHITECTURE.md](../docs/ARCHITECTURE.md) for the full design.
+See [ARCHITECTURE.md](../../docs/ARCHITECTURE.md) for the full design.

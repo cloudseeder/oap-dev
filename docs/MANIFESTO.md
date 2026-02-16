@@ -267,7 +267,7 @@ Some will. Many will. But a meaningful market segment won't. And that segment �
 
 The bundled option has lost before. Internet Explorer was on every Windows machine. It lost to Firefox and then Chrome. Windows Media Player was bundled. It lost to iTunes and Spotify. Apple Maps was pre-installed on every iPhone. People downloaded Google Maps. Bundled means default, but default doesn't mean best. When the bundled option serves the platform's interests over the user's interests, people switch.
 
-The platform that wins isn't the one with the most distribution. It's the one with the best alignment. In February 2026, an open-source personal agent running on a $599 Mac Mini — with OAP discovery connecting it to every capability on the open internet — is more aligned with the user's interests than a free agent from an advertising company with 3 billion device installs.
+The platform that wins isn't the one with the most distribution. It's the one with the best alignment. In February 2026, an open-source personal agent running on a $549 Mac Mini — with OAP discovery connecting it to every capability on the open internet — is more aligned with the user's interests than a free agent from an advertising company with 3 billion device installs.
 
 Distribution gets you the first billion users. Alignment keeps the ones who matter most.
 
@@ -295,4 +295,4 @@ One file. One location. One page spec. Public infrastructure.
 
 ---
 
-*This document was written to accompany the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document was written to accompany the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

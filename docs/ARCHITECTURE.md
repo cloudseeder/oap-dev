@@ -292,10 +292,10 @@ curl -X POST http://localhost:8300/v1/discover \
 
 #### Connecting an Agent: OpenClaw Example
 
-The discovery stack is useful on its own, but the real payoff is when an agent uses it at runtime. [OpenClaw](https://openclaw.com) is an open-source personal agent that runs locally on the Mac Mini — the same machine running the discovery stack. With OAP discovery enabled, OpenClaw can find and invoke capabilities that weren't in its training data.
+The discovery stack is useful on its own, but the real payoff is when an agent uses it at runtime. [OpenClaw](https://openclaw.ai) is an open-source personal agent that runs locally on the Mac Mini — the same machine running the discovery stack. With OAP discovery enabled, OpenClaw can find and invoke capabilities that weren't in its training data.
 
 ```bash
-# 12. Install OpenClaw (see openclaw.com for current instructions)
+# 12. Install OpenClaw (see openclaw.ai for current instructions)
 npm install -g openclaw
 
 # 13. Start OpenClaw with OAP discovery pointed at the local stack
@@ -556,4 +556,4 @@ We publish this reference architecture to prove the ecosystem is buildable — b
 
 ---
 
-*This document accompanies the [Open Application Protocol specification](SPEC.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

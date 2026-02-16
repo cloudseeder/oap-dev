@@ -274,3 +274,7 @@ The manifest is the universal interface. A description that an AI can read, inpu
 Standardize the format. Let the ecosystem build the discovery. Let the AI reason about what's available and what fits the task. One file. One location. One manifest.
 
 Publish and the robot knows what you can do.
+
+---
+
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

@@ -6,7 +6,7 @@
 
 ## What OpenClaw Gets Right
 
-In January 2026, an Austrian developer named Peter Steinberger published an open-source project that accidentally proved the personal agent thesis. Within weeks, it had over 100,000 GitHub stars and made Mac Minis hard to buy.
+In January 2026, an Austrian developer named Peter Steinberger published an open-source project that accidentally proved the personal agent thesis. Within weeks, it had over 145,000 GitHub stars and made Mac Minis hard to buy.
 
 OpenClaw gets three things right that nobody else has:
 
@@ -354,4 +354,4 @@ The goal isn't to replace ClawHub. It's to make your agent capable of discoverin
 
 ---
 
-*This document is part of the [Open Application Protocol](README.md) suite. OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), and [robotics](ROBOTICS.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
