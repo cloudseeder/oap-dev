@@ -12,7 +12,7 @@ export default function Footer() {
             <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
             <Link href="/docs/quickstart" className="hover:text-gray-700">Quick Start</Link>
             <a
-              href="https://github.com/cloudseeder/oap"
+              href="https://github.com/cloudseeder/oap-dev"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-700"

@@ -140,7 +140,7 @@ export default function LandingPage() {
           </p>
           <div className="mt-8 flex items-center justify-center gap-4">
             <a
-              href="https://github.com/cloudseeder/oap"
+              href="https://github.com/cloudseeder/oap-dev"
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-lg border border-gray-300 px-6 py-3 text-sm font-medium text-gray-700 hover:bg-white"
