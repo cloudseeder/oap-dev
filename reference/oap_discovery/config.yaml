@@ -23,3 +23,13 @@ crawler:
 api:
   host: "0.0.0.0"
   port: 8300
+
+# Procedural memory (experimental) — see docs/OAP-PROCEDURAL-MEMORY-PAPER.md
+# Set enabled: true to activate experience-augmented discovery.
+experience:
+  enabled: false
+  db_path: "./oap_experience.db"
+  confidence_threshold: 0.85
+  max_records: 10000
+  invoke_timeout: 30
+  stdio_timeout: 10

@@ -13,6 +13,9 @@ from fastapi import Depends, FastAPI, HTTPException, Header
 from .config import Config, load_config
 from .db import ManifestStore
 from .discovery import DiscoveryEngine
+from . import experience_api
+from .experience_engine import ExperienceEngine
+from .experience_store import ExperienceStore
 from .models import (
     DiscoverRequest,
     DiscoverResponse,
@@ -28,6 +31,7 @@ _store: ManifestStore | None = None
 _ollama: OllamaClient | None = None
 _engine: DiscoveryEngine | None = None
 _cfg: Config | None = None
+_experience_store: ExperienceStore | None = None
 
 
 def verify_backend_token(x_backend_token: str | None = Header(None)) -> None:
@@ -54,7 +58,7 @@ def _find_config() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _store, _ollama, _engine, _cfg
+    global _store, _ollama, _engine, _cfg, _experience_store
 
     config_path = _find_config()
     _cfg = load_config(config_path)
@@ -64,8 +68,22 @@ async def lifespan(app: FastAPI):
     _engine = DiscoveryEngine(_store, _ollama)
 
     log.info("API started — %d manifests indexed", _store.count())
+
+    # Procedural memory (experimental)
+    if _cfg.experience.enabled:
+        _experience_store = ExperienceStore(_cfg.experience.db_path)
+        exp_engine = ExperienceEngine(_engine, _ollama, _experience_store, _cfg.experience)
+        experience_api._experience_engine = exp_engine
+        experience_api._experience_store = _experience_store
+        log.info(
+            "Procedural memory enabled — %d experience records",
+            _experience_store.count(),
+        )
+
     yield
 
+    if _experience_store is not None:
+        _experience_store.close()
     await _ollama.close()
 
 
@@ -76,6 +94,7 @@ app = FastAPI(
     lifespan=lifespan,
     dependencies=[Depends(verify_backend_token)],
 )
+app.include_router(experience_api.router)
 
 
 @app.post("/v1/discover", response_model=DiscoverResponse)

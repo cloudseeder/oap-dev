@@ -41,11 +41,22 @@ class APIConfig:
 
 
 @dataclass
+class ExperienceConfig:
+    enabled: bool = False
+    db_path: str = "./oap_experience.db"
+    confidence_threshold: float = 0.85
+    max_records: int = 10000
+    invoke_timeout: int = 30
+    stdio_timeout: int = 10
+
+
+@dataclass
 class Config:
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
     chromadb: ChromaDBConfig = field(default_factory=ChromaDBConfig)
     crawler: CrawlerConfig = field(default_factory=CrawlerConfig)
     api: APIConfig = field(default_factory=APIConfig)
+    experience: ExperienceConfig = field(default_factory=ExperienceConfig)
 
 
 def _apply_env_overrides(cfg: Config) -> None:
@@ -55,14 +66,18 @@ def _apply_env_overrides(cfg: Config) -> None:
         "chromadb": cfg.chromadb,
         "crawler": cfg.crawler,
         "api": cfg.api,
+        "experience": cfg.experience,
     }
     for section_name, section_obj in section_map.items():
         for f in fields(section_obj):
             env_key = f"OAP_{section_name.upper()}_{f.name.upper()}"
             env_val = os.environ.get(env_key)
             if env_val is not None:
-                # Cast to the field's type
-                setattr(section_obj, f.name, f.type(env_val))
+                # bool("false") is True in Python — handle explicitly
+                if f.type is bool:
+                    setattr(section_obj, f.name, env_val.lower() in ("true", "1", "yes"))
+                else:
+                    setattr(section_obj, f.name, f.type(env_val))
 
 
 def _build_section(dataclass_type: type, data: dict[str, Any]) -> Any:
@@ -88,6 +103,8 @@ def load_config(path: str | Path | None = None) -> Config:
                 cfg.crawler = _build_section(CrawlerConfig, raw["crawler"])
             if "api" in raw:
                 cfg.api = _build_section(APIConfig, raw["api"])
+            if "experience" in raw:
+                cfg.experience = _build_section(ExperienceConfig, raw["experience"])
 
     _apply_env_overrides(cfg)
     return cfg
