@@ -25,6 +25,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/MANIFESTO.md` — Why manifests are the cognitive API for AI
 - `docs/A2A.md` — OAP + A2A integration: how discovery (OAP) and conversation (A2A) complement each other
 - `docs/ROBOTICS.md` — OAP for robotics: manifests as the cognitive interface for physical capabilities (sensors, actuators, tools)
+- `docs/OAP-PROCEDURAL-MEMORY-PAPER.md` — Procedural memory paper: OAP manifests as learning substrate for small LLMs
 - `docs/OPENCLAW.md` — OpenClaw integration: workspace skill for runtime capability discovery
 
 ### Next.js Application (oap.dev)
@@ -33,7 +34,7 @@ The site serves as a developer tool: manifest playground, hosted discovery/trust
 
 #### Routes
 
-- `app/(marketing)/` — Landing page, spec, doc pages (quickstart, architecture, trust, a2a, robotics, manifesto)
+- `app/(marketing)/` — Landing page, spec, doc pages (quickstart, architecture, trust, a2a, robotics, procedural-memory, manifesto)
 - `app/playground/` — Manifest playground: validate JSON or fetch+validate from URL
 - `app/discover/` — Discovery reference UI: natural language task-to-manifest matching
 - `app/trust/` — Trust reference UI: attestation flow + lookup

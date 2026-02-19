@@ -108,6 +108,28 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Experimental */}
+      <section className="px-4 py-16">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="text-center text-2xl font-bold text-gray-900">Experimental</h2>
+          <p className="mx-auto mt-4 max-w-2xl text-center text-gray-600">
+            Active research extending OAP into new domains.
+          </p>
+          <div className="mt-8 grid gap-6 sm:grid-cols-2">
+            <ToolCard
+              title="Robotics"
+              description="Manifests as the cognitive interface for physical capabilities — sensors, actuators, tools, and robotic systems."
+              href="/docs/robotics"
+            />
+            <ToolCard
+              title="Procedural Memory"
+              description="Using OAP manifests as a learning substrate for small language models — experience-driven skill acquisition without retraining."
+              href="/docs/procedural-memory"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Open Infrastructure */}
       <section className="bg-gray-50 px-4 py-16">
         <div className="mx-auto max-w-3xl text-center">

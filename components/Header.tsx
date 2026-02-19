@@ -63,11 +63,16 @@ export default function Header() {
                   <Link href="/docs/a2a" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     OAP + A2A
                   </Link>
+                  <Link href="/docs/manifesto" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Manifesto
+                  </Link>
+                  <div className="my-1 border-t border-gray-100" />
+                  <span className="block px-4 py-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Experimental</span>
                   <Link href="/docs/robotics" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Robotics
                   </Link>
-                  <Link href="/docs/manifesto" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                    Manifesto
+                  <Link href="/docs/procedural-memory" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Procedural Memory
                   </Link>
                 </div>
               )}
