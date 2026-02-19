@@ -25,6 +25,7 @@ firebase_svc.json
 
 # misc
 .DS_Store
+**/.DS_Store
 *.pem
 
 # debug

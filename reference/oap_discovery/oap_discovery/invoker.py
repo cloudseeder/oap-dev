@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import shutil
+import socket
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -16,6 +20,50 @@ log = logging.getLogger("oap.invoker")
 
 # Truncate response bodies stored in experience records
 MAX_RESPONSE_BYTES = 10 * 1024  # 10 KB
+
+# Stdio commands must resolve to one of these directories
+ALLOWED_STDIO_PREFIXES = ("/usr/bin/", "/usr/local/bin/", "/bin/", "/opt/homebrew/bin/")
+
+
+def _validate_http_url(url: str) -> None:
+    """Check that an HTTP URL doesn't resolve to a private/loopback IP (SSRF protection)."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError(f"Invalid URL: {url}")
+    try:
+        addrinfo = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        raise ValueError(f"Cannot resolve hostname: {hostname}")
+    for _family, _type, _proto, _canonname, sockaddr in addrinfo:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            raise ValueError(f"URL resolves to private IP: {ip}")
+
+
+def _validate_stdio_command(command: str) -> str:
+    """Validate and resolve a stdio command to its full path.
+
+    Returns the resolved absolute path. Raises ValueError if the command
+    is not found or not in an allowed directory.
+    """
+    # Reject absolute paths outside the allowlist
+    if command.startswith("/"):
+        if not any(command.startswith(p) for p in ALLOWED_STDIO_PREFIXES):
+            raise ValueError(
+                f"stdio command not in allowed directories: {command}"
+            )
+        return command
+
+    # Resolve bare command names via PATH
+    resolved = shutil.which(command)
+    if resolved is None:
+        raise ValueError(f"Command not found: {command}")
+    if not any(resolved.startswith(p) for p in ALLOWED_STDIO_PREFIXES):
+        raise ValueError(
+            f"Resolved command not in allowed directories: {resolved}"
+        )
+    return resolved
 
 
 async def invoke_manifest(
@@ -30,14 +78,30 @@ async def invoke_manifest(
 
     For HTTP manifests (GET/POST): sends params as query string or JSON body.
     For stdio manifests: runs the command with stdin or args.
+
+    Both paths include security validation:
+    - HTTP: SSRF protection (private IP blocking)
+    - stdio: command allowlist (must resolve to known directories)
     """
     method = invoke_spec.method.upper()
 
     if method == "STDIO":
+        try:
+            resolved_cmd = _validate_stdio_command(invoke_spec.url)
+        except ValueError as e:
+            return InvocationResult(
+                status="failure", latency_ms=0, error=f"Blocked: {e}"
+            )
         return await _invoke_stdio(
-            invoke_spec.url, params, stdin_text, timeout=stdio_timeout
+            resolved_cmd, params, stdin_text, timeout=stdio_timeout
         )
     elif method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
+        try:
+            _validate_http_url(invoke_spec.url)
+        except ValueError as e:
+            return InvocationResult(
+                status="failure", latency_ms=0, error=f"SSRF blocked: {e}"
+            )
         return await _invoke_http(
             invoke_spec, method, params, timeout=http_timeout
         )

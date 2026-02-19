@@ -38,10 +38,14 @@ def verify_backend_token(x_backend_token: str | None = Header(None)) -> None:
     """Verify X-Backend-Token header matches OAP_BACKEND_SECRET env var.
 
     Skip validation if OAP_BACKEND_SECRET is not set (local dev mode).
+    Uses hmac.compare_digest for timing-safe comparison.
     """
+    import hmac
+
     secret = os.environ.get("OAP_BACKEND_SECRET")
-    if secret and x_backend_token != secret:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    if secret:
+        if x_backend_token is None or not hmac.compare_digest(secret, x_backend_token):
+            raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _find_config() -> str:

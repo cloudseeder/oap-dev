@@ -253,4 +253,4 @@ The implications extend beyond efficiency. In a world where AI capability is gat
 
 *This paper describes a proposed experimental framework. Experimental results are forthcoming. The OAP specification is available at [oap.dev](https://oap.dev).*
 
-*Correspondence: brooks@netgate.net*
+*Correspondence: hello@oap.dev*

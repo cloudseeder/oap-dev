@@ -176,8 +176,6 @@ credentials-file: /Users/YOUR_USER/.cloudflared/YOUR_TUNNEL_ID.json
 ingress:
   - hostname: api.oap.dev
     service: http://localhost:8300
-    originRequest:
-      noTLSVerify: true
   - hostname: trust.oap.dev
     service: http://localhost:8301
   - hostname: dashboard.oap.dev
