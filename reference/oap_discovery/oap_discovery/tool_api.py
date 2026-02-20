@@ -181,6 +181,10 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 credentials=load_credentials(bridge_cfg.credentials_file),
             )
 
+            # Truncate large tool results to fit model context
+            if len(result_str) > bridge_cfg.max_tool_result:
+                result_str = result_str[:bridge_cfg.max_tool_result] + "\n...(truncated)"
+
             # Append tool result message
             messages.append({
                 "role": "tool",
