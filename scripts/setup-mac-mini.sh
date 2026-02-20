@@ -66,6 +66,8 @@ write_plist() {
     local workdir="$3"
     local include_secret="$4"
     local interval="${5:-}"
+    shift 5 2>/dev/null || true
+    local extra_args=("$@")
     local plist_path="$LAUNCH_DIR/$label.plist"
 
     # Unload if already loaded
@@ -89,6 +91,12 @@ write_plist() {
     <true/>"
     fi
 
+    local args_block="        <string>$program</string>"
+    for arg in "${extra_args[@]}"; do
+        args_block="$args_block
+        <string>$arg</string>"
+    done
+
     cat > "$plist_path" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -98,7 +106,7 @@ write_plist() {
     <string>$label</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$program</string>
+$args_block
     </array>
     <key>WorkingDirectory</key>
     <string>$workdir</string>
@@ -138,7 +146,8 @@ write_plist "com.oap.crawler" \
     "$VENV_DIR/bin/oap-crawl" \
     "$REPO_DIR/reference/oap_discovery" \
     "no" \
-    "3600"
+    "3600" \
+    "--once"
 
 echo ""
 
