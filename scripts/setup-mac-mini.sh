@@ -163,14 +163,15 @@ echo "Running health checks..."
 OK=0
 FAIL=0
 
-for port_name in "8300:Discovery" "8301:Trust" "8302:Dashboard"; do
-    port="${port_name%%:*}"
-    name="${port_name##*:}"
+for port_name in "8300:Discovery:discovery" "8301:Trust:trust" "8302:Dashboard:dashboard"; do
+    port="$(echo "$port_name" | cut -d: -f1)"
+    name="$(echo "$port_name" | cut -d: -f2)"
+    label="$(echo "$port_name" | cut -d: -f3)"
     if curl -sf "http://localhost:$port/health" >/dev/null 2>&1; then
         echo "  $name (:$port) — OK"
         OK=$((OK + 1))
     else
-        echo "  $name (:$port) — FAILED (check /tmp/com.oap.${name,,}.err)"
+        echo "  $name (:$port) — FAILED (check /tmp/com.oap.$label.err)"
         FAIL=$((FAIL + 1))
     fi
 done
