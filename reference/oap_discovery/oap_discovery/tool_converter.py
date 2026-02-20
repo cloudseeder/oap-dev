@@ -39,11 +39,33 @@ def _extract_json_fields(description: str) -> list[str]:
     return re.findall(r'"([a-z][a-z0-9_]*)"', description)
 
 
-def _build_parameters_from_spec(parameters: dict[str, Any]) -> ToolParameters:
+def _extract_example_fields(manifest: dict[str, Any]) -> list[str]:
+    """Extract field names from a manifest's example inputs.
+
+    Collects all keys from example input dicts, which represent the
+    actual JSON fields the API accepts.
+    """
+    examples = manifest.get("examples")
+    if not examples or not isinstance(examples, list):
+        return []
+    fields: set[str] = set()
+    for ex in examples:
+        inp = ex.get("input") if isinstance(ex, dict) else None
+        if isinstance(inp, dict):
+            fields.update(inp.keys())
+    return sorted(fields)
+
+
+def _build_parameters_from_spec(
+    parameters: dict[str, Any],
+    manifest: dict[str, Any] | None = None,
+) -> ToolParameters:
     """Build ToolParameters from a manifest's structured input.parameters.
 
     When a manifest provides explicit parameter definitions in
-    input.parameters, use them directly instead of heuristic extraction.
+    input.parameters, use them as the base.  Additionally extracts
+    field names from examples to fill in parameters that the manifest
+    author didn't define explicitly (e.g. ``intent``, ``limit``).
     """
     props: dict[str, ToolParameter] = {}
     required: list[str] = []
@@ -51,10 +73,18 @@ def _build_parameters_from_spec(parameters: dict[str, Any]) -> ToolParameters:
     for name, schema in parameters.items():
         param_type = schema.get("type", "string")
         param_desc = schema.get("description", "")
-        # Map non-string types to string for Ollama tool schema simplicity
         props[name] = ToolParameter(type=param_type, description=param_desc)
         if schema.get("required", True):
             required.append(name)
+
+    # Supplement with fields found in examples
+    if manifest is not None:
+        for field in _extract_example_fields(manifest):
+            if field not in props:
+                props[field] = ToolParameter(
+                    type="string",
+                    description=f"The '{field}' value (see examples)",
+                )
 
     return ToolParameters(properties=props, required=required)
 
@@ -100,7 +130,7 @@ def _build_parameters(manifest: dict[str, Any]) -> ToolParameters:
     # Use structured parameters if the manifest provides them
     structured_params = input_spec.get("parameters")
     if structured_params and isinstance(structured_params, dict):
-        return _build_parameters_from_spec(structured_params)
+        return _build_parameters_from_spec(structured_params, manifest)
 
     if "json" in fmt:
         # Try to extract field names from the description
