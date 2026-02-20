@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { proxyFetch } from '@/lib/proxy'
 import { RateLimiter, getClientIP } from '@/lib/security'
 
+export const maxDuration = 60
+
 const limiter = new RateLimiter(30, 60 * 1000) // 30 per minute
 
 export async function POST(request: NextRequest) {
@@ -16,7 +18,7 @@ export async function POST(request: NextRequest) {
     const response = await proxyFetch('/v1/discover', {
       method: 'POST',
       body,
-    })
+    }, { timeout: 55000 })
     const data = await response.json()
     return NextResponse.json(data, { status: response.status })
   } catch {
