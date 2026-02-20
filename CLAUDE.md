@@ -36,7 +36,7 @@ The site serves as a developer tool: manifest playground, hosted discovery/trust
 
 #### Routes
 
-- `app/(marketing)/` — Landing page, spec, doc pages (quickstart, architecture, trust, a2a, robotics, procedural-memory, manifesto)
+- `app/(marketing)/` — Landing page, spec, doc pages (quickstart, architecture, trust, a2a, ollama, robotics, procedural-memory, manifesto)
 - `app/playground/` — Manifest playground: validate JSON or fetch+validate from URL
 - `app/discover/` — Discovery reference UI: natural language task-to-manifest matching
 - `app/trust/` — Trust reference UI: attestation flow + lookup
