@@ -141,8 +141,15 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 )
                 resp.raise_for_status()
                 ollama_resp = resp.json()
+        except httpx.HTTPStatusError as e:
+            log.error("Ollama HTTP %d: %s", e.response.status_code, e.response.text[:500])
+            raise HTTPException(
+                status_code=502,
+                detail=f"Ollama returned HTTP {e.response.status_code}",
+            )
         except httpx.HTTPError as e:
-            raise HTTPException(status_code=502, detail=f"Ollama request failed: {e}")
+            log.exception("Ollama request failed")
+            raise HTTPException(status_code=502, detail=f"Ollama request failed: {type(e).__name__}: {e}")
 
         # Check for tool calls
         resp_message = ollama_resp.get("message", {})
