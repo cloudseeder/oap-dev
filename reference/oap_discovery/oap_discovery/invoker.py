@@ -123,7 +123,7 @@ async def _invoke_http(
     start = time.monotonic()
     try:
         headers = dict(invoke_spec.headers or {})
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             if method == "GET":
                 resp = await client.get(
                     invoke_spec.url, params=params, headers=headers
