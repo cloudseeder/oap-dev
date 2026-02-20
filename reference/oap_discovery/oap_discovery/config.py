@@ -55,6 +55,7 @@ class ToolBridgeConfig:
     enabled: bool = True
     default_top_k: int = 3
     max_rounds: int = 3
+    ollama_timeout: int = 120
     http_timeout: int = 30
     stdio_timeout: int = 10
 

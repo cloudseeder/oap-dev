@@ -40,5 +40,6 @@ tool_bridge:
   enabled: true
   default_top_k: 3
   max_rounds: 3
-  http_timeout: 30
+  ollama_timeout: 120    # seconds for Ollama /api/chat calls (model inference)
+  http_timeout: 30       # seconds for HTTP tool execution against manifest endpoints
   stdio_timeout: 10

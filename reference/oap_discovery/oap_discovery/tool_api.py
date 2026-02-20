@@ -134,7 +134,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
 
         # Forward to Ollama
         try:
-            async with httpx.AsyncClient(timeout=bridge_cfg.http_timeout) as client:
+            async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
                 resp = await client.post(
                     f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
                     json=ollama_payload,

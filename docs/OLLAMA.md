@@ -252,6 +252,7 @@ tool_bridge:
   enabled: true         # Enable /v1/tools and /v1/chat endpoints
   default_top_k: 3      # Default number of manifests to discover per request
   max_rounds: 3         # Maximum tool-call loop iterations
+  ollama_timeout: 120   # Timeout (seconds) for Ollama /api/chat calls (model inference)
   http_timeout: 30      # Timeout (seconds) for HTTP tool execution
   stdio_timeout: 10     # Timeout (seconds) for stdio tool execution
 ```
@@ -261,7 +262,8 @@ tool_bridge:
 | `enabled` | `true` | Master switch. Set to `false` to disable both endpoints. |
 | `default_top_k` | `3` | How many manifests to discover when `top_k` isn't specified in the request. |
 | `max_rounds` | `3` | Cap on tool-call rounds per chat request. The per-request `oap_max_rounds` is clamped to this value. |
-| `http_timeout` | `30` | Seconds to wait for HTTP-based tool invocations. |
+| `ollama_timeout` | `120` | Seconds to wait for Ollama `/api/chat` inference calls. Set high — small models with tool definitions can take 30-60s per round. |
+| `http_timeout` | `30` | Seconds to wait for HTTP-based tool invocations against manifest endpoints. |
 | `stdio_timeout` | `10` | Seconds to wait for stdio-based tool invocations. |
 
 ### Environment variable overrides
@@ -273,6 +275,7 @@ Every config field can be overridden with an environment variable following the 
 | `OAP_TOOL_BRIDGE_ENABLED` | `true` / `false` |
 | `OAP_TOOL_BRIDGE_DEFAULT_TOP_K` | `5` |
 | `OAP_TOOL_BRIDGE_MAX_ROUNDS` | `5` |
+| `OAP_TOOL_BRIDGE_OLLAMA_TIMEOUT` | `180` |
 | `OAP_TOOL_BRIDGE_HTTP_TIMEOUT` | `60` |
 | `OAP_TOOL_BRIDGE_STDIO_TIMEOUT` | `15` |
 
