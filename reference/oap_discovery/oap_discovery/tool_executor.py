@@ -12,6 +12,41 @@ from .tool_models import ToolRegistryEntry
 log = logging.getLogger("oap.tool_executor")
 
 
+def _inject_credentials(
+    invoke_spec: InvokeSpec,
+    domain: str,
+    credentials: dict[str, dict],
+) -> InvokeSpec:
+    """Return a copy of invoke_spec with auth headers injected from credentials.
+
+    Supports auth types: api_key (uses auth_name header) and bearer.
+    """
+    cred = credentials.get(domain)
+    if cred is None:
+        return invoke_spec
+
+    key = cred.get("key")
+    if not key:
+        return invoke_spec
+
+    auth_type = (invoke_spec.auth or "").lower()
+    extra_headers: dict[str, str] = {}
+
+    if auth_type == "api_key":
+        header_name = invoke_spec.auth_name or "X-API-Key"
+        extra_headers[header_name] = key
+    elif auth_type == "bearer":
+        extra_headers["Authorization"] = f"Bearer {key}"
+    else:
+        # Unknown auth type — skip injection
+        return invoke_spec
+
+    merged_headers = dict(invoke_spec.headers or {})
+    merged_headers.update(extra_headers)
+
+    return invoke_spec.model_copy(update={"headers": merged_headers})
+
+
 async def execute_tool_call(
     tool_name: str,
     arguments: dict[str, Any],
@@ -19,6 +54,7 @@ async def execute_tool_call(
     *,
     http_timeout: int = 30,
     stdio_timeout: int = 10,
+    credentials: dict[str, dict] | None = None,
 ) -> str:
     """Execute a tool call by looking up its manifest and invoking it.
 
@@ -35,6 +71,11 @@ async def execute_tool_call(
 
     manifest = entry.manifest
     invoke_spec = InvokeSpec.model_validate(manifest["invoke"])
+
+    # Inject credentials if available for this domain
+    if credentials:
+        invoke_spec = _inject_credentials(invoke_spec, entry.domain, credentials)
+
     method = invoke_spec.method.upper()
 
     try:

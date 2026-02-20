@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from .config import OllamaConfig, ToolBridgeConfig
+from .config import OllamaConfig, ToolBridgeConfig, load_credentials
 from .discovery import DiscoveryEngine
 from .db import ManifestStore
 from .tool_converter import manifest_to_tool
@@ -31,6 +31,7 @@ _engine: DiscoveryEngine | None = None
 _store: ManifestStore | None = None
 _ollama_cfg: OllamaConfig | None = None
 _tool_bridge_cfg: ToolBridgeConfig | None = None
+_credentials: dict[str, dict] = {}
 
 
 def _require_enabled() -> tuple[DiscoveryEngine, ManifestStore, OllamaConfig, ToolBridgeConfig]:
@@ -171,6 +172,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 registry,
                 http_timeout=bridge_cfg.http_timeout,
                 stdio_timeout=bridge_cfg.stdio_timeout,
+                credentials=_credentials,
             )
 
             # Append tool result message

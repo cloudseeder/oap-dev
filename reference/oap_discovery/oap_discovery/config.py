@@ -58,6 +58,7 @@ class ToolBridgeConfig:
     ollama_timeout: int = 120
     http_timeout: int = 30
     stdio_timeout: int = 10
+    credentials_file: str = "credentials.yaml"
 
 
 @dataclass
@@ -68,6 +69,19 @@ class Config:
     api: APIConfig = field(default_factory=APIConfig)
     experience: ExperienceConfig = field(default_factory=ExperienceConfig)
     tool_bridge: ToolBridgeConfig = field(default_factory=ToolBridgeConfig)
+
+
+def load_credentials(path: str | Path) -> dict[str, dict]:
+    """Load domain-keyed credentials from a YAML file.
+
+    Returns an empty dict if the file does not exist.
+    """
+    p = Path(path)
+    if not p.exists():
+        return {}
+    with open(p) as f:
+        raw = yaml.safe_load(f) or {}
+    return {str(k): v for k, v in raw.items() if isinstance(v, dict)}
 
 
 def _apply_env_overrides(cfg: Config) -> None:

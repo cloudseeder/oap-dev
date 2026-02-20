@@ -10,7 +10,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Header
 
-from .config import Config, load_config
+from .config import Config, load_config, load_credentials
 from .db import ManifestStore
 from .discovery import DiscoveryEngine
 from . import experience_api
@@ -80,7 +80,12 @@ async def lifespan(app: FastAPI):
         tool_api._store = _store
         tool_api._ollama_cfg = _cfg.ollama
         tool_api._tool_bridge_cfg = _cfg.tool_bridge
-        log.info("Tool bridge enabled — /v1/tools and /v1/chat active")
+        tool_api._credentials = load_credentials(_cfg.tool_bridge.credentials_file)
+        cred_count = len(tool_api._credentials)
+        log.info(
+            "Tool bridge enabled — /v1/tools and /v1/chat active (%d credential(s) loaded)",
+            cred_count,
+        )
 
     # Procedural memory (experimental)
     if _cfg.experience.enabled:

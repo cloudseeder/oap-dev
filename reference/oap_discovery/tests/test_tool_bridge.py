@@ -1,17 +1,20 @@
 """Tests for Ollama tool bridge: converter, executor, and API."""
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
+from oap_discovery.config import load_credentials
 from oap_discovery.tool_converter import (
     _build_parameters,
     _extract_json_fields,
     manifest_to_tool,
     manifest_to_tool_name,
 )
-from oap_discovery.tool_executor import execute_tool_call
+from oap_discovery.tool_executor import _inject_credentials, execute_tool_call
 from oap_discovery.tool_models import ToolRegistryEntry
 from oap_discovery.experience_models import InvocationResult
 from oap_discovery.models import InvokeSpec
@@ -433,3 +436,176 @@ class TestChatProxy:
             assert result["oap_round"] == 2
         finally:
             tool_api._engine, tool_api._store, tool_api._ollama_cfg, tool_api._tool_bridge_cfg = orig
+
+
+# --- Credential loading ---
+
+
+class TestLoadCredentials:
+    def test_loads_valid_yaml_file(self, tmp_path: Path):
+        cred_file = tmp_path / "credentials.yaml"
+        cred_file.write_text(
+            "example.com:\n"
+            "  key: secret123\n"
+            "  type: api_key\n"
+            "other.io:\n"
+            "  key: tok_abc\n"
+            "  type: bearer\n"
+        )
+        result = load_credentials(cred_file)
+        assert result == {
+            "example.com": {"key": "secret123", "type": "api_key"},
+            "other.io": {"key": "tok_abc", "type": "bearer"},
+        }
+
+    def test_returns_empty_dict_when_file_does_not_exist(self, tmp_path: Path):
+        result = load_credentials(tmp_path / "nonexistent.yaml")
+        assert result == {}
+
+    def test_handles_empty_yaml_file(self, tmp_path: Path):
+        cred_file = tmp_path / "credentials.yaml"
+        cred_file.write_text("")
+        result = load_credentials(cred_file)
+        assert result == {}
+
+    def test_filters_out_non_dict_entries(self, tmp_path: Path):
+        cred_file = tmp_path / "credentials.yaml"
+        cred_file.write_text(
+            "example.com:\n"
+            "  key: valid_key\n"
+            "bad_string_entry: just-a-string\n"
+            "bad_int_entry: 42\n"
+            "bad_list_entry:\n"
+            "  - item1\n"
+            "  - item2\n"
+        )
+        result = load_credentials(cred_file)
+        assert "example.com" in result
+        assert "bad_string_entry" not in result
+        assert "bad_int_entry" not in result
+        assert "bad_list_entry" not in result
+
+    def test_accepts_path_string(self, tmp_path: Path):
+        cred_file = tmp_path / "credentials.yaml"
+        cred_file.write_text("api.service.com:\n  key: mykey\n")
+        result = load_credentials(str(cred_file))
+        assert result == {"api.service.com": {"key": "mykey"}}
+
+
+# --- Credential injection ---
+
+
+class TestInjectCredentials:
+    def _make_spec(self, **kwargs) -> InvokeSpec:
+        base = {"method": "POST", "url": "https://example.com/api"}
+        base.update(kwargs)
+        return InvokeSpec.model_validate(base)
+
+    def test_api_key_injects_header_using_auth_name(self):
+        spec = self._make_spec(auth="api_key", auth_name="X-Custom-Token")
+        credentials = {"example.com": {"key": "secret123"}}
+        result = _inject_credentials(spec, "example.com", credentials)
+        assert result.headers is not None
+        assert result.headers["X-Custom-Token"] == "secret123"
+
+    def test_api_key_defaults_to_x_api_key_when_auth_name_is_none(self):
+        spec = self._make_spec(auth="api_key", auth_name=None)
+        credentials = {"example.com": {"key": "secret123"}}
+        result = _inject_credentials(spec, "example.com", credentials)
+        assert result.headers is not None
+        assert result.headers["X-API-Key"] == "secret123"
+
+    def test_bearer_injects_authorization_header(self):
+        spec = self._make_spec(auth="bearer")
+        credentials = {"example.com": {"key": "tok_abc"}}
+        result = _inject_credentials(spec, "example.com", credentials)
+        assert result.headers is not None
+        assert result.headers["Authorization"] == "Bearer tok_abc"
+
+    def test_no_credentials_for_domain_returns_spec_unchanged(self):
+        spec = self._make_spec(auth="api_key", auth_name="X-API-Key")
+        credentials = {"other.com": {"key": "irrelevant"}}
+        result = _inject_credentials(spec, "example.com", credentials)
+        assert result is spec
+
+    def test_unknown_auth_type_returns_spec_unchanged(self):
+        spec = self._make_spec(auth="oauth2")
+        credentials = {"example.com": {"key": "tok_abc"}}
+        result = _inject_credentials(spec, "example.com", credentials)
+        assert result is spec
+
+    def test_missing_key_in_credentials_returns_spec_unchanged(self):
+        spec = self._make_spec(auth="api_key")
+        credentials = {"example.com": {"type": "api_key"}}  # no "key" field
+        result = _inject_credentials(spec, "example.com", credentials)
+        assert result is spec
+
+    def test_existing_headers_are_preserved_and_merged(self):
+        spec = self._make_spec(
+            auth="api_key",
+            auth_name="X-API-Key",
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
+        credentials = {"example.com": {"key": "secret123"}}
+        result = _inject_credentials(spec, "example.com", credentials)
+        assert result.headers is not None
+        assert result.headers["Content-Type"] == "application/json"
+        assert result.headers["Accept"] == "application/json"
+        assert result.headers["X-API-Key"] == "secret123"
+
+    def test_original_invoke_spec_is_not_mutated(self):
+        original_headers = {"Content-Type": "text/plain"}
+        spec = self._make_spec(
+            auth="bearer",
+            headers=dict(original_headers),
+        )
+        credentials = {"example.com": {"key": "tok_xyz"}}
+        result = _inject_credentials(spec, "example.com", credentials)
+        # The returned spec is a new object with the injected header
+        assert result is not spec
+        # The original headers dict is untouched
+        assert spec.headers == original_headers
+        assert "Authorization" not in (spec.headers or {})
+
+
+# --- execute_tool_call with credentials ---
+
+
+class TestToolExecutionWithCredentials:
+    @pytest.fixture
+    def api_key_registry(self) -> dict[str, ToolRegistryEntry]:
+        manifest = {
+            "oap": "1.0",
+            "name": "Summarize",
+            "description": "Summarize text.",
+            "input": {"format": "text/plain", "description": "Text to summarize"},
+            "invoke": {
+                "method": "POST",
+                "url": "https://summarize.example.com/api/v1/summarize",
+                "auth": "api_key",
+                "auth_name": "X-Service-Key",
+            },
+        }
+        entry = manifest_to_tool("summarize.example.com", manifest)
+        return {entry.tool.function.name: entry}
+
+    @pytest.mark.asyncio
+    async def test_credentials_are_applied_during_http_invocation(self, api_key_registry):
+        credentials = {"summarize.example.com": {"key": "supersecret"}}
+        mock_result = InvocationResult(
+            status="success", response_body="Great summary.", latency_ms=80
+        )
+        with patch("oap_discovery.tool_executor.invoke_manifest", return_value=mock_result) as mock_invoke:
+            result = await execute_tool_call(
+                "oap_summarize",
+                {"input": "Long article text..."},
+                api_key_registry,
+                credentials=credentials,
+            )
+
+        assert result == "Great summary."
+        # Verify the InvokeSpec passed to invoke_manifest carries the injected header
+        call_args = mock_invoke.call_args
+        used_spec: InvokeSpec = call_args[0][0]
+        assert used_spec.headers is not None
+        assert used_spec.headers["X-Service-Key"] == "supersecret"
