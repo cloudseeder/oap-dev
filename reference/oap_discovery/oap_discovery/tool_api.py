@@ -31,7 +31,6 @@ _engine: DiscoveryEngine | None = None
 _store: ManifestStore | None = None
 _ollama_cfg: OllamaConfig | None = None
 _tool_bridge_cfg: ToolBridgeConfig | None = None
-_credentials: dict[str, dict] = {}
 
 
 def _require_enabled() -> tuple[DiscoveryEngine, ManifestStore, OllamaConfig, ToolBridgeConfig]:
@@ -172,7 +171,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 registry,
                 http_timeout=bridge_cfg.http_timeout,
                 stdio_timeout=bridge_cfg.stdio_timeout,
-                credentials=_credentials,
+                credentials=load_credentials(bridge_cfg.credentials_file),
             )
 
             # Append tool result message
