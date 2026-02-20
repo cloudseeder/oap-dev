@@ -52,7 +52,7 @@ The site serves as a developer tool: manifest playground, hosted discovery/trust
 
 - `lib/manifest-v1.ts` — v1.0 manifest validation (ported from Python reference)
 - `lib/types-v1.ts` — v1.0 TypeScript types (ported from Python reference)
-- `lib/proxy.ts` — Reusable proxy helper for backend services (via `BACKEND_URL` env var)
+- `lib/proxy.ts` — Reusable proxy helper for backend services (via `BACKEND_URL`, `TRUST_URL`, `DASHBOARD_URL` env vars)
 - `lib/markdown.ts` — Markdown rendering with unified/remark/rehype pipeline + auto-generated TOC
 - `lib/dns.ts` — Manifest fetching (`fetchManifest`, `fetchManifestForDomain`) + DNS verification
 - `lib/security.ts` — SSRF protection (private IP blocking, DNS resolution) + rate limiting
@@ -119,8 +119,9 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
 
 - **Vercel**: Next.js frontend + API route handlers that proxy to the Mac Mini
 - **Mac Mini**: All Python services, Ollama, ChromaDB, SQLite
-- **Cloudflare Tunnel**: Public hostname (e.g., `api.oap.dev`) that Vercel API routes reach
-- **Env var**: `BACKEND_URL` — Cloudflare Tunnel hostname for proxy routes
+- **Cloudflare Tunnel**: Three hostnames (`api.oap.dev`, `trust.oap.dev`, `dashboard.oap.dev`) routing to local services
+- **Env vars**: `BACKEND_URL` (discovery), `TRUST_URL`, `DASHBOARD_URL` — Cloudflare Tunnel hostnames for proxy routes; `BACKEND_SECRET` / `OAP_BACKEND_SECRET` — shared auth token
+- **Setup script**: `scripts/setup-mac-mini.sh` — generates backend secret, creates launchd plists, loads services, runs health checks
 
 ### OpenClaw Skill (`skills/oap-discover/`)
 
@@ -183,7 +184,7 @@ Only four fields are required: `oap`, `name`, `description`, `invoke`. The `desc
 
 - **Next.js 16 App Router** with TypeScript and Tailwind CSS 4
 - **Markdown rendering** uses unified/remark/rehype pipeline with rehype-slug for heading IDs, rehype-sanitize for XSS protection, and auto-generated TOC extracted from rendered HTML
-- **API proxy pattern**: Next.js API routes proxy to Python backend services. `lib/proxy.ts` handles routing via `BACKEND_URL` env var with optional port override
+- **API proxy pattern**: Next.js API routes proxy to Python backend services. `lib/proxy.ts` routes via per-service URL env vars (`BACKEND_URL`, `TRUST_URL`, `DASHBOARD_URL`) in tunnel mode, falls back to port-swapping for local dev
 - **Client components** (`'use client'`): PlaygroundEditor, DiscoverSearch, TrustFlow, TrustLookup, DashboardStats, DashboardManifestList, Header (dropdown state)
 - **SSRF protection**: All URL fetching goes through `lib/security.ts` (private IP blocking, DNS resolution checks)
 - **Rate limiting**: In-memory per-IP rate limiters on all API routes
