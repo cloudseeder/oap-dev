@@ -117,12 +117,15 @@ curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://dashboard.oap.dev/health
 
 ### 5. Persist Tunnel as launchd Service
 
-So the tunnel survives reboots, install it as a launchd service:
+Install as root so the tunnel runs at boot (not just when logged in):
 ```bash
-cloudflared service install
+sudo cloudflared service install
 ```
 
-Or create a plist manually (`com.oap.tunnel.plist`) if you need custom options.
+This copies your `~/.cloudflared/config.yml` and credentials to `/etc/cloudflared/` and creates a system-level launchd plist. Verify it's running:
+```bash
+sudo launchctl list | grep cloudflare
+```
 
 ---
 
