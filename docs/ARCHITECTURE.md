@@ -556,4 +556,4 @@ We publish this reference architecture to prove the ecosystem is buildable — b
 
 ---
 
-*This document accompanies the [Open Application Protocol specification](SPEC.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), [OpenClaw integration](OPENCLAW.md), and [Ollama tool bridge](OLLAMA.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

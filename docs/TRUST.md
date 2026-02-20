@@ -184,4 +184,4 @@ This separation is load-bearing. The moment trust becomes part of the manifest s
 
 ---
 
-*This document accompanies the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), [OpenClaw integration](OPENCLAW.md), and [Ollama tool bridge](OLLAMA.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

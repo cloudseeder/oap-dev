@@ -27,6 +27,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/ROBOTICS.md` — OAP for robotics: manifests as the cognitive interface for physical capabilities (sensors, actuators, tools)
 - `docs/OAP-PROCEDURAL-MEMORY-PAPER.md` — Procedural memory paper: OAP manifests as learning substrate for small LLMs
 - `docs/OPENCLAW.md` — OpenClaw integration: workspace skill for runtime capability discovery
+- `docs/OLLAMA.md` — OAP + Ollama: manifest discovery as native Ollama tool calling via the tool bridge
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
 
 ### Next.js Application (oap.dev)
@@ -84,6 +85,7 @@ Crawls domains for manifests, embeds descriptions into ChromaDB via Ollama (nomi
 - Config: `config.yaml` (Ollama URL, ChromaDB path, crawler settings)
 - Key files: `models.py` (Pydantic types), `validate.py` (validation), `crawler.py`, `db.py` (ChromaDB), `discovery.py` (vector search + LLM), `api.py` (FastAPI), `ollama_client.py` (Ollama API client), `config.py` (configuration), `cli.py` (CLI entry point)
 - Procedural memory (experimental, opt-in via `experience.enabled: true`): `experience_models.py` (experience record types), `experience_store.py` (SQLite persistence), `experience_engine.py` (three-path routing: cache hit / partial match / full discovery), `experience_api.py` (FastAPI router at `/v1/experience/`), `invoker.py` (HTTP + stdio manifest execution)
+- Ollama tool bridge (enabled by default via `tool_bridge.enabled: true`): `tool_models.py` (Pydantic types for Ollama tool schema), `tool_converter.py` (manifest-to-tool conversion with heuristic parameter schema generation), `tool_executor.py` (tool call execution via `invoke_manifest()`), `tool_api.py` (FastAPI router at `/v1/tools` and `/v1/chat`). `POST /v1/tools` discovers manifests and returns Ollama tool definitions. `POST /v1/chat` is a transparent Ollama proxy that discovers tools, injects them, executes tool calls, and loops up to `max_rounds`.
 
 #### Trust (`reference/oap_trust/`)
 

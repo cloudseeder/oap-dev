@@ -167,4 +167,4 @@ OAP is the DNS of capabilities — it resolves "I need X" to "here's where X liv
 
 ---
 
-*This document accompanies the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [robotics](ROBOTICS.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [robotics](ROBOTICS.md), [OpenClaw integration](OPENCLAW.md), and [Ollama tool bridge](OLLAMA.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

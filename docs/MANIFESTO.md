@@ -295,4 +295,4 @@ One file. One location. One page spec. Public infrastructure.
 
 ---
 
-*This document was written to accompany the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), and [OpenClaw integration](OPENCLAW.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document was written to accompany the [Open Application Protocol specification](SPEC.md), [reference architecture](ARCHITECTURE.md), [trust overlay](TRUST.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), [OpenClaw integration](OPENCLAW.md), and [Ollama tool bridge](OLLAMA.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
