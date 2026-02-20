@@ -147,9 +147,10 @@ After both Vercel and Mac Mini are running:
 
 ### Service health checks (from Mac Mini):
 ```bash
-curl http://localhost:8300/health    # Discovery
-curl http://localhost:8301/health    # Trust
-curl http://localhost:8302/health    # Dashboard
+SECRET=$(cat ~/.oap-secret)
+curl -H "X-Backend-Token: $SECRET" http://localhost:8300/health    # Discovery
+curl -H "X-Backend-Token: $SECRET" http://localhost:8301/health    # Trust
+curl -H "X-Backend-Token: $SECRET" http://localhost:8302/health    # Dashboard
 ```
 
 ### Service ports:

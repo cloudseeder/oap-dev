@@ -155,7 +155,7 @@ echo ""
 # --- Wait for services to start ---
 
 echo "Waiting for services to start..."
-sleep 3
+sleep 5
 
 # --- Health checks ---
 
@@ -167,7 +167,7 @@ for port_name in "8300:Discovery:discovery" "8301:Trust:trust" "8302:Dashboard:d
     port="$(echo "$port_name" | cut -d: -f1)"
     name="$(echo "$port_name" | cut -d: -f2)"
     label="$(echo "$port_name" | cut -d: -f3)"
-    if curl -sf "http://localhost:$port/health" >/dev/null 2>&1; then
+    if curl -sf -H "X-Backend-Token: $SECRET" "http://localhost:$port/health" >/dev/null 2>&1; then
         echo "  $name (:$port) — OK"
         OK=$((OK + 1))
     else
