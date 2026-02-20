@@ -96,21 +96,33 @@ ingress:
   - service: http_status:404
 ```
 
-Run tunnel:
+Create DNS routes (CNAME records pointing to the tunnel):
+```bash
+cloudflared tunnel route dns oap api.oap.dev
+cloudflared tunnel route dns oap trust.oap.dev
+cloudflared tunnel route dns oap dashboard.oap.dev
+```
+
+Start the tunnel:
 ```bash
 cloudflared tunnel run oap
 ```
 
-Or create a launchd service for it (`com.oap.tunnel.plist`).
+Verify from another terminal:
+```bash
+curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://api.oap.dev/health
+curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://trust.oap.dev/health
+curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://dashboard.oap.dev/health
+```
 
-### 5. DNS
+### 5. Persist Tunnel as launchd Service
 
-Add CNAME records in Cloudflare DNS:
-- `api.oap.dev` → `YOUR_TUNNEL_ID.cfargotunnel.com`
-- `trust.oap.dev` → `YOUR_TUNNEL_ID.cfargotunnel.com`
-- `dashboard.oap.dev` → `YOUR_TUNNEL_ID.cfargotunnel.com`
+So the tunnel survives reboots, install it as a launchd service:
+```bash
+cloudflared service install
+```
 
-Or use a single hostname and route by path in the Next.js proxy layer.
+Or create a plist manually (`com.oap.tunnel.plist`) if you need custom options.
 
 ---
 
@@ -122,10 +134,12 @@ Set in Vercel dashboard (Settings → Environment Variables):
 
 | Variable | Value |
 |----------|-------|
-| `BACKEND_URL` | Cloudflare Tunnel hostname (e.g., `https://api.oap.dev`) |
+| `BACKEND_URL` | `https://api.oap.dev` (Discovery API) |
+| `TRUST_URL` | `https://trust.oap.dev` (Trust API) |
+| `DASHBOARD_URL` | `https://dashboard.oap.dev` (Dashboard API) |
 | `BACKEND_SECRET` | Same token as `OAP_BACKEND_SECRET` on Mac Mini |
 
-The Next.js proxy (`lib/proxy.ts`) attaches the secret as the `X-Backend-Token` header on every proxied request.
+The Next.js proxy (`lib/proxy.ts`) attaches the secret as the `X-Backend-Token` header on every proxied request. In local dev, only `BACKEND_URL` is needed — the proxy falls back to port-swapping for trust (:8301) and dashboard (:8302).
 
 ### 2. Deploy
 
