@@ -7,6 +7,9 @@ import pytest
 
 from oap_discovery.discovery import DiscoveryEngine, _extract_json, _strip_think_blocks
 from oap_discovery.models import InvokeSpec
+from oap_discovery.ollama_client import OllamaMetrics
+
+_STUB_METRICS = OllamaMetrics(model="test", prompt_tokens=10, generated_tokens=5, total_ms=100, eval_ms=50)
 
 
 class TestStripThinkBlocks:
@@ -82,8 +85,8 @@ class TestDiscoveryEngine:
     @pytest.fixture
     def mock_ollama(self):
         ollama = AsyncMock()
-        ollama.embed_query.return_value = [0.1] * 768
-        ollama.generate.return_value = '{"pick": "grep", "reason": "grep is for text search"}'
+        ollama.embed_query.return_value = ([0.1] * 768, _STUB_METRICS)
+        ollama.generate.return_value = ('{"pick": "grep", "reason": "grep is for text search"}', _STUB_METRICS)
         return ollama
 
     @pytest.mark.asyncio
@@ -120,7 +123,8 @@ class TestDiscoveryEngine:
     @pytest.mark.asyncio
     async def test_discover_with_think_blocks(self, mock_store, mock_ollama):
         mock_ollama.generate.return_value = (
-            '<think>Let me analyze...</think>{"pick": "grep", "reason": "best for regex search"}'
+            '<think>Let me analyze...</think>{"pick": "grep", "reason": "best for regex search"}',
+            _STUB_METRICS,
         )
         engine = DiscoveryEngine(mock_store, mock_ollama)
         result = await engine.discover("regex search")
@@ -130,7 +134,7 @@ class TestDiscoveryEngine:
 
     @pytest.mark.asyncio
     async def test_discover_llm_says_no_match(self, mock_store, mock_ollama):
-        mock_ollama.generate.return_value = '{"pick": null, "reason": "none of these match"}'
+        mock_ollama.generate.return_value = ('{"pick": null, "reason": "none of these match"}', _STUB_METRICS)
         engine = DiscoveryEngine(mock_store, mock_ollama)
         result = await engine.discover("bake a cake")
 

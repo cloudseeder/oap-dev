@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from .db import ManifestStore
-from .models import DiscoverMatch, DiscoverResponse, InvokeSpec
+from .models import DiscoverMatch, DiscoverMeta, DiscoverResponse, InvokeSpec, LLMCallMeta
 from .ollama_client import OllamaClient
 
 log = logging.getLogger("oap.discovery")
@@ -76,14 +77,27 @@ class DiscoveryEngine:
         2. Vector search for top_k candidates
         3. LLM picks the best match and explains why
         """
+        t0 = time.monotonic()
+
         # Step 1: Embed task
-        query_embedding = await self._ollama.embed_query(task)
+        query_embedding, embed_metrics = await self._ollama.embed_query(task)
 
         # Step 2: Vector search
         hits = self._store.search(query_embedding, n_results=top_k)
 
         if not hits:
-            return DiscoverResponse(task=task)
+            total_ms = (time.monotonic() - t0) * 1000
+            meta = DiscoverMeta(
+                embed=LLMCallMeta(
+                    model=embed_metrics.model,
+                    prompt_tokens=embed_metrics.prompt_tokens,
+                    generated_tokens=0,
+                    total_ms=embed_metrics.total_ms,
+                ),
+                search_results=0,
+                total_ms=total_ms,
+            )
+            return DiscoverResponse(task=task, meta=meta)
 
         # Build candidate list for response
         candidates = [
@@ -99,9 +113,18 @@ class DiscoveryEngine:
 
         # Step 3: LLM reasoning
         prompt = f"Task: {task}\n\nCandidates:\n{_format_candidates(hits)}\n"
+        reason_meta: LLMCallMeta | None = None
 
         try:
-            raw = await self._ollama.generate(prompt, system=SYSTEM_PROMPT)
+            raw, reason_metrics = await self._ollama.generate(prompt, system=SYSTEM_PROMPT)
+            reason_meta = LLMCallMeta(
+                model=reason_metrics.model,
+                prompt_tokens=reason_metrics.prompt_tokens,
+                generated_tokens=reason_metrics.generated_tokens,
+                total_ms=reason_metrics.total_ms,
+                prompt=prompt,
+                system_prompt=SYSTEM_PROMPT,
+            )
             parsed = _extract_json(raw)
 
             if parsed and parsed.get("pick"):
@@ -117,16 +140,57 @@ class DiscoveryEngine:
                         break
 
                 if match:
-                    return DiscoverResponse(task=task, match=match, candidates=candidates)
+                    total_ms = (time.monotonic() - t0) * 1000
+                    meta = DiscoverMeta(
+                        embed=LLMCallMeta(
+                            model=embed_metrics.model,
+                            prompt_tokens=embed_metrics.prompt_tokens,
+                            generated_tokens=0,
+                            total_ms=embed_metrics.total_ms,
+                        ),
+                        reason=reason_meta,
+                        search_results=len(hits),
+                        total_ms=total_ms,
+                    )
+                    log.info(
+                        "discover task=%r embed=%dms llm=%dms tokens_in=%d tokens_out=%d",
+                        task, embed_metrics.total_ms, reason_metrics.total_ms,
+                        reason_metrics.prompt_tokens, reason_metrics.generated_tokens,
+                    )
+                    return DiscoverResponse(task=task, match=match, candidates=candidates, meta=meta)
 
             # LLM said no match
             if parsed and parsed.get("pick") is None:
-                return DiscoverResponse(task=task, candidates=candidates)
+                total_ms = (time.monotonic() - t0) * 1000
+                meta = DiscoverMeta(
+                    embed=LLMCallMeta(
+                        model=embed_metrics.model,
+                        prompt_tokens=embed_metrics.prompt_tokens,
+                        generated_tokens=0,
+                        total_ms=embed_metrics.total_ms,
+                    ),
+                    reason=reason_meta,
+                    search_results=len(hits),
+                    total_ms=total_ms,
+                )
+                return DiscoverResponse(task=task, candidates=candidates, meta=meta)
 
         except Exception:
             log.exception("LLM reasoning failed, falling back to top vector match")
 
         # Fallback: return top vector result
+        total_ms = (time.monotonic() - t0) * 1000
+        meta = DiscoverMeta(
+            embed=LLMCallMeta(
+                model=embed_metrics.model,
+                prompt_tokens=embed_metrics.prompt_tokens,
+                generated_tokens=0,
+                total_ms=embed_metrics.total_ms,
+            ),
+            reason=reason_meta,
+            search_results=len(hits),
+            total_ms=total_ms,
+        )
         fallback = candidates[0]
         fallback.reason = "Selected by vector similarity (LLM reasoning unavailable)"
-        return DiscoverResponse(task=task, match=fallback, candidates=candidates)
+        return DiscoverResponse(task=task, match=fallback, candidates=candidates, meta=meta)

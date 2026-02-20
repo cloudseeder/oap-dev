@@ -9,6 +9,7 @@ import pytest
 from oap_discovery.config import ExperienceConfig
 from oap_discovery.discovery import DiscoveryEngine
 from oap_discovery.experience_engine import ExperienceEngine
+from oap_discovery.ollama_client import OllamaMetrics
 from oap_discovery.experience_models import (
     CorrectionEntry,
     DiscoveryRecord,
@@ -240,8 +241,10 @@ class TestExperienceEngine:
 
     @pytest.fixture
     def mock_ollama(self):
+        _m = OllamaMetrics(model="test", prompt_tokens=10, generated_tokens=5, total_ms=100, eval_ms=50)
         ollama = AsyncMock()
-        ollama.embed_query.return_value = [0.1] * 768
+        ollama.embed_query.return_value = ([0.1] * 768, _m)
+        ollama._stub_metrics = _m  # available to tests for building side_effects
         return ollama
 
     @pytest.fixture
@@ -259,10 +262,11 @@ class TestExperienceEngine:
     ):
         """Empty cache → full discovery → new experience record created."""
         # Fingerprint response, then discovery pick, then param extraction
+        _m = mock_ollama._stub_metrics
         mock_ollama.generate.side_effect = [
-            '{"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}',
-            '{"pick": "grep", "reason": "grep is for text search"}',
-            '{"parameters": {"pattern": {"source": "intent.text", "transform": null, "value": "test"}}}',
+            ('{"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}', _m),
+            ('{"pick": "grep", "reason": "grep is for text search"}', _m),
+            ('{"parameters": {"pattern": {"source": "intent.text", "transform": null, "value": "test"}}}', _m),
         ]
 
         discovery = DiscoveryEngine(mock_store, mock_ollama)
@@ -293,8 +297,9 @@ class TestExperienceEngine:
         experience_store.save(record)
 
         # Only fingerprint call needed (no discovery, no param extraction)
+        _m = mock_ollama._stub_metrics
         mock_ollama.generate.side_effect = [
-            '{"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}',
+            ('{"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}', _m),
         ]
 
         discovery = DiscoveryEngine(mock_store, mock_ollama)
@@ -330,10 +335,11 @@ class TestExperienceEngine:
         experience_store.save(record)
 
         # Fingerprint, discovery pick, param extraction
+        _m = mock_ollama._stub_metrics
         mock_ollama.generate.side_effect = [
-            '{"fingerprint": "search.text.regex_match", "domain": "developer.tools"}',
-            '{"pick": "grep", "reason": "grep handles regex"}',
-            '{"parameters": {"pattern": {"source": "intent.text", "transform": null, "value": ".*test.*"}}}',
+            ('{"fingerprint": "search.text.regex_match", "domain": "developer.tools"}', _m),
+            ('{"pick": "grep", "reason": "grep handles regex"}', _m),
+            ('{"parameters": {"pattern": {"source": "intent.text", "transform": null, "value": ".*test.*"}}}', _m),
         ]
 
         discovery = DiscoveryEngine(mock_store, mock_ollama)
@@ -361,10 +367,11 @@ class TestExperienceEngine:
         experience_store.save(record)
 
         # Fingerprint + discovery + params
+        _m = mock_ollama._stub_metrics
         mock_ollama.generate.side_effect = [
-            '{"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}',
-            '{"pick": "grep", "reason": "best match"}',
-            '{"parameters": {}}',
+            ('{"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}', _m),
+            ('{"pick": "grep", "reason": "best match"}', _m),
+            ('{"parameters": {}}', _m),
         ]
 
         discovery = DiscoveryEngine(mock_store, mock_ollama)
@@ -383,10 +390,11 @@ class TestExperienceEngine:
         self, experience_store, config, mock_store, mock_ollama, mock_invocation_result
     ):
         """If fingerprinting fails, fall back to path 3."""
+        _m = mock_ollama._stub_metrics
         mock_ollama.generate.side_effect = [
-            "invalid json response",  # fingerprint fails
-            '{"pick": "grep", "reason": "best match"}',  # discovery works
-            '{"parameters": {}}',  # param extraction
+            ("invalid json response", _m),  # fingerprint fails
+            ('{"pick": "grep", "reason": "best match"}', _m),  # discovery works
+            ('{"parameters": {}}', _m),  # param extraction
         ]
 
         discovery = DiscoveryEngine(mock_store, mock_ollama)
@@ -407,8 +415,9 @@ class TestExperienceEngine:
         empty_store = MagicMock()
         empty_store.search.return_value = []
 
+        _m = mock_ollama._stub_metrics
         mock_ollama.generate.side_effect = [
-            '{"fingerprint": "query.unknown.thing", "domain": "unknown"}',
+            ('{"fingerprint": "query.unknown.thing", "domain": "unknown"}', _m),
         ]
 
         discovery = DiscoveryEngine(empty_store, mock_ollama)
@@ -431,10 +440,11 @@ class TestExperienceEngine:
         experience_store.save(record)
 
         # Fingerprint + discovery + params (path 2 via similar match)
+        _m = mock_ollama._stub_metrics
         mock_ollama.generate.side_effect = [
-            '{"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}',
-            '{"pick": "grep", "reason": "best match"}',
-            '{"parameters": {}}',
+            ('{"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}', _m),
+            ('{"pick": "grep", "reason": "best match"}', _m),
+            ('{"parameters": {}}', _m),
         ]
 
         discovery = DiscoveryEngine(mock_store, mock_ollama)

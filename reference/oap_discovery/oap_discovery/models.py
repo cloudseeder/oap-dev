@@ -79,10 +79,27 @@ class DiscoverMatch(BaseModel):
     reason: str | None = Field(default=None, description="LLM reasoning for why this matches")
 
 
+class LLMCallMeta(BaseModel):
+    model: str
+    prompt_tokens: int
+    generated_tokens: int
+    total_ms: float
+    prompt: str | None = None
+    system_prompt: str | None = None
+
+
+class DiscoverMeta(BaseModel):
+    embed: LLMCallMeta
+    reason: LLMCallMeta | None = None
+    search_results: int
+    total_ms: float
+
+
 class DiscoverResponse(BaseModel):
     task: str
     match: DiscoverMatch | None = None
     candidates: list[DiscoverMatch] = []
+    meta: DiscoverMeta | None = None
 
 
 class ManifestEntry(BaseModel):

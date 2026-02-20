@@ -142,7 +142,7 @@ class ExperienceEngine:
     ) -> tuple[str | None, str | None]:
         """Use qwen3 to classify the task into a fingerprint and domain."""
         try:
-            raw = await self._ollama.generate(task, system=FINGERPRINT_SYSTEM)
+            raw, _ = await self._ollama.generate(task, system=FINGERPRINT_SYSTEM)
             parsed = _extract_json(raw)
             if parsed and "fingerprint" in parsed and "domain" in parsed:
                 return parsed["fingerprint"], parsed["domain"]
@@ -161,7 +161,7 @@ class ExperienceEngine:
             f"  URL: {invoke_spec.url}\n"
         )
         try:
-            raw = await self._ollama.generate(prompt, system=PARAM_EXTRACT_SYSTEM)
+            raw, _ = await self._ollama.generate(prompt, system=PARAM_EXTRACT_SYSTEM)
             parsed = _extract_json(raw)
             if parsed and "parameters" in parsed:
                 mappings = {}

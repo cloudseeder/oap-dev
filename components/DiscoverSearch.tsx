@@ -12,10 +12,27 @@ interface DiscoverMatch {
   reason?: string
 }
 
+interface LLMCallMeta {
+  model: string
+  prompt_tokens: number
+  generated_tokens: number
+  total_ms: number
+  prompt?: string | null
+  system_prompt?: string | null
+}
+
+interface DiscoverMeta {
+  embed: LLMCallMeta
+  reason?: LLMCallMeta | null
+  search_results: number
+  total_ms: number
+}
+
 interface DiscoverResponse {
   task: string
   match: DiscoverMatch | null
   candidates: DiscoverMatch[]
+  meta?: DiscoverMeta | null
 }
 
 export default function DiscoverSearch() {
@@ -96,7 +113,7 @@ export default function DiscoverSearch() {
 
       {/* Results */}
       {result && (
-        <DiscoverResult match={result.match} candidates={result.candidates} task={result.task} />
+        <DiscoverResult match={result.match} candidates={result.candidates} task={result.task} meta={result.meta} />
       )}
 
       {/* Service Health */}
