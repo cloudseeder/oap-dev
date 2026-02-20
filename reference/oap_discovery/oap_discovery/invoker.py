@@ -119,19 +119,38 @@ async def _invoke_http(
     params: dict[str, Any] | None,
     timeout: int,
 ) -> InvocationResult:
-    """Execute an HTTP invocation."""
+    """Execute an HTTP invocation.
+
+    Follows redirects manually (up to 5 hops) so that auth headers
+    are preserved across cross-host redirects like example.com →
+    www.example.com.  httpx's built-in follow_redirects strips
+    sensitive headers on host changes, which breaks API key auth.
+    """
+    max_redirects = 5
     start = time.monotonic()
     try:
         headers = dict(invoke_spec.headers or {})
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            if method == "GET":
-                resp = await client.get(
-                    invoke_spec.url, params=params, headers=headers
-                )
-            else:
-                resp = await client.request(
-                    method, invoke_spec.url, json=params, headers=headers
-                )
+        url = invoke_spec.url
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+            for _ in range(max_redirects + 1):
+                if method == "GET":
+                    resp = await client.get(url, params=params, headers=headers)
+                    # Only send params on the first request
+                    params = None
+                else:
+                    resp = await client.request(
+                        method, url, json=params, headers=headers
+                    )
+
+                if resp.is_redirect:
+                    location = resp.headers.get("location")
+                    if not location:
+                        break
+                    url = str(resp.url.join(location))
+                    _validate_http_url(url)
+                    log.debug("Following redirect to %s", url)
+                    continue
+                break
 
         latency = int((time.monotonic() - start) * 1000)
         body = resp.text[:MAX_RESPONSE_BYTES]
