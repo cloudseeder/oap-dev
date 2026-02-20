@@ -33,3 +33,12 @@ experience:
   max_records: 10000
   invoke_timeout: 30
   stdio_timeout: 10
+
+# Ollama tool bridge — exposes /v1/tools and /v1/chat endpoints
+# that convert OAP manifests to Ollama tool definitions.
+tool_bridge:
+  enabled: true
+  default_top_k: 3
+  max_rounds: 3
+  http_timeout: 30
+  stdio_timeout: 10

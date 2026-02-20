@@ -14,6 +14,7 @@ from .config import Config, load_config
 from .db import ManifestStore
 from .discovery import DiscoveryEngine
 from . import experience_api
+from . import tool_api
 from .experience_engine import ExperienceEngine
 from .experience_store import ExperienceStore
 from .models import (
@@ -73,6 +74,14 @@ async def lifespan(app: FastAPI):
 
     log.info("API started — %d manifests indexed", _store.count())
 
+    # Ollama tool bridge
+    if _cfg.tool_bridge.enabled:
+        tool_api._engine = _engine
+        tool_api._store = _store
+        tool_api._ollama_cfg = _cfg.ollama
+        tool_api._tool_bridge_cfg = _cfg.tool_bridge
+        log.info("Tool bridge enabled — /v1/tools and /v1/chat active")
+
     # Procedural memory (experimental)
     if _cfg.experience.enabled:
         _experience_store = ExperienceStore(_cfg.experience.db_path)
@@ -99,6 +108,7 @@ app = FastAPI(
     dependencies=[Depends(verify_backend_token)],
 )
 app.include_router(experience_api.router)
+app.include_router(tool_api.router)
 
 
 @app.post("/v1/discover", response_model=DiscoverResponse)

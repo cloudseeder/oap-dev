@@ -51,12 +51,22 @@ class ExperienceConfig:
 
 
 @dataclass
+class ToolBridgeConfig:
+    enabled: bool = True
+    default_top_k: int = 3
+    max_rounds: int = 3
+    http_timeout: int = 30
+    stdio_timeout: int = 10
+
+
+@dataclass
 class Config:
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
     chromadb: ChromaDBConfig = field(default_factory=ChromaDBConfig)
     crawler: CrawlerConfig = field(default_factory=CrawlerConfig)
     api: APIConfig = field(default_factory=APIConfig)
     experience: ExperienceConfig = field(default_factory=ExperienceConfig)
+    tool_bridge: ToolBridgeConfig = field(default_factory=ToolBridgeConfig)
 
 
 def _apply_env_overrides(cfg: Config) -> None:
@@ -67,6 +77,7 @@ def _apply_env_overrides(cfg: Config) -> None:
         "crawler": cfg.crawler,
         "api": cfg.api,
         "experience": cfg.experience,
+        "tool_bridge": cfg.tool_bridge,
     }
     for section_name, section_obj in section_map.items():
         for f in fields(section_obj):
@@ -105,6 +116,8 @@ def load_config(path: str | Path | None = None) -> Config:
                 cfg.api = _build_section(APIConfig, raw["api"])
             if "experience" in raw:
                 cfg.experience = _build_section(ExperienceConfig, raw["experience"])
+            if "tool_bridge" in raw:
+                cfg.tool_bridge = _build_section(ToolBridgeConfig, raw["tool_bridge"])
 
     _apply_env_overrides(cfg)
     return cfg
