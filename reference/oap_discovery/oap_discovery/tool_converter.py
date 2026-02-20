@@ -27,19 +27,47 @@ def manifest_to_tool_name(name: str) -> str:
 def _extract_json_fields(description: str) -> list[str]:
     """Extract quoted field names from an input description.
 
-    Looks for patterns like 'field_name' (single-quoted words) in descriptions
-    of JSON inputs to build parameter schemas.
+    Looks for patterns like 'field_name' or "field_name" (single- or
+    double-quoted words) in descriptions of JSON inputs to build
+    parameter schemas.
     """
-    return re.findall(r"'([a-z][a-z0-9_]*)'", description)
+    # Single-quoted fields
+    fields = re.findall(r"'([a-z][a-z0-9_]*)'", description)
+    if fields:
+        return fields
+    # Double-quoted fields
+    return re.findall(r'"([a-z][a-z0-9_]*)"', description)
+
+
+def _build_parameters_from_spec(parameters: dict[str, Any]) -> ToolParameters:
+    """Build ToolParameters from a manifest's structured input.parameters.
+
+    When a manifest provides explicit parameter definitions in
+    input.parameters, use them directly instead of heuristic extraction.
+    """
+    props: dict[str, ToolParameter] = {}
+    required: list[str] = []
+
+    for name, schema in parameters.items():
+        param_type = schema.get("type", "string")
+        param_desc = schema.get("description", "")
+        # Map non-string types to string for Ollama tool schema simplicity
+        props[name] = ToolParameter(type=param_type, description=param_desc)
+        if schema.get("required", True):
+            required.append(name)
+
+    return ToolParameters(properties=props, required=required)
 
 
 def _build_parameters(manifest: dict[str, Any]) -> ToolParameters:
     """Build JSON Schema parameters from a manifest's input spec.
 
-    Heuristics:
-    - text/plain -> {input: string}
-    - application/json with quoted fields in description -> extracted fields
-    - application/json without parseable fields -> {data: string}
+    Priority:
+    1. Structured input.parameters (explicit schema from manifest)
+    2. Quoted field names extracted from description (heuristic)
+    3. Generic fallback ({data: string} for JSON, {input: string} for text)
+
+    Special cases:
     - stdio method -> {args: string}
     - No input spec -> {input: string}
     """
@@ -68,6 +96,11 @@ def _build_parameters(manifest: dict[str, Any]) -> ToolParameters:
 
     fmt = input_spec.get("format", "")
     desc = input_spec.get("description", "")
+
+    # Use structured parameters if the manifest provides them
+    structured_params = input_spec.get("parameters")
+    if structured_params and isinstance(structured_params, dict):
+        return _build_parameters_from_spec(structured_params)
 
     if "json" in fmt:
         # Try to extract field names from the description
