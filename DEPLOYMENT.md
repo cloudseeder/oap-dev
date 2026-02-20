@@ -117,14 +117,66 @@ curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://dashboard.oap.dev/health
 
 ### 5. Persist Tunnel as launchd Service
 
-Install as root so the tunnel runs at boot (not just when logged in):
+Copy config and credentials to the system-level directory:
+```bash
+sudo mkdir -p /etc/cloudflared
+sudo cp ~/.cloudflared/config.yml /etc/cloudflared/config.yml
+sudo cp ~/.cloudflared/*.json /etc/cloudflared/
+```
+
+Install the service (as root so it runs at boot):
 ```bash
 sudo cloudflared service install
 ```
 
-This copies your `~/.cloudflared/config.yml` and credentials to `/etc/cloudflared/` and creates a system-level launchd plist. Verify it's running:
+**Note:** The default plist created by `cloudflared service install` may be missing the `tunnel run` arguments. If the tunnel doesn't start (check `/Library/Logs/com.cloudflare.cloudflared.err.log`), fix the plist:
+```bash
+sudo launchctl bootout system/com.cloudflare.cloudflared
+```
+
+Then replace `/Library/LaunchDaemons/com.cloudflare.cloudflared.plist` with:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>com.cloudflare.cloudflared</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>/opt/homebrew/bin/cloudflared</string>
+            <string>tunnel</string>
+            <string>--config</string>
+            <string>/etc/cloudflared/config.yml</string>
+            <string>run</string>
+            <string>oap</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>StandardOutPath</key>
+        <string>/Library/Logs/com.cloudflare.cloudflared.out.log</string>
+        <key>StandardErrorPath</key>
+        <string>/Library/Logs/com.cloudflare.cloudflared.err.log</string>
+        <key>KeepAlive</key>
+        <dict>
+            <key>SuccessfulExit</key>
+            <false/>
+        </dict>
+        <key>ThrottleInterval</key>
+        <integer>5</integer>
+    </dict>
+</plist>
+```
+
+Then load it:
+```bash
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.cloudflare.cloudflared.plist
+```
+
+Verify:
 ```bash
 sudo launchctl list | grep cloudflare
+curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://api.oap.dev/health
 ```
 
 ---

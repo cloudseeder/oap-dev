@@ -36,6 +36,9 @@ export default function Header() {
             <Link href="/discover" className="text-gray-600 hover:text-gray-900">
               Discover
             </Link>
+            <Link href="/trust" className="text-gray-600 hover:text-gray-900">
+              Trust
+            </Link>
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
               Dashboard
             </Link>
