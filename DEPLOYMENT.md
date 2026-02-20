@@ -6,23 +6,41 @@ Saved from session planning (Phase 7). Use this when setting up the new Mac Mini
 
 ## Mac Mini Setup
 
-### 1. Install Ollama
+### 0. Prerequisites (Homebrew + Python 3.12)
+
+macOS ships with Python 3.9 but OAP requires 3.11+. Install Homebrew first, then Python 3.12.
 
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
+# Install Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Follow the instructions Homebrew prints to add it to your PATH, then:
+brew install python@3.12
+```
+
+### 1. Install Ollama
+
+Download from [ollama.com/download](https://ollama.com/download) (macOS version). Drag to Applications and open it — runs as a menu bar app.
+
+```bash
 ollama pull qwen3:4b
 ollama pull nomic-embed-text
+
+# Verify
+curl http://localhost:11434/api/tags
 ```
 
 ### 2. Python Services
 
 ```bash
-python3 -m venv ~/.oap-venv
+# Use brew --prefix to find the correct path
+$(brew --prefix python@3.12)/bin/python3.12 -m venv ~/.oap-venv
 source ~/.oap-venv/bin/activate
+pip install --upgrade pip setuptools
 
 # Clone the repo
-git clone https://github.com/cloudseeder/oap-dev.git
-cd oap-dev
+git clone https://github.com/cloudseeder/oap-dev.git ~/oap-dev
+cd ~/oap-dev
 
 # Install all three services
 pip install -e reference/oap_discovery
