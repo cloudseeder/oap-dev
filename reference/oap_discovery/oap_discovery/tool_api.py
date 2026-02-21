@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -104,6 +105,8 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     max_rounds = min(req.oap_max_rounds, bridge_cfg.max_rounds)
     tools: list[Tool] = []
     registry: dict[str, ToolRegistryEntry] = {}
+    debug = req.oap_debug
+    debug_rounds: list[dict[str, Any]] = []
 
     # Extract last user message (used for discovery and summarization)
     last_user_msg = ""
@@ -161,6 +164,16 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             # No tool calls or auto-execute disabled — return as-is
             ollama_resp["oap_tools_injected"] = len(registry)
             ollama_resp["oap_round"] = round_num + 1
+            if debug:
+                debug_rounds.append({
+                    "round": round_num + 1,
+                    "ollama_response": resp_message,
+                    "tool_executions": [],
+                })
+                ollama_resp["oap_debug"] = {
+                    "tools_discovered": list(registry.keys()),
+                    "rounds": debug_rounds,
+                }
             return ollama_resp
 
         # Execute tool calls
@@ -169,11 +182,14 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
         # Append assistant message with tool calls
         messages.append(resp_message)
 
+        debug_executions: list[dict[str, Any]] = []
+
         for tc in tool_calls:
             fn = tc.get("function", {})
             tool_name = fn.get("name", "")
             tool_args = fn.get("arguments", {})
 
+            t0 = time.monotonic()
             result_str = await execute_tool_call(
                 tool_name,
                 tool_args,
@@ -187,6 +203,15 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 chunk_size=bridge_cfg.chunk_size,
                 max_output=bridge_cfg.max_tool_result,
             )
+            duration_ms = int((time.monotonic() - t0) * 1000)
+
+            if debug:
+                debug_executions.append({
+                    "tool": tool_name,
+                    "arguments": tool_args,
+                    "result": result_str,
+                    "duration_ms": duration_ms,
+                })
 
             # Truncate large tool results to fit model context
             if len(result_str) > bridge_cfg.max_tool_result:
@@ -198,7 +223,19 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 "content": result_str,
             })
 
+        if debug:
+            debug_rounds.append({
+                "round": round_num + 1,
+                "ollama_response": resp_message,
+                "tool_executions": debug_executions,
+            })
+
     # Max rounds exceeded — return last response
     ollama_resp["oap_tools_injected"] = len(registry)
     ollama_resp["oap_round"] = max_rounds
+    if debug:
+        ollama_resp["oap_debug"] = {
+            "tools_discovered": list(registry.keys()),
+            "rounds": debug_rounds,
+        }
     return ollama_resp
