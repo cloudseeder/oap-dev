@@ -117,3 +117,49 @@ class OllamaClient:
             metrics.model, metrics.prompt_tokens, metrics.generated_tokens, metrics.total_ms,
         )
         return data["response"], metrics
+
+    async def chat(
+        self,
+        user_msg: str,
+        *,
+        system: str | None = None,
+        timeout: float = 60.0,
+    ) -> tuple[str, OllamaMetrics]:
+        """Chat using the configured generation model.
+
+        Uses /api/chat so the model's chat template is applied.
+        This is required for features like qwen3's /no_think directive.
+        """
+        messages: list[dict] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": user_msg})
+
+        payload: dict = {
+            "model": self._cfg.generate_model,
+            "messages": messages,
+            "stream": False,
+            "options": {"num_ctx": self._cfg.num_ctx},
+            "keep_alive": self._cfg.keep_alive,
+        }
+
+        resp = await self._client.post(
+            f"{self._base}/api/chat",
+            json=payload,
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        metrics = OllamaMetrics(
+            model=data.get("model", self._cfg.generate_model),
+            prompt_tokens=data.get("prompt_eval_count", 0),
+            generated_tokens=data.get("eval_count", 0),
+            total_ms=data.get("total_duration", 0) / 1_000_000,
+            eval_ms=data.get("eval_duration", 0) / 1_000_000,
+        )
+        content = data.get("message", {}).get("content", "")
+        log.info(
+            "ollama chat model=%s tokens_in=%d tokens_out=%d ms=%.0f",
+            metrics.model, metrics.prompt_tokens, metrics.generated_tokens, metrics.total_ms,
+        )
+        return content, metrics
