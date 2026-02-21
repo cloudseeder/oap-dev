@@ -3,13 +3,95 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from .invoker import invoke_manifest
 from .models import InvokeSpec
+from .ollama_client import OllamaClient
 from .tool_models import ToolRegistryEntry
 
 log = logging.getLogger("oap.tool_executor")
+
+_SUMMARIZE_SYSTEM = (
+    "Summarize this data concisely. "
+    "Preserve key facts, names, dates, numbers, and decisions. No preamble."
+)
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _split_chunks(text: str, chunk_size: int) -> list[str]:
+    """Split text into chunks on newline boundaries.
+
+    Walks forward chunk_size chars then backtracks to the last newline
+    to avoid breaking records mid-line.
+    """
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        if end >= len(text):
+            chunks.append(text[start:])
+            break
+        # Backtrack to last newline within the chunk
+        nl = text.rfind("\n", start, end)
+        if nl > start:
+            end = nl + 1  # include the newline
+        chunks.append(text[start:end])
+        start = end
+    return chunks
+
+
+async def summarize_result(
+    result: str,
+    task: str,
+    ollama: OllamaClient,
+    chunk_size: int,
+    max_output: int,
+) -> str:
+    """Map-reduce summarization of a large tool result.
+
+    Map: split into chunks, summarize each via ollama.generate().
+    Reduce: concatenate summaries; if still over max_output, do one final pass.
+    Falls back to truncation if any Ollama call fails.
+    """
+    chunks = _split_chunks(result, chunk_size)
+    log.info(
+        "Summarizing %d chars in %d chunks (task: %.60s...)",
+        len(result), len(chunks), task,
+    )
+
+    summaries: list[str] = []
+    for i, chunk in enumerate(chunks):
+        prompt = f"User task: {task}\n\nData:\n{chunk}"
+        try:
+            raw, metrics = await ollama.generate(prompt, system=_SUMMARIZE_SYSTEM)
+            # Strip <think> blocks from qwen3 responses
+            summary = _THINK_RE.sub("", raw).strip()
+            summaries.append(summary)
+            log.debug(
+                "Chunk %d/%d: %d chars -> %d chars (%.0fms)",
+                i + 1, len(chunks), len(chunk), len(summary), metrics.total_ms,
+            )
+        except Exception:
+            log.warning("Summarize chunk %d failed, falling back to truncation", i + 1, exc_info=True)
+            return result[:max_output] + "\n...(truncated)"
+
+    combined = "\n\n".join(summaries)
+
+    # Reduce pass if combined summaries still exceed max_output
+    if len(combined) > max_output:
+        log.info("Reduce pass: %d chars -> target %d", len(combined), max_output)
+        prompt = f"User task: {task}\n\nData:\n{combined}"
+        try:
+            raw, _ = await ollama.generate(prompt, system=_SUMMARIZE_SYSTEM)
+            combined = _THINK_RE.sub("", raw).strip()
+        except Exception:
+            log.warning("Reduce pass failed, truncating", exc_info=True)
+            combined = combined[:max_output] + "\n...(truncated)"
+
+    return combined
 
 
 def _inject_credentials(
@@ -52,9 +134,14 @@ async def execute_tool_call(
     arguments: dict[str, Any],
     registry: dict[str, ToolRegistryEntry],
     *,
+    task: str = "",
     http_timeout: int = 30,
     stdio_timeout: int = 10,
     credentials: dict[str, dict] | None = None,
+    ollama: OllamaClient | None = None,
+    summarize_threshold: int = 4000,
+    chunk_size: int = 4000,
+    max_output: int = 8000,
 ) -> str:
     """Execute a tool call by looking up its manifest and invoking it.
 
@@ -109,7 +196,10 @@ async def execute_tool_call(
             )
 
         if result.status == "success":
-            return result.response_body or "Success (no output)"
+            body = result.response_body or "Success (no output)"
+            if len(body) > summarize_threshold and ollama is not None and task:
+                body = await summarize_result(body, task, ollama, chunk_size, max_output)
+            return body
         else:
             return f"Error: {result.error or 'Unknown error'}"
 

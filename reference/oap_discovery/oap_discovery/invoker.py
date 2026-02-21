@@ -19,7 +19,7 @@ from .models import InvokeSpec
 log = logging.getLogger("oap.invoker")
 
 # Truncate response bodies stored in experience records
-MAX_RESPONSE_BYTES = 10 * 1024  # 10 KB
+MAX_RESPONSE_BYTES = 100 * 1024  # 100 KB
 
 # Stdio commands must resolve to one of these directories
 ALLOWED_STDIO_PREFIXES = ("/usr/bin/", "/usr/local/bin/", "/bin/", "/opt/homebrew/bin/")

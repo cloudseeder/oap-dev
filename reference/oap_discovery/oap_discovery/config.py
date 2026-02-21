@@ -60,6 +60,8 @@ class ToolBridgeConfig:
     stdio_timeout: int = 10
     credentials_file: str = "credentials.yaml"
     max_tool_result: int = 8000
+    summarize_threshold: int = 4000
+    chunk_size: int = 4000
 
 
 @dataclass

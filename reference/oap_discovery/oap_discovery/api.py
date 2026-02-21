@@ -80,6 +80,7 @@ async def lifespan(app: FastAPI):
         tool_api._store = _store
         tool_api._ollama_cfg = _cfg.ollama
         tool_api._tool_bridge_cfg = _cfg.tool_bridge
+        tool_api._ollama = _ollama
         log.info("Tool bridge enabled — /v1/tools and /v1/chat active")
 
     # Procedural memory (experimental)

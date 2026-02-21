@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from .config import OllamaConfig, ToolBridgeConfig, load_credentials
 from .discovery import DiscoveryEngine
 from .db import ManifestStore
+from .ollama_client import OllamaClient
 from .tool_converter import manifest_to_tool
 from .tool_executor import execute_tool_call
 from .tool_models import (
@@ -31,6 +32,7 @@ _engine: DiscoveryEngine | None = None
 _store: ManifestStore | None = None
 _ollama_cfg: OllamaConfig | None = None
 _tool_bridge_cfg: ToolBridgeConfig | None = None
+_ollama: OllamaClient | None = None
 
 
 def _require_enabled() -> tuple[DiscoveryEngine, ManifestStore, OllamaConfig, ToolBridgeConfig]:
@@ -103,18 +105,18 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     tools: list[Tool] = []
     registry: dict[str, ToolRegistryEntry] = {}
 
-    # Discover tools from the last user message
-    if req.oap_discover:
-        last_user_msg = ""
-        for msg in reversed(req.messages):
-            if msg.role == "user" and msg.content:
-                last_user_msg = msg.content
-                break
+    # Extract last user message (used for discovery and summarization)
+    last_user_msg = ""
+    for msg in reversed(req.messages):
+        if msg.role == "user" and msg.content:
+            last_user_msg = msg.content
+            break
 
-        if last_user_msg:
-            tools, registry = await _discover_tools(
-                engine, store, last_user_msg, req.oap_top_k,
-            )
+    # Discover tools from the last user message
+    if req.oap_discover and last_user_msg:
+        tools, registry = await _discover_tools(
+            engine, store, last_user_msg, req.oap_top_k,
+        )
 
     # Merge client-provided tools
     if req.tools:
@@ -176,9 +178,14 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 tool_name,
                 tool_args,
                 registry,
+                task=last_user_msg,
                 http_timeout=bridge_cfg.http_timeout,
                 stdio_timeout=bridge_cfg.stdio_timeout,
                 credentials=load_credentials(bridge_cfg.credentials_file),
+                ollama=_ollama,
+                summarize_threshold=bridge_cfg.summarize_threshold,
+                chunk_size=bridge_cfg.chunk_size,
+                max_output=bridge_cfg.max_tool_result,
             )
 
             # Truncate large tool results to fit model context
