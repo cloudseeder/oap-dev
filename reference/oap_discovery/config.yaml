@@ -27,7 +27,7 @@ api:
 # Procedural memory (experimental) — see docs/OAP-PROCEDURAL-MEMORY-PAPER.md
 # Set enabled: true to activate experience-augmented discovery.
 experience:
-  enabled: false
+  enabled: true
   db_path: "./oap_experience.db"
   confidence_threshold: 0.85
   max_records: 10000
@@ -38,7 +38,7 @@ experience:
 # that convert OAP manifests to Ollama tool definitions.
 tool_bridge:
   enabled: true
-  default_top_k: 3
+  default_top_k: 5
   max_rounds: 3
   ollama_timeout: 120    # seconds for Ollama /api/chat calls (model inference)
   http_timeout: 30       # seconds for HTTP tool execution against manifest endpoints

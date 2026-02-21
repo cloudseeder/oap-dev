@@ -180,7 +180,15 @@ async def execute_tool_call(
             # stdin: piped to the process's standard input
             stdin_str = arguments.get("stdin", "") or ""
             # args: command-line flags and arguments
+            # Fallback: small LLMs often invent descriptive key names
+            # (e.g. "keyword" instead of "args"), so if "args" is missing
+            # we grab the first non-stdin string value.
             args_str = arguments.get("args", "")
+            if not args_str:
+                for key, val in arguments.items():
+                    if key != "stdin" and isinstance(val, str) and val:
+                        args_str = val
+                        break
             params = {}
             if args_str:
                 for i, part in enumerate(args_str.split()):

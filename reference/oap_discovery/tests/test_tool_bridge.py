@@ -317,6 +317,25 @@ class TestToolExecution:
         assert params == {}
 
     @pytest.mark.asyncio
+    async def test_stdio_args_fallback(self, stdio_registry):
+        """When LLM sends wrong key name (e.g. 'keyword' instead of 'args'),
+        the executor falls back to the first non-stdin string value."""
+        mock_result = InvocationResult(
+            status="success", response_body="apropos output", latency_ms=10
+        )
+        with patch("oap_discovery.tool_executor.invoke_manifest", return_value=mock_result) as mock_invoke:
+            result = await execute_tool_call(
+                "oap_grep",
+                {"keyword": "image"},  # LLM invented 'keyword' instead of 'args'
+                stdio_registry,
+            )
+        assert result == "apropos output"
+        call_kwargs = mock_invoke.call_args
+        params = call_kwargs[1].get("params") or call_kwargs[0][1]
+        assert "arg0" in params
+        assert params["arg0"] == "image"
+
+    @pytest.mark.asyncio
     async def test_json_execution(self, json_registry):
         mock_result = InvocationResult(
             status="success", response_body='{"id": "rem_1"}', latency_ms=50
