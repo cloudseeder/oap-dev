@@ -6,7 +6,7 @@ ollama:
   base_url: "http://localhost:11434"
   embed_model: "nomic-embed-text"
   generate_model: "qwen3:4b"
-  timeout: 30
+  timeout: 120
 
 chromadb:
   path: "./oap_data"

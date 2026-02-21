@@ -76,7 +76,13 @@ class OllamaClient:
         """Embed a document for storage (uses search_document prefix)."""
         return await self.embed(text, prefix="search_document: ")
 
-    async def generate(self, prompt: str, *, system: str | None = None) -> tuple[str, OllamaMetrics]:
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        timeout: float = 60.0,
+    ) -> tuple[str, OllamaMetrics]:
         """Generate text using the configured generation model.
 
         Returns the raw response text (may contain <think> blocks from qwen3)
@@ -93,7 +99,7 @@ class OllamaClient:
         resp = await self._client.post(
             f"{self._base}/api/generate",
             json=payload,
-            timeout=60.0,
+            timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json()
