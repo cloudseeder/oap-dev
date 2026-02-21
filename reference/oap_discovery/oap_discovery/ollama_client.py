@@ -54,6 +54,7 @@ class OllamaClient:
             json={
                 "model": self._cfg.embed_model,
                 "input": f"{prefix}{text}",
+                "keep_alive": self._cfg.keep_alive,
             },
         )
         resp.raise_for_status()
@@ -93,6 +94,7 @@ class OllamaClient:
             "prompt": prompt,
             "stream": False,
             "options": {"num_ctx": self._cfg.num_ctx},
+            "keep_alive": self._cfg.keep_alive,
         }
         if system:
             payload["system"] = system
