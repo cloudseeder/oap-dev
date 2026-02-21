@@ -82,6 +82,7 @@ All three services live under `reference/` and install as editable Python packag
 Crawls domains for manifests, embeds descriptions into ChromaDB via Ollama (nomic-embed-text), and serves a discovery API that matches natural language tasks to manifests using vector search + small LLM (qwen3:4b).
 
 - Entry points: `oap-api` (:8300), `oap-crawl`, `oap`
+- CLI auth: `oap --token <secret>` or `OAP_BACKEND_TOKEN` env var. Required when `OAP_BACKEND_SECRET` is set on the server. All subcommands pass the token as `X-Backend-Token` header.
 - Config: `config.yaml` (Ollama URL, ChromaDB path, crawler settings)
 - Key files: `models.py` (Pydantic types), `validate.py` (validation), `crawler.py`, `db.py` (ChromaDB), `discovery.py` (vector search + LLM), `api.py` (FastAPI), `ollama_client.py` (Ollama API client), `config.py` (configuration), `cli.py` (CLI entry point)
 - Procedural memory (experimental, opt-in via `experience.enabled: true`): `experience_models.py` (experience record types), `experience_store.py` (SQLite persistence), `experience_engine.py` (three-path routing: cache hit / partial match / full discovery), `experience_api.py` (FastAPI router at `/v1/experience/`), `invoker.py` (HTTP + stdio manifest execution)
