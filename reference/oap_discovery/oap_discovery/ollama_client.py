@@ -128,11 +128,12 @@ class OllamaClient:
         *,
         system: str | None = None,
         timeout: float = 60.0,
+        think: bool | None = None,
     ) -> tuple[str, OllamaMetrics]:
         """Chat using the configured generation model.
 
         Uses /api/chat so the model's chat template is applied.
-        This is required for features like qwen3's /no_think directive.
+        Set think=False to disable qwen3's thinking chain.
         """
         messages: list[dict] = []
         if system:
@@ -146,6 +147,8 @@ class OllamaClient:
             "options": {"num_ctx": self._cfg.num_ctx},
             "keep_alive": self._cfg.keep_alive,
         }
+        if think is not None:
+            payload["think"] = think
 
         resp = await self._client.post(
             f"{self._base}/api/chat",
