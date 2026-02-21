@@ -4,14 +4,24 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from .config import OllamaConfig, ToolBridgeConfig, load_credentials
+from .config import ExperienceConfig, OllamaConfig, ToolBridgeConfig, load_credentials
 from .discovery import DiscoveryEngine
 from .db import ManifestStore
+from .experience_engine import ExperienceEngine, _make_experience_id
+from .experience_models import (
+    DiscoveryRecord,
+    ExperienceRecord,
+    IntentRecord,
+    InvocationRecord,
+    OutcomeRecord,
+)
+from .experience_store import ExperienceStore
 from .ollama_client import OllamaClient
 from .tool_converter import manifest_to_tool
 from .tool_executor import execute_tool_call
@@ -34,6 +44,11 @@ _store: ManifestStore | None = None
 _ollama_cfg: OllamaConfig | None = None
 _tool_bridge_cfg: ToolBridgeConfig | None = None
 _ollama: OllamaClient | None = None
+
+# Experience cache — set by api.py when both experience and tool bridge are enabled
+_experience_engine: ExperienceEngine | None = None
+_experience_store: ExperienceStore | None = None
+_experience_cfg: ExperienceConfig | None = None
 
 
 def _require_enabled() -> tuple[DiscoveryEngine, ManifestStore, OllamaConfig, ToolBridgeConfig]:
@@ -81,6 +96,98 @@ async def _discover_tools(
     return tools, registry
 
 
+async def _check_experience_cache(
+    task: str,
+    store: ManifestStore,
+) -> tuple[list[Tool], dict[str, ToolRegistryEntry], str | None, str | None, str | None]:
+    """Check experience cache for a matching tool.
+
+    Returns (tools, registry, fingerprint, intent_domain, experience_id).
+    On cache miss, tools/registry are empty but fingerprint is still returned
+    for caching after successful execution.
+    """
+    if _experience_engine is None or _experience_store is None or _experience_cfg is None:
+        return [], {}, None, None, None
+
+    fingerprint, intent_domain = await _experience_engine.fingerprint_intent(task)
+    if fingerprint is None:
+        return [], {}, None, None, None
+
+    matches = _experience_store.find_by_fingerprint(fingerprint)
+    threshold = _experience_cfg.confidence_threshold
+
+    for exp in matches:
+        if exp.discovery.confidence >= threshold and exp.outcome.status == "success":
+            # Cache hit — load manifest and convert to tool
+            manifest = store.get_manifest(exp.discovery.manifest_matched)
+            if manifest is None:
+                continue
+            entry = manifest_to_tool(exp.discovery.manifest_matched, manifest)
+            log.info(
+                "Experience cache hit: %s → %s (confidence=%.2f, used %d times)",
+                fingerprint,
+                exp.discovery.manifest_matched,
+                exp.discovery.confidence,
+                exp.use_count,
+            )
+            _experience_store.touch(exp.id)
+            return [entry.tool], {entry.tool.function.name: entry}, fingerprint, intent_domain, exp.id
+
+    # Cache miss — return fingerprint for later caching
+    log.info("Experience cache miss for fingerprint=%s", fingerprint)
+    return [], {}, fingerprint, intent_domain, None
+
+
+async def _save_experience(
+    fingerprint: str,
+    intent_domain: str,
+    task: str,
+    registry: dict[str, ToolRegistryEntry],
+) -> None:
+    """Save a new experience record after successful tool execution."""
+    if _experience_store is None:
+        return
+
+    # Pick the first tool in the registry as the matched manifest
+    if not registry:
+        return
+
+    first_entry = next(iter(registry.values()))
+    manifest_domain = first_entry.domain
+    invoke_data = first_entry.manifest.get("invoke", {})
+
+    now = datetime.now(timezone.utc)
+    exp_id = _make_experience_id(fingerprint, manifest_domain)
+
+    record = ExperienceRecord(
+        id=exp_id,
+        timestamp=now,
+        use_count=1,
+        last_used=now,
+        intent=IntentRecord(
+            raw=task,
+            fingerprint=fingerprint,
+            domain=intent_domain,
+        ),
+        discovery=DiscoveryRecord(
+            query_used=task,
+            manifest_matched=manifest_domain,
+            manifest_version=None,
+            confidence=0.9,
+        ),
+        invocation=InvocationRecord(
+            endpoint=invoke_data.get("url", ""),
+            method=invoke_data.get("method", ""),
+        ),
+        outcome=OutcomeRecord(
+            status="success",
+            response_summary="Cached from tool bridge chat",
+        ),
+    )
+    _experience_store.save(record)
+    log.info("Cached experience: %s → %s (fingerprint=%s)", exp_id, manifest_domain, fingerprint)
+
+
 @router.post("/v1/tools", response_model=ToolsResponse)
 async def discover_tools(req: ToolsRequest) -> ToolsResponse:
     """Discover manifests for a task and return as Ollama tool definitions."""
@@ -108,6 +215,12 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     debug = req.oap_debug
     debug_rounds: list[dict[str, Any]] = []
 
+    # Experience cache tracking
+    exp_fingerprint: str | None = None
+    exp_intent_domain: str | None = None
+    exp_cache_hit = False
+    tools_executed = False
+
     # Extract last user message (used for discovery and summarization)
     last_user_msg = ""
     for msg in reversed(req.messages):
@@ -117,9 +230,17 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
 
     # Discover tools from the last user message
     if req.oap_discover and last_user_msg:
-        tools, registry = await _discover_tools(
-            engine, store, last_user_msg, req.oap_top_k,
+        # Try experience cache first
+        cached_tools, cached_registry, exp_fingerprint, exp_intent_domain, exp_id = (
+            await _check_experience_cache(last_user_msg, store)
         )
+        if cached_tools:
+            tools, registry = cached_tools, cached_registry
+            exp_cache_hit = True
+        else:
+            tools, registry = await _discover_tools(
+                engine, store, last_user_msg, req.oap_top_k,
+            )
 
     # Merge client-provided tools
     if req.tools:
@@ -165,6 +286,10 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             # No tool calls or auto-execute disabled — return as-is
             ollama_resp["oap_tools_injected"] = len(registry)
             ollama_resp["oap_round"] = round_num + 1
+            if exp_cache_hit:
+                ollama_resp["oap_experience_cache"] = "hit"
+            elif exp_fingerprint:
+                ollama_resp["oap_experience_cache"] = "miss"
             if debug:
                 debug_rounds.append({
                     "round": round_num + 1,
@@ -173,11 +298,19 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 })
                 ollama_resp["oap_debug"] = {
                     "tools_discovered": list(registry.keys()),
+                    "experience_cache": "hit" if exp_cache_hit else "miss" if exp_fingerprint else "disabled",
+                    "experience_fingerprint": exp_fingerprint,
                     "rounds": debug_rounds,
                 }
+            # Cache new experience on successful tool execution
+            if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+                await _save_experience(
+                    exp_fingerprint, exp_intent_domain, last_user_msg, registry,
+                )
             return ollama_resp
 
         # Execute tool calls
+        tools_executed = True
         log.info("Round %d: executing %d tool call(s)", round_num + 1, len(tool_calls))
 
         # Append assistant message with tool calls
@@ -234,9 +367,20 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     # Max rounds exceeded — return last response
     ollama_resp["oap_tools_injected"] = len(registry)
     ollama_resp["oap_round"] = max_rounds
+    if exp_cache_hit:
+        ollama_resp["oap_experience_cache"] = "hit"
+    elif exp_fingerprint:
+        ollama_resp["oap_experience_cache"] = "miss"
     if debug:
         ollama_resp["oap_debug"] = {
             "tools_discovered": list(registry.keys()),
+            "experience_cache": "hit" if exp_cache_hit else "miss" if exp_fingerprint else "disabled",
+            "experience_fingerprint": exp_fingerprint,
             "rounds": debug_rounds,
         }
+    # Cache new experience on successful tool execution
+    if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+        await _save_experience(
+            exp_fingerprint, exp_intent_domain, last_user_msg, registry,
+        )
     return ollama_resp

@@ -92,7 +92,7 @@ class ExperienceEngine:
         threshold = request.confidence_threshold
 
         # Step 1: Fingerprint the intent
-        fingerprint, intent_domain = await self._fingerprint_intent(request.task)
+        fingerprint, intent_domain = await self.fingerprint_intent(request.task)
 
         if fingerprint is None:
             # Fingerprinting failed — go straight to path 3
@@ -137,7 +137,7 @@ class ExperienceEngine:
         log.info("No experience match for fingerprint=%s", fingerprint)
         return await self._path3_full_discovery(request, fingerprint, intent_domain)
 
-    async def _fingerprint_intent(
+    async def fingerprint_intent(
         self, task: str
     ) -> tuple[str | None, str | None]:
         """Use qwen3 to classify the task into a fingerprint and domain."""

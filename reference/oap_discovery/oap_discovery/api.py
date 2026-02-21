@@ -125,6 +125,12 @@ async def lifespan(app: FastAPI):
             "Procedural memory enabled — %d experience records",
             _experience_store.count(),
         )
+        # Wire experience cache into tool bridge chat flow
+        if _cfg.tool_bridge.enabled:
+            tool_api._experience_engine = exp_engine
+            tool_api._experience_store = _experience_store
+            tool_api._experience_cfg = _cfg.experience
+            log.info("Experience cache wired into tool bridge")
 
     yield
 
