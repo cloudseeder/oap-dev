@@ -55,7 +55,7 @@ class ToolsRequest(BaseModel):
     """Request to discover tools for a task."""
 
     task: str = Field(description="Natural language task description", min_length=1, max_length=2000)
-    top_k: int = Field(default=3, ge=1, le=20, description="Number of tools to return")
+    top_k: int = Field(default=5, ge=1, le=20, description="Number of tools to return")
 
 
 class ToolsResponse(BaseModel):
@@ -86,7 +86,7 @@ class ChatRequest(BaseModel):
 
     # OAP extensions
     oap_discover: bool = Field(default=True, description="Enable OAP tool discovery")
-    oap_top_k: int = Field(default=3, ge=1, le=20, description="Number of tools to discover")
+    oap_top_k: int = Field(default=5, ge=1, le=20, description="Number of tools to discover")
     oap_auto_execute: bool = Field(default=True, description="Auto-execute tool calls")
     oap_max_rounds: int = Field(default=3, ge=1, le=10, description="Max tool call rounds")
     oap_debug: bool = Field(default=False, description="Include debug trace in response")
