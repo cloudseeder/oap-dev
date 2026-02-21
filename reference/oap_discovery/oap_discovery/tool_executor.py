@@ -177,7 +177,9 @@ async def execute_tool_call(
 
     try:
         if method == "STDIO":
-            # Split args string into positional parameters
+            # stdin: piped to the process's standard input
+            stdin_str = arguments.get("stdin", "") or ""
+            # args: command-line flags and arguments
             args_str = arguments.get("args", "")
             params = {}
             if args_str:
@@ -186,6 +188,7 @@ async def execute_tool_call(
             result = await invoke_manifest(
                 invoke_spec,
                 params=params,
+                stdin_text=stdin_str if stdin_str else None,
                 stdio_timeout=stdio_timeout,
             )
         elif "json" in (manifest.get("input", {}) or {}).get("format", ""):

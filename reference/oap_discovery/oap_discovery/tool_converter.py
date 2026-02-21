@@ -105,12 +105,21 @@ def _build_parameters(manifest: dict[str, Any]) -> ToolParameters:
     method = invoke.get("method", "").upper()
     input_spec = manifest.get("input")
 
-    # stdio commands get an args parameter
+    # stdio commands get stdin (piped input) and args (flags/arguments)
     if method == "STDIO":
-        desc = input_spec["description"] if input_spec else "Command arguments"
+        input_desc = input_spec["description"] if input_spec else ""
         return ToolParameters(
-            properties={"args": ToolParameter(type="string", description=desc)},
-            required=["args"],
+            properties={
+                "stdin": ToolParameter(
+                    type="string",
+                    description=input_desc or "Data to provide on standard input",
+                ),
+                "args": ToolParameter(
+                    type="string",
+                    description="Command-line flags and arguments (e.g. '-w', '-l')",
+                ),
+            },
+            required=[],
         )
 
     if input_spec is None:

@@ -78,9 +78,10 @@ class TestBuildParameters:
             "input": {"format": "text/plain", "description": "Text and a search pattern"},
         }
         params = _build_parameters(manifest)
+        assert "stdin" in params.properties
         assert "args" in params.properties
-        assert params.required == ["args"]
-        assert params.properties["args"].description == "Text and a search pattern"
+        assert params.required == []
+        assert params.properties["stdin"].description == "Text and a search pattern"
 
     def test_text_plain_input(self):
         manifest = {
@@ -137,8 +138,9 @@ class TestBuildParameters:
             "invoke": {"method": "stdio", "url": "at"},
         }
         params = _build_parameters(manifest)
+        assert "stdin" in params.properties
         assert "args" in params.properties
-        assert params.properties["args"].description == "Command arguments"
+        assert params.properties["stdin"].description == "Data to provide on standard input"
 
 
 # --- Full manifest-to-tool conversion ---
@@ -149,6 +151,7 @@ class TestManifestToTool:
         entry = manifest_to_tool("grep", grep_manifest)
         assert entry.domain == "grep"
         assert entry.tool.function.name == "oap_grep"
+        assert "stdin" in entry.tool.function.parameters.properties
         assert "args" in entry.tool.function.parameters.properties
         assert entry.tool.type == "function"
 
@@ -247,14 +250,45 @@ class TestToolExecution:
         )
         with patch("oap_discovery.tool_executor.invoke_manifest", return_value=mock_result) as mock_invoke:
             result = await execute_tool_call(
-                "oap_grep", {"args": "pattern file.txt"}, stdio_registry
+                "oap_grep",
+                {"stdin": "hello world\nfoo bar", "args": "hello"},
+                stdio_registry,
             )
         assert result == "matched line"
         # Verify args were split into positional params
         call_kwargs = mock_invoke.call_args
         params = call_kwargs[1].get("params") or call_kwargs[0][1]
         assert "arg0" in params
-        assert params["arg0"] == "pattern"
+        assert params["arg0"] == "hello"
+        # Verify stdin was piped
+        assert call_kwargs[1]["stdin_text"] == "hello world\nfoo bar"
+
+    @pytest.mark.asyncio
+    async def test_stdio_stdin_only(self, stdio_registry):
+        """Stdio tool with stdin but no args (e.g. wc with no flags)."""
+        wc_manifest = {
+            "oap": "1.0",
+            "name": "wc",
+            "description": "Count lines, words, and characters.",
+            "input": {"format": "text/plain", "description": "Text to count"},
+            "invoke": {"method": "stdio", "url": "wc"},
+        }
+        entry = manifest_to_tool("wc", wc_manifest)
+        registry = {entry.tool.function.name: entry}
+
+        mock_result = InvocationResult(
+            status="success", response_body="      1       2      12\n", latency_ms=10
+        )
+        with patch("oap_discovery.tool_executor.invoke_manifest", return_value=mock_result) as mock_invoke:
+            result = await execute_tool_call(
+                "oap_wc", {"stdin": "hello world"}, registry
+            )
+        assert "2" in result
+        call_kwargs = mock_invoke.call_args
+        assert call_kwargs[1]["stdin_text"] == "hello world"
+        # No command-line args
+        params = call_kwargs[0][1] if len(call_kwargs[0]) > 1 else call_kwargs[1].get("params", {})
+        assert params == {}
 
     @pytest.mark.asyncio
     async def test_json_execution(self, json_registry):
@@ -393,7 +427,7 @@ class TestChatProxy:
                         {
                             "function": {
                                 "name": "oap_grep",
-                                "arguments": {"args": "TODO file.txt"},
+                                "arguments": {"stdin": "file contents here", "args": "TODO"},
                             }
                         }
                     ],
