@@ -1,0 +1,17 @@
+{
+  "oap": "1.0",
+  "name": "man",
+  "description": "Display the manual page for a Unix command. Returns the full documentation including synopsis, description, options, examples, and related commands. Use after discovering a command name (e.g. via apropos) to learn its exact usage, flags, and behavior. Use for reading documentation, understanding command-line options, or learning how to use an unfamiliar tool. Pair with apropos: first search for commands by keyword, then read the manual for the best match.",
+  "input": {
+    "format": "text/plain",
+    "description": "No standard input required. The first argument is the command name such as 'grep', 'curl', or 'ffmpeg'. Optional second argument is a section number like '3 printf' for the C library function."
+  },
+  "output": {
+    "format": "text/plain",
+    "description": "The formatted manual page text, including NAME, SYNOPSIS, DESCRIPTION, OPTIONS, EXAMPLES, and SEE ALSO sections."
+  },
+  "invoke": {
+    "method": "stdio",
+    "url": "man"
+  }
+}

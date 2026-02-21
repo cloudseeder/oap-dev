@@ -1,0 +1,17 @@
+{
+  "oap": "1.0",
+  "name": "apropos",
+  "description": "Search the manual page descriptions for commands matching a keyword. Returns a list of Unix commands whose name or short description matches the query, one per line, formatted as 'command(section) - description'. Use when you need to find a command or tool for a task but don't know its name. Equivalent to 'man -k'. Searches are case-insensitive. Use for discovering installed commands, finding alternatives to a known tool, or learning what tools are available for a category of tasks like networking, compression, image processing, or text formatting.",
+  "input": {
+    "format": "text/plain",
+    "description": "No standard input required. The first argument is the search keyword or regular expression."
+  },
+  "output": {
+    "format": "text/plain",
+    "description": "Matching commands, one per line, formatted as 'command(section) - short description'. Returns nothing if no commands match."
+  },
+  "invoke": {
+    "method": "stdio",
+    "url": "apropos"
+  }
+}
