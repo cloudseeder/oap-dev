@@ -1,0 +1,17 @@
+{
+  "oap": "1.0",
+  "name": "date",
+  "description": "Display the current date and time, or format a specific date. Without arguments, prints the current date and time. Use +FORMAT to specify output format (e.g., +%Y-%m-%d for ISO date, +%s for Unix timestamp, +%H:%M for time). Use -d STRING to parse and display a specific date instead of now. Use for getting the current time, converting between date formats, or computing relative dates.",
+  "input": {
+    "format": "text/plain",
+    "description": "Optional format string or date specification as command arguments. No standard input required."
+  },
+  "output": {
+    "format": "text/plain",
+    "description": "The formatted date and/or time string."
+  },
+  "invoke": {
+    "method": "stdio",
+    "url": "date"
+  }
+}

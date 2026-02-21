@@ -1,0 +1,17 @@
+{
+  "oap": "1.0",
+  "name": "bc",
+  "description": "Evaluate arbitrary-precision mathematical expressions. Reads expressions from standard input and computes the result. Supports addition (+), subtraction (-), multiplication (*), division (/), modulo (%), and exponentiation (^). Use scale=N to set decimal precision. Includes math library functions with -l flag: sine (s), cosine (c), natural log (l), exponential (e), arctangent (a), and square root (sqrt). Use for precise arithmetic, unit conversions, or any calculation that needs more than floating-point precision.",
+  "input": {
+    "format": "text/plain",
+    "description": "Mathematical expression(s) to evaluate, provided on standard input. One expression per line."
+  },
+  "output": {
+    "format": "text/plain",
+    "description": "The computed result of each expression, one per line."
+  },
+  "invoke": {
+    "method": "stdio",
+    "url": "bc"
+  }
+}

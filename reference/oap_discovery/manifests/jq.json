@@ -1,0 +1,17 @@
+{
+  "oap": "1.0",
+  "name": "jq",
+  "description": "Parse, filter, and transform JSON data using jq expressions. Reads JSON from standard input and applies a jq filter expression to extract fields, map arrays, compute values, or reshape the structure. Supports dot notation (.field), array indexing (.[0]), pipes (|), built-in functions (length, keys, select, map, sort_by), and object construction. Use for extracting values from API responses, transforming JSON documents, or querying structured data.",
+  "input": {
+    "format": "application/json",
+    "description": "JSON data on standard input. The first argument is the jq filter expression (e.g., '.items[] | .name')."
+  },
+  "output": {
+    "format": "application/json",
+    "description": "The result of applying the jq filter to the input. Output format depends on the filter — may be a single value, array, or object."
+  },
+  "invoke": {
+    "method": "stdio",
+    "url": "jq"
+  }
+}

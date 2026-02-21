@@ -1,0 +1,17 @@
+{
+  "oap": "1.0",
+  "name": "grep",
+  "description": "Search text for lines matching a regular expression pattern. Reads from standard input and prints each line that matches the given pattern. Supports extended regular expressions (-E), case-insensitive matching (-i), inverted matching (-v), line numbers (-n), and count-only mode (-c). Use for filtering log files, finding occurrences of a string, or extracting matching lines from any text stream.",
+  "input": {
+    "format": "text/plain",
+    "description": "Text to search through, provided on standard input. The first argument is the regular expression pattern."
+  },
+  "output": {
+    "format": "text/plain",
+    "description": "Lines from the input that match the pattern, one per line. Returns nothing if no lines match."
+  },
+  "invoke": {
+    "method": "stdio",
+    "url": "grep"
+  }
+}

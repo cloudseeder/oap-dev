@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -61,6 +62,34 @@ def _find_config() -> str:
     return "config.yaml"
 
 
+async def _index_local_manifests() -> None:
+    """Index manifest files from the manifests/ directory next to the package."""
+    from .validate import validate_manifest
+
+    manifests_dir = Path(__file__).parent.parent / "manifests"
+    if not manifests_dir.exists():
+        return
+
+    count = 0
+    for path in sorted(manifests_dir.glob("*.json")):
+        try:
+            data = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            log.error("Failed to read %s: %s", path, e)
+            continue
+        result = validate_manifest(data)
+        if not result.valid:
+            log.error("Invalid manifest %s: %s", path.name, result.errors)
+            continue
+        domain = f"local/{path.stem}"
+        embedding, _ = await _ollama.embed_document(data["description"])
+        _store.upsert_manifest(domain, data, embedding)
+        count += 1
+
+    if count:
+        log.info("Indexed %d local manifest(s)", count)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _store, _ollama, _engine, _cfg, _experience_store
@@ -71,6 +100,9 @@ async def lifespan(app: FastAPI):
     _store = ManifestStore(_cfg.chromadb)
     _ollama = OllamaClient(_cfg.ollama)
     _engine = DiscoveryEngine(_store, _ollama)
+
+    # Index local manifests (e.g. Unix tools in manifests/)
+    await _index_local_manifests()
 
     log.info("API started — %d manifests indexed", _store.count())
 
@@ -106,26 +138,30 @@ app = FastAPI(
     description="Reference discovery service for Open Application Protocol manifests",
     version="0.1.0",
     lifespan=lifespan,
-    dependencies=[Depends(verify_backend_token)],
 )
-app.include_router(experience_api.router)
+# Tool bridge routes — no auth (local-only, secured by Cloudflare Tunnel path filtering)
 app.include_router(tool_api.router)
+# Experience routes — auth required
+app.include_router(experience_api.router, dependencies=[Depends(verify_backend_token)])
 
 
-@app.post("/v1/discover", response_model=DiscoverResponse)
+_auth = [Depends(verify_backend_token)]
+
+
+@app.post("/v1/discover", response_model=DiscoverResponse, dependencies=_auth)
 async def discover(req: DiscoverRequest) -> DiscoverResponse:
     """Discover the best manifest for a natural language task."""
     return await _engine.discover(req.task, top_k=req.top_k)
 
 
-@app.get("/v1/manifests", response_model=list[ManifestEntry])
+@app.get("/v1/manifests", response_model=list[ManifestEntry], dependencies=_auth)
 async def list_manifests() -> list[ManifestEntry]:
     """List all indexed manifests."""
     entries = _store.list_domains()
     return [ManifestEntry(**e) for e in entries]
 
 
-@app.get("/v1/manifests/{domain}")
+@app.get("/v1/manifests/{domain}", dependencies=_auth)
 async def get_manifest(domain: str) -> dict:
     """Get a specific manifest by domain."""
     manifest = _store.get_manifest(domain)
@@ -134,7 +170,7 @@ async def get_manifest(domain: str) -> dict:
     return manifest
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health", response_model=HealthResponse, dependencies=_auth)
 async def health() -> HealthResponse:
     """Health check — Ollama status and index count."""
     ollama_ok = await _ollama.healthy()
