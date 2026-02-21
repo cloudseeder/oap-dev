@@ -87,14 +87,28 @@ tunnel: YOUR_TUNNEL_ID
 credentials-file: /Users/YOUR_USER/.cloudflared/YOUR_TUNNEL_ID.json
 
 ingress:
+  # Discovery API — only public-facing routes (auth via X-Backend-Token)
   - hostname: api.oap.dev
+    path: /v1/discover
     service: http://localhost:8300
+  - hostname: api.oap.dev
+    path: /v1/manifests
+    service: http://localhost:8300
+  - hostname: api.oap.dev
+    path: /health
+    service: http://localhost:8300
+  # All other api.oap.dev paths blocked (tool bridge, experience routes are local-only)
+  - hostname: api.oap.dev
+    service: http_status:403
+  # Trust & Dashboard — full access (services have their own auth)
   - hostname: trust.oap.dev
     service: http://localhost:8301
   - hostname: dashboard.oap.dev
     service: http://localhost:8302
   - service: http_status:404
 ```
+
+The `path` rules use prefix matching — `/v1/manifests` matches both `/v1/manifests` and `/v1/manifests/{domain}`. Routes not explicitly allowed (`/v1/chat`, `/v1/tools`, `/v1/experience/*`) return 403.
 
 Create DNS routes (CNAME records pointing to the tunnel):
 ```bash
@@ -110,9 +124,15 @@ cloudflared tunnel run oap
 
 Verify from another terminal:
 ```bash
+# Allowed routes
 curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://api.oap.dev/health
 curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://trust.oap.dev/health
 curl -H "X-Backend-Token: $(cat ~/.oap-secret)" https://dashboard.oap.dev/health
+
+# Blocked routes (should return 403)
+curl -s -o /dev/null -w "%{http_code}" https://api.oap.dev/v1/chat
+curl -s -o /dev/null -w "%{http_code}" https://api.oap.dev/v1/tools
+curl -s -o /dev/null -w "%{http_code}" https://api.oap.dev/v1/experience/stats
 ```
 
 ### 5. Persist Tunnel as launchd Service
