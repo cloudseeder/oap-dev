@@ -129,22 +129,28 @@ class OllamaClient:
         system: str | None = None,
         timeout: float = 60.0,
         think: bool | None = None,
+        temperature: float | None = None,
     ) -> tuple[str, OllamaMetrics]:
         """Chat using the configured generation model.
 
         Uses /api/chat so the model's chat template is applied.
         Set think=False to disable qwen3's thinking chain.
+        Set temperature=0 for deterministic output.
         """
         messages: list[dict] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user_msg})
 
+        options: dict = {"num_ctx": self._cfg.num_ctx}
+        if temperature is not None:
+            options["temperature"] = temperature
+
         payload: dict = {
             "model": self._cfg.generate_model,
             "messages": messages,
             "stream": False,
-            "options": {"num_ctx": self._cfg.num_ctx},
+            "options": options,
             "keep_alive": self._cfg.keep_alive,
         }
         if think is not None:

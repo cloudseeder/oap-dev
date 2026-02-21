@@ -36,12 +36,21 @@ intent fingerprint and domain classification.
 Respond with ONLY a JSON object (no markdown, no extra text):
 {"fingerprint": "verb.category.specific_action", "domain": "broad.narrow"}
 
+The fingerprint MUST be deterministic: the same task should always produce the same fingerprint. \
+Focus on the core action, not surface wording.
+
 Examples:
-- "Get zoning status for parcel 123" → {"fingerprint": "query.zoning.parcel_lookup", "domain": "civic.land_use"}
-- "Transcribe this meeting video" → {"fingerprint": "transform.media.transcription", "domain": "media.processing"}
 - "Search text files for regex" → {"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}
-- "Summarize this document" → {"fingerprint": "transform.text.summarization", "domain": "text.processing"}
-- "Convert JSON to CSV" → {"fingerprint": "transform.data.format_conversion", "domain": "developer.tools"}
+- "Find lines matching a pattern" → {"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}
+- "Count the words in this text" → {"fingerprint": "count.text.word_count", "domain": "text.processing"}
+- "How many lines in this file" → {"fingerprint": "count.text.line_count", "domain": "text.processing"}
+- "What is 2+2" → {"fingerprint": "compute.math.calculation", "domain": "math.arithmetic"}
+- "Calculate 15% tip on $80" → {"fingerprint": "compute.math.calculation", "domain": "math.arithmetic"}
+- "What time is it" → {"fingerprint": "query.system.date_time", "domain": "system.info"}
+- "Show today's date" → {"fingerprint": "query.system.date_time", "domain": "system.info"}
+- "Filter JSON with jq" → {"fingerprint": "transform.data.json_query", "domain": "developer.tools"}
+- "Find a command for disk usage" → {"fingerprint": "search.system.command_lookup", "domain": "system.tools"}
+- "Read the manual for grep" → {"fingerprint": "query.system.manual_page", "domain": "system.tools"}
 """
 
 PARAM_EXTRACT_SYSTEM = """\
@@ -143,7 +152,8 @@ class ExperienceEngine:
         """Use qwen3 to classify the task into a fingerprint and domain."""
         try:
             raw, _ = await self._ollama.chat(
-                task, system=FINGERPRINT_SYSTEM, timeout=120, think=False
+                task, system=FINGERPRINT_SYSTEM, timeout=120,
+                think=False, temperature=0,
             )
             parsed = _extract_json(raw)
             if parsed and "fingerprint" in parsed and "domain" in parsed:
