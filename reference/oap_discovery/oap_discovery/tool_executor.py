@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -62,21 +63,30 @@ async def summarize_result(
         len(result), len(chunks), task,
     )
 
-    summaries: list[str] = []
-    for i, chunk in enumerate(chunks):
+    async def _summarize_chunk(i: int, chunk: str) -> str | None:
+        """Summarize a single chunk. Returns None on failure."""
         prompt = f"User task: {task}\n\nData:\n{chunk}"
         try:
             raw, metrics = await ollama.generate(prompt, system=_SUMMARIZE_SYSTEM)
-            # Strip <think> blocks from qwen3 responses
             summary = _THINK_RE.sub("", raw).strip()
-            summaries.append(summary)
             log.debug(
                 "Chunk %d/%d: %d chars -> %d chars (%.0fms)",
                 i + 1, len(chunks), len(chunk), len(summary), metrics.total_ms,
             )
+            return summary
         except Exception:
-            log.warning("Summarize chunk %d failed, falling back to truncation", i + 1, exc_info=True)
-            return result[:max_output] + "\n...(truncated)"
+            log.warning("Summarize chunk %d failed", i + 1, exc_info=True)
+            return None
+
+    results = await asyncio.gather(*[
+        _summarize_chunk(i, chunk) for i, chunk in enumerate(chunks)
+    ])
+
+    if any(r is None for r in results):
+        log.warning("One or more chunks failed, falling back to truncation")
+        return result[:max_output] + "\n...(truncated)"
+
+    summaries: list[str] = list(results)  # type: ignore[arg-type]
 
     combined = "\n\n".join(summaries)
 
