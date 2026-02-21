@@ -15,13 +15,20 @@ def _api_url(ctx: click.Context) -> str:
     return ctx.obj.get("api_url", DEFAULT_API)
 
 
+def _auth_headers(ctx: click.Context) -> dict[str, str]:
+    token = ctx.obj.get("token")
+    return {"X-Backend-Token": token} if token else {}
+
+
 @click.group()
 @click.option("--api", "api_url", default=DEFAULT_API, envvar="OAP_API_URL", help="API base URL")
+@click.option("--token", envvar="OAP_BACKEND_TOKEN", default=None, help="Backend auth token")
 @click.pass_context
-def cli(ctx: click.Context, api_url: str) -> None:
+def cli(ctx: click.Context, api_url: str, token: str | None) -> None:
     """OAP Discovery CLI — find capabilities by describing what you need."""
     ctx.ensure_object(dict)
     ctx.obj["api_url"] = api_url.rstrip("/")
+    ctx.obj["token"] = token
 
 
 @cli.command()
@@ -39,6 +46,7 @@ def discover(ctx: click.Context, task: str, as_json: bool, top_k: int) -> None:
         resp = httpx.post(
             f"{base}/v1/discover",
             json={"task": task, "top_k": top_k},
+            headers=_auth_headers(ctx),
             timeout=60.0,
         )
         resp.raise_for_status()
@@ -83,7 +91,7 @@ def status(ctx: click.Context) -> None:
     """Check API and Ollama health."""
     base = _api_url(ctx)
     try:
-        resp = httpx.get(f"{base}/health", timeout=10.0)
+        resp = httpx.get(f"{base}/health", headers=_auth_headers(ctx), timeout=10.0)
         resp.raise_for_status()
     except httpx.ConnectError:
         click.echo(f"Error: Cannot connect to API at {base}", err=True)
@@ -101,7 +109,7 @@ def list_manifests(ctx: click.Context) -> None:
     """List all indexed manifests."""
     base = _api_url(ctx)
     try:
-        resp = httpx.get(f"{base}/v1/manifests", timeout=10.0)
+        resp = httpx.get(f"{base}/v1/manifests", headers=_auth_headers(ctx), timeout=10.0)
         resp.raise_for_status()
     except httpx.ConnectError:
         click.echo(f"Error: Cannot connect to API at {base}", err=True)
@@ -140,6 +148,7 @@ def experience_invoke(ctx: click.Context, task: str, as_json: bool, threshold: f
         resp = httpx.post(
             f"{base}/v1/experience/invoke",
             json={"task": task, "confidence_threshold": threshold, "top_k": top_k},
+            headers=_auth_headers(ctx),
             timeout=120.0,
         )
         resp.raise_for_status()
@@ -198,6 +207,7 @@ def experience_list(ctx: click.Context, page: int, limit: int, as_json: bool) ->
         resp = httpx.get(
             f"{base}/v1/experience/records",
             params={"page": page, "limit": limit},
+            headers=_auth_headers(ctx),
             timeout=10.0,
         )
         resp.raise_for_status()
@@ -241,7 +251,7 @@ def experience_show(ctx: click.Context, experience_id: str, as_json: bool) -> No
     """Show a specific experience record."""
     base = _api_url(ctx)
     try:
-        resp = httpx.get(f"{base}/v1/experience/records/{experience_id}", timeout=10.0)
+        resp = httpx.get(f"{base}/v1/experience/records/{experience_id}", headers=_auth_headers(ctx), timeout=10.0)
         resp.raise_for_status()
     except httpx.ConnectError:
         click.echo(f"Error: Cannot connect to API at {base}", err=True)
@@ -298,7 +308,7 @@ def experience_delete(ctx: click.Context, experience_id: str) -> None:
     """Delete an experience record."""
     base = _api_url(ctx)
     try:
-        resp = httpx.delete(f"{base}/v1/experience/records/{experience_id}", timeout=10.0)
+        resp = httpx.delete(f"{base}/v1/experience/records/{experience_id}", headers=_auth_headers(ctx), timeout=10.0)
         resp.raise_for_status()
     except httpx.ConnectError:
         click.echo(f"Error: Cannot connect to API at {base}", err=True)
@@ -317,7 +327,7 @@ def experience_stats(ctx: click.Context, as_json: bool) -> None:
     """Show experience cache statistics."""
     base = _api_url(ctx)
     try:
-        resp = httpx.get(f"{base}/v1/experience/stats", timeout=10.0)
+        resp = httpx.get(f"{base}/v1/experience/stats", headers=_auth_headers(ctx), timeout=10.0)
         resp.raise_for_status()
     except httpx.ConnectError:
         click.echo(f"Error: Cannot connect to API at {base}", err=True)
