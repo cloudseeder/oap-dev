@@ -104,6 +104,14 @@ async def lifespan(app: FastAPI):
     # Index local manifests (e.g. Unix tools in manifests/)
     await _index_local_manifests()
 
+    # Warm up the generation model so the first request doesn't hit a cold start
+    try:
+        log.info("Warming up %s...", _cfg.ollama.generate_model)
+        await _ollama.generate("hello", timeout=300)
+        log.info("Model %s loaded and ready", _cfg.ollama.generate_model)
+    except Exception:
+        log.warning("Model warmup failed — first request may be slow")
+
     log.info("API started — %d manifests indexed", _store.count())
 
     # Ollama tool bridge
