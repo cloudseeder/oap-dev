@@ -17,7 +17,7 @@ class OllamaConfig:
     generate_model: str = "qwen3:4b"
     timeout: int = 30
     num_ctx: int = 4096
-    keep_alive: str = "-1"
+    keep_alive: str = "-1m"
 
 
 @dataclass
