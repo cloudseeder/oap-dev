@@ -7,6 +7,7 @@ ollama:
   embed_model: "nomic-embed-text"
   generate_model: "qwen3:4b"
   timeout: 120
+  num_ctx: 4096              # context window tokens — keep at 4096 for <24GB VRAM
 
 chromadb:
   path: "./oap_data"

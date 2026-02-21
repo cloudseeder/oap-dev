@@ -92,6 +92,7 @@ class OllamaClient:
             "model": self._cfg.generate_model,
             "prompt": prompt,
             "stream": False,
+            "options": {"num_ctx": self._cfg.num_ctx},
         }
         if system:
             payload["system"] = system

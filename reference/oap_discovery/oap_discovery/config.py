@@ -16,6 +16,7 @@ class OllamaConfig:
     embed_model: str = "nomic-embed-text"
     generate_model: str = "qwen3:4b"
     timeout: int = 30
+    num_ctx: int = 4096
 
 
 @dataclass

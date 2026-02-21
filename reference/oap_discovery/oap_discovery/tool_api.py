@@ -133,6 +133,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             "model": req.model,
             "messages": messages,
             "stream": False,
+            "options": {"num_ctx": ollama_cfg.num_ctx},
         }
         if tools:
             ollama_payload["tools"] = [t.model_dump() for t in tools]
