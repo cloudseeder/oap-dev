@@ -58,41 +58,31 @@ async def summarize_result(
     Falls back to truncation if any Ollama call fails.
     """
     chunks = _split_chunks(result, chunk_size)
-    # Ollama serializes generation requests — all chunks queue up behind each
-    # other.  Scale the per-request timeout so the last chunk in the queue has
-    # enough time: 60s per chunk (each ~45s of inference + overhead).
-    per_request_timeout = 60.0 * len(chunks)
     log.info(
-        "Summarizing %d chars in %d chunks (timeout=%.0fs, task: %.60s...)",
-        len(result), len(chunks), per_request_timeout, task,
+        "Summarizing %d chars in %d chunks (task: %.60s...)",
+        len(result), len(chunks), task,
     )
 
-    async def _summarize_chunk(i: int, chunk: str) -> str | None:
-        """Summarize a single chunk. Returns None on failure."""
+    # Process chunks sequentially.  Ollama serializes generation requests
+    # internally, so parallel asyncio.gather provides no speed benefit — it
+    # only creates timeout problems as later requests queue behind earlier
+    # ones.  Sequential processing gives each chunk a clean 120s window.
+    summaries: list[str] = []
+    for i, chunk in enumerate(chunks):
         prompt = f"User task: {task}\n\nData:\n{chunk}"
         try:
             raw, metrics = await ollama.generate(
-                prompt, system=_SUMMARIZE_SYSTEM, timeout=per_request_timeout,
+                prompt, system=_SUMMARIZE_SYSTEM, timeout=120.0,
             )
             summary = _THINK_RE.sub("", raw).strip()
-            log.debug(
+            log.info(
                 "Chunk %d/%d: %d chars -> %d chars (%.0fms)",
                 i + 1, len(chunks), len(chunk), len(summary), metrics.total_ms,
             )
-            return summary
+            summaries.append(summary)
         except Exception:
-            log.warning("Summarize chunk %d failed", i + 1, exc_info=True)
-            return None
-
-    results = await asyncio.gather(*[
-        _summarize_chunk(i, chunk) for i, chunk in enumerate(chunks)
-    ])
-
-    if any(r is None for r in results):
-        log.warning("One or more chunks failed, falling back to truncation")
-        return result[:max_output] + "\n...(truncated)"
-
-    summaries: list[str] = list(results)  # type: ignore[arg-type]
+            log.warning("Summarize chunk %d/%d failed, falling back to truncation", i + 1, len(chunks), exc_info=True)
+            return result[:max_output] + "\n...(truncated)"
 
     combined = "\n\n".join(summaries)
 
@@ -102,7 +92,7 @@ async def summarize_result(
         prompt = f"User task: {task}\n\nData:\n{combined}"
         try:
             raw, _ = await ollama.generate(
-                prompt, system=_SUMMARIZE_SYSTEM, timeout=per_request_timeout,
+                prompt, system=_SUMMARIZE_SYSTEM, timeout=120.0,
             )
             combined = _THINK_RE.sub("", raw).strip()
         except Exception:
