@@ -143,16 +143,24 @@ async def _save_experience(
     intent_domain: str,
     task: str,
     registry: dict[str, ToolRegistryEntry],
+    tools_called: set[str],
 ) -> None:
     """Save a new experience record after successful tool execution."""
     if _experience_store is None:
         return
 
-    # Pick the first tool in the registry as the matched manifest
     if not registry:
         return
 
-    first_entry = next(iter(registry.values()))
+    # Prefer the tool the LLM actually called over arbitrary registry order
+    entry: ToolRegistryEntry | None = None
+    for name in tools_called:
+        if name in registry:
+            entry = registry[name]
+            break
+    if entry is None:
+        entry = next(iter(registry.values()))
+    first_entry = entry
     manifest_domain = first_entry.domain
     invoke_data = first_entry.manifest.get("invoke", {})
 
@@ -220,6 +228,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     exp_intent_domain: str | None = None
     exp_cache_hit = False
     tools_executed = False
+    tools_called: set[str] = set()
 
     # Extract last user message (used for discovery and summarization)
     last_user_msg = ""
@@ -306,7 +315,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             # Cache new experience on successful tool execution
             if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
                 await _save_experience(
-                    exp_fingerprint, exp_intent_domain, last_user_msg, registry,
+                    exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
                 )
             return ollama_resp
 
@@ -323,6 +332,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             fn = tc.get("function", {})
             tool_name = fn.get("name", "")
             tool_args = fn.get("arguments", {})
+            tools_called.add(tool_name)
 
             t0 = time.monotonic()
             result_str = await execute_tool_call(
@@ -382,6 +392,6 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     # Cache new experience on successful tool execution
     if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
         await _save_experience(
-            exp_fingerprint, exp_intent_domain, last_user_msg, registry,
+            exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
         )
     return ollama_resp
