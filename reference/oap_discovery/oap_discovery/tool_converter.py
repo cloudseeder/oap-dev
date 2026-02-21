@@ -89,6 +89,29 @@ def _build_parameters_from_spec(
     return ToolParameters(properties=props, required=required)
 
 
+def _split_stdio_description(description: str) -> tuple[str, str]:
+    """Split a manifest input description into stdin and args descriptions.
+
+    Sentences mentioning "argument" describe command-line arguments;
+    the rest describe standard input.  Returns (stdin_desc, args_desc)
+    with sensible fallbacks when one side is empty.
+    """
+    if not description:
+        return "Data to provide on standard input", "Command-line flags and arguments"
+
+    stdin_parts: list[str] = []
+    args_parts: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", description):
+        if "argument" in sentence.lower():
+            args_parts.append(sentence)
+        else:
+            stdin_parts.append(sentence)
+
+    stdin_desc = " ".join(stdin_parts) if stdin_parts else "Data to provide on standard input"
+    args_desc = " ".join(args_parts) if args_parts else "Command-line flags and arguments"
+    return stdin_desc, args_desc
+
+
 def _build_parameters(manifest: dict[str, Any]) -> ToolParameters:
     """Build JSON Schema parameters from a manifest's input spec.
 
@@ -107,17 +130,13 @@ def _build_parameters(manifest: dict[str, Any]) -> ToolParameters:
 
     # stdio commands get stdin (piped input) and args (flags/arguments)
     if method == "STDIO":
-        input_desc = input_spec["description"] if input_spec else ""
+        stdin_desc, args_desc = _split_stdio_description(
+            input_spec["description"] if input_spec else ""
+        )
         return ToolParameters(
             properties={
-                "stdin": ToolParameter(
-                    type="string",
-                    description=input_desc or "Data to provide on standard input",
-                ),
-                "args": ToolParameter(
-                    type="string",
-                    description="Command-line flags and arguments (e.g. '-w', '-l')",
-                ),
+                "stdin": ToolParameter(type="string", description=stdin_desc),
+                "args": ToolParameter(type="string", description=args_desc),
             },
             required=[],
         )

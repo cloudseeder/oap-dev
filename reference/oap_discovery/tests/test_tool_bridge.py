@@ -11,6 +11,7 @@ from oap_discovery.config import load_credentials
 from oap_discovery.tool_converter import (
     _build_parameters,
     _extract_json_fields,
+    _split_stdio_description,
     manifest_to_tool,
     manifest_to_tool_name,
 )
@@ -70,18 +71,43 @@ class TestExtractJsonFields:
 # --- Parameter schema generation ---
 
 
+class TestSplitStdioDescription:
+    def test_empty_description(self):
+        stdin, args = _split_stdio_description("")
+        assert stdin == "Data to provide on standard input"
+        assert args == "Command-line flags and arguments"
+
+    def test_stdin_only(self):
+        stdin, args = _split_stdio_description("Text to count, provided on standard input.")
+        assert stdin == "Text to count, provided on standard input."
+        assert args == "Command-line flags and arguments"
+
+    def test_splits_argument_sentences(self):
+        desc = "Text to search through, provided on standard input. The first argument is the regular expression pattern."
+        stdin, args = _split_stdio_description(desc)
+        assert stdin == "Text to search through, provided on standard input."
+        assert args == "The first argument is the regular expression pattern."
+
+    def test_args_only(self):
+        desc = "Optional format string or date specification as command arguments. No standard input required."
+        stdin, args = _split_stdio_description(desc)
+        assert stdin == "No standard input required."
+        assert args == "Optional format string or date specification as command arguments."
+
+
 class TestBuildParameters:
     def test_stdio_method(self):
         manifest = {
             "name": "grep",
             "invoke": {"method": "stdio", "url": "grep"},
-            "input": {"format": "text/plain", "description": "Text and a search pattern"},
+            "input": {"format": "text/plain", "description": "Text to search through, provided on standard input. The first argument is the regular expression pattern."},
         }
         params = _build_parameters(manifest)
         assert "stdin" in params.properties
         assert "args" in params.properties
         assert params.required == []
-        assert params.properties["stdin"].description == "Text and a search pattern"
+        assert params.properties["stdin"].description == "Text to search through, provided on standard input."
+        assert params.properties["args"].description == "The first argument is the regular expression pattern."
 
     def test_text_plain_input(self):
         manifest = {
