@@ -54,7 +54,6 @@ class OllamaClient:
             json={
                 "model": self._cfg.embed_model,
                 "input": f"{prefix}{text}",
-                "keep_alive": self._cfg.keep_alive,
             },
         )
         resp.raise_for_status()
