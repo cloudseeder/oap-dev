@@ -142,8 +142,8 @@ class ExperienceEngine:
     ) -> tuple[str | None, str | None]:
         """Use qwen3 to classify the task into a fingerprint and domain."""
         try:
-            raw, _ = await self._ollama.chat(
-                task + " /no_think", system=FINGERPRINT_SYSTEM, timeout=120
+            raw, _ = await self._ollama.generate(
+                task, system=FINGERPRINT_SYSTEM, timeout=120, think=False
             )
             parsed = _extract_json(raw)
             if parsed and "fingerprint" in parsed and "domain" in parsed:

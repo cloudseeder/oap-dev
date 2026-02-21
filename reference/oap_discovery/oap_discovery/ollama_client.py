@@ -82,11 +82,13 @@ class OllamaClient:
         *,
         system: str | None = None,
         timeout: float = 60.0,
+        think: bool | None = None,
     ) -> tuple[str, OllamaMetrics]:
         """Generate text using the configured generation model.
 
         Returns the raw response text (may contain <think> blocks from qwen3)
         and metrics extracted from the Ollama response.
+        Set think=False to disable qwen3's thinking chain.
         """
         payload: dict = {
             "model": self._cfg.generate_model,
@@ -95,6 +97,8 @@ class OllamaClient:
             "options": {"num_ctx": self._cfg.num_ctx},
             "keep_alive": self._cfg.keep_alive,
         }
+        if think is not None:
+            payload["think"] = think
         if system:
             payload["system"] = system
 
