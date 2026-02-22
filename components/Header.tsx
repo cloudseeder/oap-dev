@@ -80,6 +80,9 @@ export default function Header() {
                   <Link href="/docs/procedural-memory" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Procedural Memory
                   </Link>
+                  <Link href="/docs/path-to-23-tokens" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Path to 23 Tokens
+                  </Link>
                 </div>
               )}
             </div>
