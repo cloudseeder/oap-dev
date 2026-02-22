@@ -159,8 +159,9 @@ class ManPageAdapter(SourceAdapter):
 
     def discover(self) -> list[str]:
         try:
+            # "." matches any character — works on both Linux ("" works) and macOS ("" doesn't)
             result = subprocess.run(
-                ["apropos", "-s", "1", ""],
+                ["apropos", "-s", "1", "."],
                 capture_output=True, text=True, timeout=30,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError):
