@@ -136,6 +136,14 @@ This is a general principle. Prompt engineering tries to steer model behavior th
 
 There's an irony here: Alibaba spent millions deliberately training qwen3:4b to think step-by-step through reasoning chains. We spent 12 hours trying to make it stop. `format=json` doesn't undo the training — the model is still thinking internally as it selects each token. We're just not letting it write it down.
 
+## Why not just use a different model?
+
+Fair question. A non-reasoning model — something without the thinking chains baked into its weights — would have given us concise JSON from the start.
+
+But qwen3:4b isn't just the fingerprinting model. It's the *only* model. It does discovery ranking, tool call routing, result summarization, and intent fingerprinting. The whole point of OAP's reference architecture is that a single small model on commodity hardware can do everything. Swapping in a second model for one task means doubling VRAM on a 16GB machine, managing model loading and unloading, and adding complexity to a system whose value proposition is simplicity.
+
+The constraint was real: make this model do this task well, on this hardware, without help. And `format=json` solved it without giving up anything — same model, same weights, same hardware, one parameter.
+
 ## What we were building
 
 OAP's experience cache gives a small LLM procedural memory — the ability to remember what worked before. When a user asks "count the words in this file," the system fingerprints that intent and checks if it's seen something similar. If it has, it skips the full discovery pipeline (vector search + LLM ranking) and goes straight to the cached tool.
