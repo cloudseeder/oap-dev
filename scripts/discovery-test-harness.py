@@ -1046,6 +1046,7 @@ def run_tests(
     results: list[TestResult] = []
     total = len(tests)
     start_all = time.monotonic()
+    consecutive_skips = 0
 
     for i, tc in enumerate(tests, 1):
         if dry_run:
@@ -1060,11 +1061,22 @@ def run_tests(
         else:
             eta_str = ""
 
+        # Back off after consecutive timeouts — Ollama serializes requests,
+        # so a timed-out request is likely still running. Wait for it to drain.
+        if consecutive_skips >= 2:
+            cooldown = min(30, consecutive_skips * 10)
+            print(dim(f"    [{consecutive_skips} consecutive timeouts, cooling down {cooldown}s...]"))
+            time.sleep(cooldown)
+
         t0 = time.monotonic()
         response = send_chat(base_url, tc.task, model, timeout)
         duration = time.monotonic() - t0
 
         result = verify_test(tc, response, duration)
+        if result.verdict == SKIP:
+            consecutive_skips += 1
+        else:
+            consecutive_skips = 0
         results.append(result)
 
         # Write full response to log file (JSONL)
@@ -1099,6 +1111,10 @@ def run_tests(
 
         if fail_fast and result.verdict == FAIL:
             print(red("\n  Stopping: --fail-fast triggered"))
+            break
+
+        if consecutive_skips >= 5:
+            print(red(f"\n  Stopping: {consecutive_skips} consecutive timeouts — Ollama may be stuck"))
             break
 
     return results
