@@ -205,3 +205,7 @@ Only four fields are required: `oap`, `name`, `description`, `invoke`. The `desc
 - **Rate limiting**: In-memory per-IP rate limiters on all API routes
 - **No test framework** for the Next.js frontend. Python reference services use pytest.
 - **next lint** script exists but ESLint is not explicitly configured. No formatter currently configured.
+
+## Future Ideas
+
+- **System monitoring manifests**: A curated `SYSTEM_TOOLS` allowlist of read-only system introspection tools (lsof, ps, df, du, iostat, vmstat, dmesg, who, uptime, sysctl, etc.) gated behind a `--include-system` flag in the manifest factory. These require elevated privileges but are safe (read-only) and useful for LLM-driven diagnostics. Manifests could live in `manifests/system/` so discovery can enable/disable them separately.
