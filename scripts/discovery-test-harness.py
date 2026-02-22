@@ -113,6 +113,26 @@ def health_check(base_url: str, timeout: float, token: str | None = None) -> boo
         return False
 
 
+def warmup_model(base_url: str, model: str) -> bool:
+    """Send a trivial chat to force-load the model into Ollama memory.
+
+    Uses a 300s timeout to accommodate cold model loading on constrained
+    hardware (Mac Mini M4 16GB).  Returns True if warmup succeeded.
+    """
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "hello"}],
+        "stream": False,
+    }
+    try:
+        resp = httpx.post(
+            f"{base_url}/v1/chat", json=payload, timeout=300.0,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def send_chat(
     base_url: str,
     task: str,
@@ -1361,6 +1381,12 @@ def main() -> None:
             hint = " (--token required for /health auth)" if not args.token else ""
             print(f"  Cannot reach {args.url}/health{hint}", file=sys.stderr)
             sys.exit(1)
+
+        print(f"  Warming up model...", end=" ", flush=True)
+        if warmup_model(args.url, args.model):
+            print(green("ready"))
+        else:
+            print(yellow("failed (tests may timeout on cold model)"))
 
     print()
 
