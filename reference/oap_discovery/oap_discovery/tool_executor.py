@@ -181,16 +181,20 @@ async def execute_tool_call(
             # Fallback: small LLMs often invent descriptive key names
             # (e.g. "keyword" instead of "args"), so if "args" is missing
             # we grab the first non-stdin string value.
-            args_str = arguments.get("args", "")
-            if not args_str:
+            args_val = arguments.get("args", "")
+            if not args_val:
                 for key, val in arguments.items():
                     if key != "stdin" and isinstance(val, str) and val:
-                        args_str = val
+                        args_val = val
                         break
-            params = {}
-            if args_str:
-                for i, part in enumerate(args_str.split()):
-                    params[f"arg{i}"] = part
+            # Normalize: LLMs may pass args as a list or a string
+            if isinstance(args_val, list):
+                parts = [str(p) for p in args_val]
+            elif isinstance(args_val, str):
+                parts = args_val.split() if args_val else []
+            else:
+                parts = [str(args_val)] if args_val else []
+            params = {f"arg{i}": part for i, part in enumerate(parts)}
             result = await invoke_manifest(
                 invoke_spec,
                 params=params,
