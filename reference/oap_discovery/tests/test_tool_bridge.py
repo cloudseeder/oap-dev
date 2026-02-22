@@ -421,7 +421,7 @@ class TestChatProxy:
             tool_api._engine, tool_api._store, tool_api._ollama_cfg, tool_api._tool_bridge_cfg = orig
 
     @pytest.mark.asyncio
-    async def test_chat_error_not_cached(self):
+    async def test_chat_error_not_cached(self, tmp_path):
         """When tool execution returns errors, the experience should NOT be cached."""
         from oap_discovery import tool_api
         from oap_discovery.config import ExperienceConfig, OllamaConfig, ToolBridgeConfig
@@ -456,9 +456,7 @@ class TestChatProxy:
         bridge_cfg = ToolBridgeConfig(enabled=True)
 
         # Wire up a real experience store so we can verify nothing was saved
-        import tempfile, os
-        tmp_dir = tempfile.mkdtemp()
-        exp_store = ExperienceStore(os.path.join(tmp_dir, "test_exp.db"))
+        exp_store = ExperienceStore(str(tmp_path / "test_exp.db"))
         exp_cfg = ExperienceConfig(enabled=True, confidence_threshold=0.85)
 
         # Mock experience engine to return a fingerprint but no cache hit

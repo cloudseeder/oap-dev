@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
+import os
 import shutil
 import socket
 import time
@@ -189,11 +190,13 @@ async def _invoke_stdio(
     """Execute a stdio invocation via subprocess."""
     start = time.monotonic()
 
-    # Build argv: command + any param values as positional args
+    # Build argv: command + any param values as positional args.
+    # Expand ~ so the shell-less subprocess resolves home directories
+    # correctly (e.g. ~brooks → /Users/brooks on macOS, /home/brooks on Linux).
     argv = [command]
     if params:
         for v in params.values():
-            argv.append(str(v))
+            argv.append(os.path.expanduser(str(v)))
 
     try:
         proc = await asyncio.create_subprocess_exec(
