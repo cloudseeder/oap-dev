@@ -103,7 +103,7 @@ BLOCKLIST = {
     "nc", "ncat", "socat", "curl", "wget", "finger",
 }
 
-BLOCKLIST_PREFIXES = ("perl", "git", "x86_64", "snmp")
+BLOCKLIST_PREFIXES = ("perl", "git", "x86_64", "snmp", "findrule")
 
 MAN_PAGE_MAX_CHARS = 5000
 HELP_MAX_CHARS = 5000
