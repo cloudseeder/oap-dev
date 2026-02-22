@@ -116,7 +116,7 @@ class DiscoveryEngine:
         reason_meta: LLMCallMeta | None = None
 
         try:
-            raw, reason_metrics = await self._ollama.generate(prompt, system=SYSTEM_PROMPT)
+            raw, reason_metrics = await self._ollama.generate(prompt, system=SYSTEM_PROMPT, timeout=120.0)
             reason_meta = LLMCallMeta(
                 model=reason_metrics.model,
                 prompt_tokens=reason_metrics.prompt_tokens,
