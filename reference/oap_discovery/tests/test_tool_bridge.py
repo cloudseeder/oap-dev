@@ -421,6 +421,128 @@ class TestChatProxy:
             tool_api._engine, tool_api._store, tool_api._ollama_cfg, tool_api._tool_bridge_cfg = orig
 
     @pytest.mark.asyncio
+    async def test_chat_error_not_cached(self):
+        """When tool execution returns errors, the experience should NOT be cached."""
+        from oap_discovery import tool_api
+        from oap_discovery.config import ExperienceConfig, OllamaConfig, ToolBridgeConfig
+        from oap_discovery.experience_store import ExperienceStore
+        from oap_discovery.tool_models import ChatMessage, ChatRequest
+        from oap_discovery.models import DiscoverMatch, DiscoverResponse, InvokeSpec
+
+        mock_engine = AsyncMock()
+        mock_store = MagicMock()
+
+        match = DiscoverMatch(
+            domain="local/mdfind",
+            name="mdfind",
+            description="Search files by name",
+            invoke=InvokeSpec(method="stdio", url="mdfind"),
+            score=0.1,
+        )
+        mock_engine.discover.return_value = DiscoverResponse(
+            task="find large files",
+            match=match,
+            candidates=[match],
+        )
+        mock_store.get_manifest.return_value = {
+            "oap": "1.0",
+            "name": "mdfind",
+            "description": "Search files by name",
+            "input": {"format": "text/plain", "description": "Query"},
+            "invoke": {"method": "stdio", "url": "mdfind"},
+        }
+
+        ollama_cfg = OllamaConfig(base_url="http://localhost:11434")
+        bridge_cfg = ToolBridgeConfig(enabled=True)
+
+        # Wire up a real experience store so we can verify nothing was saved
+        import tempfile, os
+        tmp_dir = tempfile.mkdtemp()
+        exp_store = ExperienceStore(os.path.join(tmp_dir, "test_exp.db"))
+        exp_cfg = ExperienceConfig(enabled=True, confidence_threshold=0.85)
+
+        # Mock experience engine to return a fingerprint but no cache hit
+        mock_exp_engine = AsyncMock()
+        mock_exp_engine.fingerprint_intent.return_value = (
+            "search.file.size_filter",
+            "file.management",
+        )
+
+        orig = (
+            tool_api._engine, tool_api._store, tool_api._ollama_cfg,
+            tool_api._tool_bridge_cfg, tool_api._experience_engine,
+            tool_api._experience_store, tool_api._experience_cfg,
+        )
+        tool_api._engine = mock_engine
+        tool_api._store = mock_store
+        tool_api._ollama_cfg = ollama_cfg
+        tool_api._tool_bridge_cfg = bridge_cfg
+        tool_api._experience_engine = mock_exp_engine
+        tool_api._experience_store = exp_store
+        tool_api._experience_cfg = exp_cfg
+
+        try:
+            # Ollama returns a tool call, then a final answer
+            tool_call_resp = {
+                "model": "qwen3:4b",
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "oap_mdfind",
+                                "arguments": {"args": "-size +100M"},
+                            }
+                        }
+                    ],
+                },
+                "done": True,
+            }
+            final_resp = {
+                "model": "qwen3:4b",
+                "message": {"role": "assistant", "content": "Error occurred."},
+                "done": True,
+            }
+
+            # Tool execution returns an error
+            mock_invocation = InvocationResult(
+                status="failure", error="Unknown error", latency_ms=10
+            )
+
+            with patch("oap_discovery.tool_api.httpx.AsyncClient") as MockClient, \
+                 patch("oap_discovery.tool_executor.invoke_manifest", return_value=mock_invocation):
+
+                mock_client_instance = AsyncMock()
+                resp1 = MagicMock()
+                resp1.json.return_value = tool_call_resp
+                resp1.raise_for_status = MagicMock()
+                resp2 = MagicMock()
+                resp2.json.return_value = final_resp
+                resp2.raise_for_status = MagicMock()
+                mock_client_instance.post.side_effect = [resp1, resp2]
+                mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+                mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+                MockClient.return_value = mock_client_instance
+
+                req = ChatRequest(
+                    model="qwen3:4b",
+                    messages=[ChatMessage(role="user", content="find large files on disk")],
+                )
+                result = await tool_api.chat_proxy(req)
+
+            # The experience store should be empty — errors must not be cached
+            assert exp_store.count() == 0
+            assert result["oap_experience_cache"] == "miss"
+        finally:
+            (
+                tool_api._engine, tool_api._store, tool_api._ollama_cfg,
+                tool_api._tool_bridge_cfg, tool_api._experience_engine,
+                tool_api._experience_store, tool_api._experience_cfg,
+            ) = orig
+            exp_store.close()
+
+    @pytest.mark.asyncio
     async def test_chat_with_tool_execution(self):
         """When Ollama returns tool calls, they get executed and looped."""
         from oap_discovery import tool_api

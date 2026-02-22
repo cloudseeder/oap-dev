@@ -155,6 +155,29 @@ class ExperienceStore:
         )
         self._db.commit()
 
+    def degrade_confidence(self, experience_id: str, factor: float = 0.7) -> float | None:
+        """Multiply confidence by *factor* and mark outcome as failure.
+
+        Returns the new confidence value, or None if the record was not found.
+        Default factor 0.7: a single failure drops 0.90 → 0.63 (below the
+        0.85 threshold), so the entry won't be served on the next cache hit.
+        """
+        row = self._db.execute(
+            "SELECT confidence FROM experiences WHERE id = ?",
+            (experience_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        new_confidence = row["confidence"] * factor
+        self._db.execute(
+            """UPDATE experiences
+               SET confidence = ?, outcome_status = 'failure'
+               WHERE id = ?""",
+            (new_confidence, experience_id),
+        )
+        self._db.commit()
+        return new_confidence
+
     def list_all(
         self, page: int = 1, limit: int = 50
     ) -> dict[str, Any]:

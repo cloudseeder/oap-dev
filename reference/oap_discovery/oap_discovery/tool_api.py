@@ -227,8 +227,11 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     exp_fingerprint: str | None = None
     exp_intent_domain: str | None = None
     exp_cache_hit = False
+    exp_id: str | None = None
     tools_executed = False
+    tools_had_errors = False
     tools_called: set[str] = set()
+    exp_cache_status: str | None = None  # "hit", "miss", "degraded", or None
 
     # Extract last user message (used for discovery and summarization)
     last_user_msg = ""
@@ -252,145 +255,176 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             )
 
     # Merge client-provided tools
-    if req.tools:
-        tools.extend(req.tools)
+    client_tools = list(req.tools) if req.tools else []
+    if client_tools:
+        tools.extend(client_tools)
 
     # Build Ollama request
-    messages = [m.model_dump(exclude_none=True) for m in req.messages]
+    original_messages = [m.model_dump(exclude_none=True) for m in req.messages]
+    messages = list(original_messages)
 
-    for round_num in range(max_rounds):
-        ollama_payload: dict[str, Any] = {
-            "model": req.model,
-            "messages": messages,
-            "stream": False,
-            "options": {"num_ctx": ollama_cfg.num_ctx},
-            "keep_alive": ollama_cfg.keep_alive,
-        }
-        if tools:
-            ollama_payload["tools"] = [t.model_dump() for t in tools]
+    for _attempt in range(2):
+        for round_num in range(max_rounds):
+            ollama_payload: dict[str, Any] = {
+                "model": req.model,
+                "messages": messages,
+                "stream": False,
+                "options": {"num_ctx": ollama_cfg.num_ctx},
+                "keep_alive": ollama_cfg.keep_alive,
+            }
+            if tools:
+                ollama_payload["tools"] = [t.model_dump() for t in tools]
 
-        # Forward to Ollama
-        try:
-            async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
-                resp = await client.post(
-                    f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
-                    json=ollama_payload,
+            # Forward to Ollama
+            try:
+                async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
+                    resp = await client.post(
+                        f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
+                        json=ollama_payload,
+                    )
+                    resp.raise_for_status()
+                    ollama_resp = resp.json()
+            except httpx.HTTPStatusError as e:
+                log.error("Ollama HTTP %d: %s", e.response.status_code, e.response.text[:500])
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Ollama returned HTTP {e.response.status_code}",
                 )
-                resp.raise_for_status()
-                ollama_resp = resp.json()
-        except httpx.HTTPStatusError as e:
-            log.error("Ollama HTTP %d: %s", e.response.status_code, e.response.text[:500])
-            raise HTTPException(
-                status_code=502,
-                detail=f"Ollama returned HTTP {e.response.status_code}",
-            )
-        except httpx.HTTPError as e:
-            log.exception("Ollama request failed")
-            raise HTTPException(status_code=502, detail=f"Ollama request failed: {type(e).__name__}: {e}")
+            except httpx.HTTPError as e:
+                log.exception("Ollama request failed")
+                raise HTTPException(status_code=502, detail=f"Ollama request failed: {type(e).__name__}: {e}")
 
-        # Check for tool calls
-        resp_message = ollama_resp.get("message", {})
-        tool_calls = resp_message.get("tool_calls")
+            # Check for tool calls
+            resp_message = ollama_resp.get("message", {})
+            tool_calls = resp_message.get("tool_calls")
 
-        if not tool_calls or not req.oap_auto_execute:
-            # No tool calls or auto-execute disabled — return as-is
-            ollama_resp["oap_tools_injected"] = len(registry)
-            ollama_resp["oap_round"] = round_num + 1
-            if exp_cache_hit:
-                ollama_resp["oap_experience_cache"] = "hit"
-            elif exp_fingerprint:
-                ollama_resp["oap_experience_cache"] = "miss"
+            if not tool_calls or not req.oap_auto_execute:
+                # No tool calls or auto-execute disabled — return as-is
+                ollama_resp["oap_tools_injected"] = len(registry)
+                ollama_resp["oap_round"] = round_num + 1
+                cache_label = exp_cache_status or ("hit" if exp_cache_hit else "miss" if exp_fingerprint else None)
+                if cache_label:
+                    ollama_resp["oap_experience_cache"] = cache_label
+                if debug:
+                    debug_rounds.append({
+                        "round": round_num + 1,
+                        "ollama_response": resp_message,
+                        "tool_executions": [],
+                    })
+                    ollama_resp["oap_debug"] = {
+                        "tools_discovered": list(registry.keys()),
+                        "experience_cache": cache_label or "disabled",
+                        "experience_fingerprint": exp_fingerprint,
+                        "rounds": debug_rounds,
+                    }
+                # Cache new experience on successful tool execution (only if no errors)
+                if tools_executed and not tools_had_errors and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+                    await _save_experience(
+                        exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
+                    )
+                return ollama_resp
+
+            # Execute tool calls
+            tools_executed = True
+            log.info("Round %d: executing %d tool call(s)", round_num + 1, len(tool_calls))
+
+            # Append assistant message with tool calls
+            messages.append(resp_message)
+
+            debug_executions: list[dict[str, Any]] = []
+
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                tool_name = fn.get("name", "")
+                tool_args = fn.get("arguments", {})
+                tools_called.add(tool_name)
+
+                t0 = time.monotonic()
+                result_str = await execute_tool_call(
+                    tool_name,
+                    tool_args,
+                    registry,
+                    task=last_user_msg,
+                    http_timeout=bridge_cfg.http_timeout,
+                    stdio_timeout=bridge_cfg.stdio_timeout,
+                    credentials=load_credentials(bridge_cfg.credentials_file),
+                    ollama=_ollama,
+                    summarize_threshold=bridge_cfg.summarize_threshold,
+                    chunk_size=bridge_cfg.chunk_size,
+                    max_output=bridge_cfg.max_tool_result,
+                )
+                duration_ms = int((time.monotonic() - t0) * 1000)
+
+                if result_str.startswith("Error"):
+                    tools_had_errors = True
+
+                if debug:
+                    debug_executions.append({
+                        "tool": tool_name,
+                        "arguments": tool_args,
+                        "result": result_str,
+                        "duration_ms": duration_ms,
+                    })
+
+                # Truncate large tool results to fit model context
+                if len(result_str) > bridge_cfg.max_tool_result:
+                    result_str = result_str[:bridge_cfg.max_tool_result] + "\n...(truncated)"
+
+                # Append tool result message
+                messages.append({
+                    "role": "tool",
+                    "content": result_str,
+                })
+
             if debug:
                 debug_rounds.append({
                     "round": round_num + 1,
                     "ollama_response": resp_message,
-                    "tool_executions": [],
+                    "tool_executions": debug_executions,
                 })
-                ollama_resp["oap_debug"] = {
-                    "tools_discovered": list(registry.keys()),
-                    "experience_cache": "hit" if exp_cache_hit else "miss" if exp_fingerprint else "disabled",
-                    "experience_fingerprint": exp_fingerprint,
-                    "rounds": debug_rounds,
-                }
-            # Cache new experience on successful tool execution
-            if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
-                await _save_experience(
-                    exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
-                )
-            return ollama_resp
 
-        # Execute tool calls
-        tools_executed = True
-        log.info("Round %d: executing %d tool call(s)", round_num + 1, len(tool_calls))
-
-        # Append assistant message with tool calls
-        messages.append(resp_message)
-
-        debug_executions: list[dict[str, Any]] = []
-
-        for tc in tool_calls:
-            fn = tc.get("function", {})
-            tool_name = fn.get("name", "")
-            tool_args = fn.get("arguments", {})
-            tools_called.add(tool_name)
-
-            t0 = time.monotonic()
-            result_str = await execute_tool_call(
-                tool_name,
-                tool_args,
-                registry,
-                task=last_user_msg,
-                http_timeout=bridge_cfg.http_timeout,
-                stdio_timeout=bridge_cfg.stdio_timeout,
-                credentials=load_credentials(bridge_cfg.credentials_file),
-                ollama=_ollama,
-                summarize_threshold=bridge_cfg.summarize_threshold,
-                chunk_size=bridge_cfg.chunk_size,
-                max_output=bridge_cfg.max_tool_result,
+        # Inner loop finished (max rounds reached or broke out).
+        # If this was a cache hit and tools had errors, degrade and retry.
+        if exp_cache_hit and tools_had_errors and _attempt == 0 and _experience_store and exp_id:
+            new_conf = _experience_store.degrade_confidence(exp_id)
+            log.warning(
+                "Cache hit produced errors — degraded %s confidence to %.2f, retrying with full discovery",
+                exp_id,
+                new_conf or 0.0,
             )
-            duration_ms = int((time.monotonic() - t0) * 1000)
+            # Reset state for retry with full discovery
+            exp_cache_hit = False
+            exp_cache_status = "degraded"
+            tools_had_errors = False
+            tools_executed = False
+            tools_called = set()
+            debug_rounds = []
+            messages = list(original_messages)
+            tools, registry = await _discover_tools(
+                engine, store, last_user_msg, req.oap_top_k,
+            )
+            if client_tools:
+                tools.extend(client_tools)
+            continue  # retry the outer loop
 
-            if debug:
-                debug_executions.append({
-                    "tool": tool_name,
-                    "arguments": tool_args,
-                    "result": result_str,
-                    "duration_ms": duration_ms,
-                })
-
-            # Truncate large tool results to fit model context
-            if len(result_str) > bridge_cfg.max_tool_result:
-                result_str = result_str[:bridge_cfg.max_tool_result] + "\n...(truncated)"
-
-            # Append tool result message
-            messages.append({
-                "role": "tool",
-                "content": result_str,
-            })
-
-        if debug:
-            debug_rounds.append({
-                "round": round_num + 1,
-                "ollama_response": resp_message,
-                "tool_executions": debug_executions,
-            })
+        # No retry needed — break out
+        break
 
     # Max rounds exceeded — return last response
     ollama_resp["oap_tools_injected"] = len(registry)
     ollama_resp["oap_round"] = max_rounds
-    if exp_cache_hit:
-        ollama_resp["oap_experience_cache"] = "hit"
-    elif exp_fingerprint:
-        ollama_resp["oap_experience_cache"] = "miss"
+    cache_label = exp_cache_status or ("hit" if exp_cache_hit else "miss" if exp_fingerprint else None)
+    if cache_label:
+        ollama_resp["oap_experience_cache"] = cache_label
     if debug:
         ollama_resp["oap_debug"] = {
             "tools_discovered": list(registry.keys()),
-            "experience_cache": "hit" if exp_cache_hit else "miss" if exp_fingerprint else "disabled",
+            "experience_cache": cache_label or "disabled",
             "experience_fingerprint": exp_fingerprint,
             "rounds": debug_rounds,
         }
-    # Cache new experience on successful tool execution
-    if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+    # Cache new experience on successful tool execution (only if no errors)
+    if tools_executed and not tools_had_errors and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
         await _save_experience(
             exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
         )

@@ -168,6 +168,31 @@ class TestExperienceStore:
         assert stats["avg_confidence"] == pytest.approx(0.85, abs=0.01)
         assert stats["success_rate"] == pytest.approx(0.5, abs=0.01)
 
+    def test_degrade_confidence(self, store, sample_record):
+        """degrade_confidence() multiplies confidence by factor and marks failure."""
+        store.save(sample_record)
+        original = store.get(sample_record.id)
+        assert original.discovery.confidence == pytest.approx(0.92)
+        assert original.outcome.status == "success"
+
+        new_conf = store.degrade_confidence(sample_record.id)
+        assert new_conf == pytest.approx(0.92 * 0.7, abs=0.001)
+
+        degraded = store.get(sample_record.id)
+        assert degraded.discovery.confidence == pytest.approx(0.92 * 0.7, abs=0.001)
+        assert degraded.outcome.status == "failure"
+
+    def test_degrade_confidence_custom_factor(self, store, sample_record):
+        """degrade_confidence() respects a custom factor."""
+        store.save(sample_record)
+        new_conf = store.degrade_confidence(sample_record.id, factor=0.5)
+        assert new_conf == pytest.approx(0.92 * 0.5, abs=0.001)
+
+    def test_degrade_nonexistent(self, store):
+        """degrade_confidence() returns None for missing record."""
+        result = store.degrade_confidence("nonexistent_id")
+        assert result is None
+
     def test_upsert_replaces(self, store, sample_record):
         store.save(sample_record)
         # Save again with different outcome
