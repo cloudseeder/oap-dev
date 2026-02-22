@@ -6,7 +6,7 @@ across all local manifests (grep, wc, jq, date, bc, apropos, man). Hits a live
 /v1/chat endpoint with oap_debug enabled.
 
 Usage:
-    python scripts/discovery-test-harness.py                       # run all
+    python scripts/discovery-test-harness.py --token <secret>       # run all
     python scripts/discovery-test-harness.py --category grep,wc    # filter
     python scripts/discovery-test-harness.py --test grep-001       # specific test
     python scripts/discovery-test-harness.py --smoke               # first 10 only
@@ -101,25 +101,12 @@ VERDICT_COLOR = {
 # ---------------------------------------------------------------------------
 
 def health_check(base_url: str, timeout: float, token: str | None = None) -> bool:
-    """Check service connectivity.
-
-    Tries /health with token if provided, falls back to POST /v1/tools
-    (unauthenticated) as a lightweight connectivity test.
-    """
+    """Check service connectivity via /health (requires token)."""
+    headers = {}
+    if token:
+        headers["X-Backend-Token"] = token
     try:
-        if token:
-            resp = httpx.get(
-                f"{base_url}/health",
-                headers={"X-Backend-Token": token},
-                timeout=timeout,
-            )
-            return resp.status_code == 200
-        # /v1/tools is unprotected — use it as a connectivity check
-        resp = httpx.post(
-            f"{base_url}/v1/tools",
-            json={"task": "test", "top_k": 1},
-            timeout=timeout,
-        )
+        resp = httpx.get(f"{base_url}/health", headers=headers, timeout=timeout)
         return resp.status_code == 200
     except Exception:
         return False
@@ -1302,7 +1289,7 @@ def main() -> None:
     parser.add_argument("--include-cache-tests", action="store_true",
                         help="Run cache miss/hit tests (requires --token)")
     parser.add_argument("--token",
-                        help="Backend auth token for experience API")
+                        help="Backend auth token (required for /health check and cache tests)")
 
     args = parser.parse_args()
 
@@ -1333,7 +1320,8 @@ def main() -> None:
             print(green("OK"))
         else:
             print(red("FAILED"))
-            print(f"  Cannot reach {args.url}/health", file=sys.stderr)
+            hint = " (--token required for /health auth)" if not args.token else ""
+            print(f"  Cannot reach {args.url}/health{hint}", file=sys.stderr)
             sys.exit(1)
 
     print()
