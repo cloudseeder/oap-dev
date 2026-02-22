@@ -130,12 +130,14 @@ class OllamaClient:
         timeout: float = 60.0,
         think: bool | None = None,
         temperature: float | None = None,
+        format: str | None = None,
     ) -> tuple[str, OllamaMetrics]:
         """Chat using the configured generation model.
 
         Uses /api/chat so the model's chat template is applied.
         Set think=False to disable qwen3's thinking chain.
         Set temperature=0 for deterministic output.
+        Set format="json" to constrain output to valid JSON only.
         """
         messages: list[dict] = []
         if system:
@@ -155,6 +157,8 @@ class OllamaClient:
         }
         if think is not None:
             payload["think"] = think
+        if format is not None:
+            payload["format"] = format
 
         resp = await self._client.post(
             f"{self._base}/api/chat",

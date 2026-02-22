@@ -153,7 +153,7 @@ class ExperienceEngine:
         try:
             raw, _ = await self._ollama.chat(
                 task, system=FINGERPRINT_SYSTEM, timeout=120,
-                think=False, temperature=0,
+                think=False, temperature=0, format="json",
             )
             parsed = _extract_json(raw)
             if parsed and "fingerprint" in parsed and "domain" in parsed:
