@@ -45,7 +45,7 @@ class ManifestStore:
                     "tags": ",".join(manifest.get("tags") or []),
                 }
             ],
-            documents=[f"{manifest['name']}: {manifest['description']}"],
+            documents=[manifest["description"]],
         )
 
     def search(

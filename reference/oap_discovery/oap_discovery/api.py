@@ -82,8 +82,7 @@ async def _index_local_manifests() -> None:
             log.error("Invalid manifest %s: %s", path.name, result.errors)
             continue
         domain = f"local/{path.stem}"
-        embed_text = f"{data['name']}: {data['description']}"
-        embedding, _ = await _ollama.embed_document(embed_text)
+        embedding, _ = await _ollama.embed_document(data["description"])
         _store.upsert_manifest(domain, data, embedding)
         count += 1
 
