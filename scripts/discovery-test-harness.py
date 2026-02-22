@@ -100,9 +100,26 @@ VERDICT_COLOR = {
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
-def health_check(base_url: str, timeout: float) -> bool:
+def health_check(base_url: str, timeout: float, token: str | None = None) -> bool:
+    """Check service connectivity.
+
+    Tries /health with token if provided, falls back to POST /v1/tools
+    (unauthenticated) as a lightweight connectivity test.
+    """
     try:
-        resp = httpx.get(f"{base_url}/health", timeout=timeout)
+        if token:
+            resp = httpx.get(
+                f"{base_url}/health",
+                headers={"X-Backend-Token": token},
+                timeout=timeout,
+            )
+            return resp.status_code == 200
+        # /v1/tools is unprotected — use it as a connectivity check
+        resp = httpx.post(
+            f"{base_url}/v1/tools",
+            json={"task": "test", "top_k": 1},
+            timeout=timeout,
+        )
         return resp.status_code == 200
     except Exception:
         return False
@@ -1312,7 +1329,7 @@ def main() -> None:
 
     if not args.dry_run:
         print(f"  Checking service health...", end=" ")
-        if health_check(args.url, args.timeout):
+        if health_check(args.url, args.timeout, args.token):
             print(green("OK"))
         else:
             print(red("FAILED"))
