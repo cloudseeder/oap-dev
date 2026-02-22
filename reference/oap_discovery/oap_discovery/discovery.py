@@ -70,7 +70,7 @@ class DiscoveryEngine:
         self._store = store
         self._ollama = ollama
 
-    async def discover(self, task: str, top_k: int = 5) -> DiscoverResponse:
+    async def discover(self, task: str, top_k: int = 10) -> DiscoverResponse:
         """Find the best manifest for a task.
 
         1. Embed the task as a query
