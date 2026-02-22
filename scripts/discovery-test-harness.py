@@ -14,6 +14,7 @@ Usage:
     python scripts/discovery-test-harness.py --fail-fast           # stop on first FAIL
     python scripts/discovery-test-harness.py --verbose             # full debug on failure
     python scripts/discovery-test-harness.py --json results.json   # JSON report
+    python scripts/discovery-test-harness.py --log smoke.jsonl     # full response log
     python scripts/discovery-test-harness.py --url http://host:8300
     python scripts/discovery-test-harness.py --model qwen3t:4b
     python scripts/discovery-test-harness.py --timeout 120
@@ -1040,6 +1041,7 @@ def run_tests(
     fail_fast: bool,
     verbose: bool,
     dry_run: bool,
+    log_file: Any | None = None,
 ) -> list[TestResult]:
     results: list[TestResult] = []
     total = len(tests)
@@ -1064,6 +1066,24 @@ def run_tests(
 
         result = verify_test(tc, response, duration)
         results.append(result)
+
+        # Write full response to log file (JSONL)
+        if log_file is not None:
+            log_entry = {
+                "test_id": tc.id,
+                "category": tc.category,
+                "task": tc.task,
+                "verdict": result.verdict,
+                "tool_called": result.tool_called,
+                "detail": result.detail,
+                "duration_s": round(duration, 2),
+                "message_content": (response or {}).get("message", {}).get("content", ""),
+                "oap_debug": (response or {}).get("oap_debug"),
+                "oap_experience_cache": (response or {}).get("oap_experience_cache"),
+                "oap_tools_injected": (response or {}).get("oap_tools_injected"),
+            }
+            log_file.write(json.dumps(log_entry) + "\n")
+            log_file.flush()
 
         color_fn = VERDICT_COLOR.get(result.verdict, str)
         tool_display = result.tool_called or "-"
@@ -1286,6 +1306,8 @@ def main() -> None:
                         help="Show full debug output on failures")
     parser.add_argument("--json",
                         help="Write JSON report to this path")
+    parser.add_argument("--log",
+                        help="Write full response log (JSONL) for post-mortem analysis")
     parser.add_argument("--include-cache-tests", action="store_true",
                         help="Run cache miss/hit tests (requires --token)")
     parser.add_argument("--token",
@@ -1326,6 +1348,10 @@ def main() -> None:
 
     print()
 
+    log_file = open(args.log, "w") if args.log else None
+    if log_file:
+        print(f"  Logging responses to {args.log}")
+
     start = time.monotonic()
     results = run_tests(
         all_tests,
@@ -1335,6 +1361,7 @@ def main() -> None:
         args.fail_fast,
         args.verbose,
         args.dry_run,
+        log_file,
     )
 
     # Cache tests
@@ -1349,6 +1376,10 @@ def main() -> None:
             results.extend(cache_results)
 
     total_duration = time.monotonic() - start
+
+    if log_file:
+        log_file.close()
+        print(f"\n  Response log: {args.log}")
 
     if not args.dry_run:
         print_report(results, total_duration)
