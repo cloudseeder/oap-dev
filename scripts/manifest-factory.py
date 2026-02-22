@@ -103,6 +103,8 @@ BLOCKLIST = {
     "nc", "ncat", "socat", "curl", "wget", "finger",
 }
 
+BLOCKLIST_PREFIXES = ("perl", "git", "x86_64")
+
 MAN_PAGE_MAX_CHARS = 5000
 HELP_MAX_CHARS = 5000
 
@@ -184,6 +186,8 @@ class ManPageAdapter(SourceAdapter):
     def is_allowed(self, name: str) -> bool:
         if name in BLOCKLIST:
             return False
+        if any(name.startswith(p) for p in BLOCKLIST_PREFIXES):
+            return False
         resolved = shutil.which(name)
         if resolved is None:
             return False
@@ -237,6 +241,8 @@ class HelpAdapter(SourceAdapter):
 
     def is_allowed(self, name: str) -> bool:
         if name in BLOCKLIST:
+            return False
+        if any(name.startswith(p) for p in BLOCKLIST_PREFIXES):
             return False
         resolved = shutil.which(name)
         if resolved is None:
