@@ -91,7 +91,8 @@ class Crawler:
 
             # Embed the description
             if self._ollama:
-                embedding, _ = await self._ollama.embed_document(data["description"])
+                embed_text = f"{data['name']}: {data['description']}"
+                embedding, _ = await self._ollama.embed_document(embed_text)
             else:
                 # Dummy embedding for seed-only mode without Ollama
                 embedding = [0.0] * 768
@@ -142,7 +143,8 @@ class Crawler:
             log.error("Ollama client required for crawling remote domains")
             return False
 
-        embedding, _ = await self._ollama.embed_document(data["description"])
+        embed_text = f"{data['name']}: {data['description']}"
+        embedding, _ = await self._ollama.embed_document(embed_text)
         self._store.upsert_manifest(domain, data, embedding)
         self._seen_hashes[domain] = manifest_hash
         log.info("Indexed: %s (%s)", domain, data["name"])
