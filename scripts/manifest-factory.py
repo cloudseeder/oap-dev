@@ -100,11 +100,11 @@ BLOCKLIST = {
     "useradd", "userdel", "usermod", "groupadd", "groupdel",
     "crontab", "at",
     # Network tools that open connections
-    "nc", "ncat", "socat", "curl", "wget",
+    "nc", "ncat", "socat", "curl", "wget", "finger",
 }
 
-MAN_PAGE_MAX_CHARS = 2500
-HELP_MAX_CHARS = 2500
+MAN_PAGE_MAX_CHARS = 5000
+HELP_MAX_CHARS = 5000
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen3t:4b"
@@ -704,7 +704,7 @@ def _generate_manifest(
             {"role": "user", "content": user_prompt},
         ],
         "format": "json",
-        "options": {"temperature": 0, "num_ctx": 4096},
+        "options": {"temperature": 0, "num_ctx": 8192},
         "think": False,
         "stream": False,
     }
