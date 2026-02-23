@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ from .discovery import DiscoveryEngine
 from .db import ManifestStore
 from .experience_engine import ExperienceEngine, _make_experience_id
 from .experience_models import (
+    CorrectionEntry,
     DiscoveryRecord,
     ExperienceRecord,
     IntentRecord,
@@ -116,17 +118,22 @@ async def _discover_tools(
 async def _check_experience_cache(
     task: str,
     store: ManifestStore,
+    fingerprint: str | None = None,
+    intent_domain: str | None = None,
 ) -> tuple[list[Tool], dict[str, ToolRegistryEntry], str | None, str | None, str | None]:
     """Check experience cache for a matching tool.
 
     Returns (tools, registry, fingerprint, intent_domain, experience_id).
     On cache miss, tools/registry are empty but fingerprint is still returned
     for caching after successful execution.
+
+    If fingerprint/intent_domain are provided, skips re-fingerprinting.
     """
     if _experience_engine is None or _experience_store is None or _experience_cfg is None:
         return [], {}, None, None, None
 
-    fingerprint, intent_domain = await _experience_engine.fingerprint_intent(task)
+    if fingerprint is None:
+        fingerprint, intent_domain = await _experience_engine.fingerprint_intent(task)
     if fingerprint is None:
         return [], {}, None, None, None
 
@@ -213,6 +220,84 @@ async def _save_experience(
     log.info("Cached experience: %s → %s (fingerprint=%s)", exp_id, manifest_domain, fingerprint)
 
 
+async def _save_failure_experience(
+    fingerprint: str,
+    intent_domain: str,
+    task: str,
+    registry: dict[str, ToolRegistryEntry],
+    failed_calls: list[dict[str, Any]],
+) -> None:
+    """Save a failure experience record so future requests can avoid the same mistakes."""
+    if _experience_store is None or not failed_calls:
+        return
+
+    # Build correction entries from failed tool calls
+    corrections = []
+    for fc in failed_calls:
+        corrections.append(CorrectionEntry(
+            attempted=f"{fc['tool']}({json.dumps(fc['arguments'], default=str)})",
+            error=fc["error"],
+            fix="",
+        ))
+
+    # Use the first failed tool's registry entry for manifest info
+    first_tool = failed_calls[0]["tool"]
+    entry = registry.get(first_tool)
+    manifest_domain = entry.domain if entry else "unknown"
+    invoke_data = entry.manifest.get("invoke", {}) if entry else {}
+
+    now = datetime.now(timezone.utc)
+    exp_id = f"fail_{_make_experience_id(fingerprint, manifest_domain)}"
+
+    record = ExperienceRecord(
+        id=exp_id,
+        timestamp=now,
+        use_count=1,
+        last_used=now,
+        intent=IntentRecord(
+            raw=task,
+            fingerprint=fingerprint,
+            domain=intent_domain,
+        ),
+        discovery=DiscoveryRecord(
+            query_used=task,
+            manifest_matched=manifest_domain,
+            manifest_version=None,
+            confidence=0.0,
+        ),
+        invocation=InvocationRecord(
+            endpoint=invoke_data.get("url", ""),
+            method=invoke_data.get("method", ""),
+        ),
+        outcome=OutcomeRecord(
+            status="failure",
+            response_summary=corrections[0].error[:200] if corrections else "Unknown error",
+        ),
+        corrections=corrections,
+    )
+    _experience_store.save(record)
+    log.info(
+        "Cached failure experience: %s → %s (%d corrections, fingerprint=%s)",
+        exp_id, manifest_domain, len(corrections), fingerprint,
+    )
+
+
+def _build_failure_hints(fingerprint: str) -> str:
+    """Build a compact failure hint string from past failures with this fingerprint."""
+    if _experience_store is None:
+        return ""
+
+    failures = _experience_store.find_failures_by_fingerprint(fingerprint, limit=5)
+    if not failures:
+        return ""
+
+    lines: list[str] = []
+    for exp in failures:
+        for c in exp.corrections:
+            lines.append(f"- {c.attempted} → {c.error}")
+    return "\n".join(lines) if lines else ""
+
+
 @router.post("/v1/tools", response_model=ToolsResponse)
 async def discover_tools(req: ToolsRequest) -> ToolsResponse:
     """Discover manifests for a task and return as Ollama tool definitions."""
@@ -248,6 +333,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     tools_executed = False
     tools_had_errors = False
     tools_called: set[str] = set()
+    failed_calls: list[dict[str, Any]] = []
     exp_cache_status: str | None = None  # "hit", "miss", "degraded", or None
 
     # Extract last user message (used for discovery and summarization)
@@ -257,12 +343,17 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             last_user_msg = msg.content
             break
 
+    # Always fingerprint when experience engine is available (needed for failure hints
+    # even with --no-cache)
+    if _experience_engine and last_user_msg:
+        exp_fingerprint, exp_intent_domain = await _experience_engine.fingerprint_intent(last_user_msg)
+
     # Discover tools from the last user message
     if req.oap_discover and last_user_msg:
         # Try experience cache first (unless oap_no_cache is set)
-        if not req.oap_no_cache:
-            cached_tools, cached_registry, exp_fingerprint, exp_intent_domain, exp_id = (
-                await _check_experience_cache(last_user_msg, store)
+        if not req.oap_no_cache and exp_fingerprint:
+            cached_tools, cached_registry, _, _, exp_id = (
+                await _check_experience_cache(last_user_msg, store, exp_fingerprint, exp_intent_domain)
             )
             if cached_tools:
                 tools, registry = cached_tools, cached_registry
@@ -277,15 +368,26 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     if client_tools:
         tools.extend(client_tools)
 
+    # Build failure hints from past failures with this fingerprint
+    failure_hints = ""
+    if exp_fingerprint and _experience_store:
+        failure_hints = _build_failure_hints(exp_fingerprint)
+
     # Build Ollama request — prepend a system message to keep qwen3 concise
     original_messages = [m.model_dump(exclude_none=True) for m in req.messages]
+    system_content = (
+        "You are a tool-calling assistant. Be brief. "
+        "Use function calls to invoke tools — never write JSON in your response. "
+        "Always include both 'args' and 'stdin' parameters for text-processing tools. "
+        "After a tool result, reply in 1-2 sentences."
+    )
+    if failure_hints:
+        system_content += (
+            f"\n\nWARNING — previous attempts at this type of task failed:\n"
+            f"{failure_hints}\nAvoid these approaches."
+        )
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": (
-            "You are a tool-calling assistant. Be brief. "
-            "Use function calls to invoke tools — never write JSON in your response. "
-            "Always include both 'args' and 'stdin' parameters for text-processing tools. "
-            "After a tool result, reply in 1-2 sentences."
-        )},
+        {"role": "system", "content": system_content},
         *original_messages,
     ]
 
@@ -342,12 +444,18 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         "tools_discovered": list(registry.keys()),
                         "experience_cache": cache_label or "disabled",
                         "experience_fingerprint": exp_fingerprint,
+                        "failure_hints": failure_hints or None,
                         "rounds": debug_rounds,
                     }
                 # Cache new experience on successful tool execution (only if no errors)
                 if tools_executed and not tools_had_errors and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
                     await _save_experience(
                         exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
+                    )
+                # Cache failure experience when tools had errors
+                if tools_executed and tools_had_errors and exp_fingerprint and exp_intent_domain:
+                    await _save_failure_experience(
+                        exp_fingerprint, exp_intent_domain, last_user_msg, registry, failed_calls,
                     )
                 return ollama_resp
 
@@ -384,6 +492,11 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
 
                 if result_str.startswith("Error"):
                     tools_had_errors = True
+                    failed_calls.append({
+                        "tool": tool_name,
+                        "arguments": tool_args,
+                        "error": result_str,
+                    })
 
                 if debug:
                     debug_executions.append({
@@ -425,6 +538,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             tools_had_errors = False
             tools_executed = False
             tools_called = set()
+            failed_calls = []
             debug_rounds = []
             messages = [messages[0], *original_messages]  # preserve system prompt
             tools, registry = await _discover_tools(
@@ -448,11 +562,17 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             "tools_discovered": list(registry.keys()),
             "experience_cache": cache_label or "disabled",
             "experience_fingerprint": exp_fingerprint,
+            "failure_hints": failure_hints or None,
             "rounds": debug_rounds,
         }
     # Cache new experience on successful tool execution (only if no errors)
     if tools_executed and not tools_had_errors and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
         await _save_experience(
             exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
+        )
+    # Cache failure experience when tools had errors
+    if tools_executed and tools_had_errors and exp_fingerprint and exp_intent_domain:
+        await _save_failure_experience(
+            exp_fingerprint, exp_intent_domain, last_user_msg, registry, failed_calls,
         )
     return ollama_resp

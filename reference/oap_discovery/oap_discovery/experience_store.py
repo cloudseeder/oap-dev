@@ -128,6 +128,19 @@ class ExperienceStore:
         ).fetchall()
         return [self._row_to_record(r) for r in rows]
 
+    def find_failures_by_fingerprint(
+        self, fingerprint: str, limit: int = 5
+    ) -> list[ExperienceRecord]:
+        """Find failure records with an exact fingerprint match."""
+        rows = self._db.execute(
+            """SELECT * FROM experiences
+               WHERE intent_fingerprint = ? AND outcome_status = 'failure'
+               ORDER BY last_used DESC
+               LIMIT ?""",
+            (fingerprint, limit),
+        ).fetchall()
+        return [self._row_to_record(r) for r in rows]
+
     def find_similar(
         self,
         intent_domain: str,
