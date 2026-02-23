@@ -1382,12 +1382,6 @@ def main() -> None:
             print(f"  Cannot reach {args.url}/health{hint}", file=sys.stderr)
             sys.exit(1)
 
-        print(f"  Warming up model...", end=" ", flush=True)
-        if warmup_model(args.url, args.model):
-            print(green("ready"))
-        else:
-            print(yellow("failed (tests may timeout on cold model)"))
-
     print()
 
     log_file = open(args.log, "w") if args.log else None

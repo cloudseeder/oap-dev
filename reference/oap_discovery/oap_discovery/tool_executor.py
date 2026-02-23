@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import shlex
 from typing import Any
 
 from .invoker import invoke_manifest
@@ -187,11 +188,20 @@ async def execute_tool_call(
                     if key != "stdin" and isinstance(val, str) and val:
                         args_val = val
                         break
-            # Normalize: LLMs may pass args as a list or a string
+            # Normalize: LLMs may pass args as a list or a string.
+            # When stdin is provided, args is typically a single logical
+            # argument (e.g. a grep pattern like "connection refused") —
+            # naive .split() would break it into multiple argv entries.
+            # Use shlex.split() to respect shell quoting conventions,
+            # and when stdin is present, treat an unquoted string as one arg.
             if isinstance(args_val, list):
                 parts = [str(p) for p in args_val]
-            elif isinstance(args_val, str):
-                parts = args_val.split() if args_val else []
+            elif isinstance(args_val, str) and args_val:
+                if stdin_str:
+                    # With stdin, the whole args value is one argument (the pattern)
+                    parts = [args_val]
+                else:
+                    parts = shlex.split(args_val)
             else:
                 parts = [str(args_val)] if args_val else []
             params = {f"arg{i}": part for i, part in enumerate(parts)}
