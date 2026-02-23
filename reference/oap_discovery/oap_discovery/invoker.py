@@ -211,6 +211,8 @@ async def _invoke_stdio(
             stderr=asyncio.subprocess.PIPE,
         )
 
+        if stdin_text and not stdin_text.endswith('\n'):
+            stdin_text += '\n'
         stdin_bytes = stdin_text.encode() if stdin_text else None
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(input=stdin_bytes), timeout=timeout

@@ -198,17 +198,22 @@ async def execute_tool_call(
                 parts = [str(p) for p in args_val]
             elif isinstance(args_val, str) and args_val:
                 if stdin_str:
-                    # With stdin, split off leading flags (e.g. "-i pattern")
-                    # but keep the rest as a single argument so multi-word
-                    # patterns like "connection refused" aren't broken apart.
-                    tokens = shlex.split(args_val)
+                    # With stdin, split off leading flags but preserve the
+                    # rest as-is to maintain quoting (e.g. jq's
+                    # '.status == "active"' must keep inner quotes).
+                    stripped = args_val.strip()
                     parts = []
-                    i = 0
-                    while i < len(tokens) and tokens[i].startswith("-"):
-                        parts.append(tokens[i])
-                        i += 1
-                    if i < len(tokens):
-                        parts.append(" ".join(tokens[i:]))
+                    rest = stripped
+                    while rest and rest[0] == '-':
+                        end = rest.find(' ')
+                        if end == -1:
+                            parts.append(rest)
+                            rest = ""
+                        else:
+                            parts.append(rest[:end])
+                            rest = rest[end:].lstrip()
+                    if rest:
+                        parts.append(rest)
                 else:
                     parts = shlex.split(args_val)
             else:
