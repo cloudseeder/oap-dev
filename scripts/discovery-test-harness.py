@@ -119,6 +119,7 @@ def send_chat(
     task: str,
     model: str,
     timeout: float,
+    no_cache: bool = False,
 ) -> dict[str, Any] | None:
     """POST /v1/chat with oap_debug enabled. Returns response dict or None."""
     payload = {
@@ -130,6 +131,7 @@ def send_chat(
         "oap_auto_execute": True,
         "oap_max_rounds": 3,
         "oap_top_k": 10,
+        "oap_no_cache": no_cache,
     }
     try:
         resp = httpx.post(
@@ -1043,6 +1045,7 @@ def run_tests(
     verbose: bool,
     dry_run: bool,
     log_file: Any | None = None,
+    no_cache: bool = False,
 ) -> list[TestResult]:
     results: list[TestResult] = []
     total = len(tests)
@@ -1070,7 +1073,7 @@ def run_tests(
             time.sleep(cooldown)
 
         t0 = time.monotonic()
-        response = send_chat(base_url, tc.task, model, timeout)
+        response = send_chat(base_url, tc.task, model, timeout, no_cache=no_cache)
         duration = time.monotonic() - t0
 
         result = verify_test(tc, response, duration)
@@ -1327,6 +1330,8 @@ def main() -> None:
                         help="Write full response log (JSONL) for post-mortem analysis")
     parser.add_argument("--include-cache-tests", action="store_true",
                         help="Run cache miss/hit tests (requires --token)")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Skip experience cache (always run full discovery)")
     parser.add_argument("--token",
                         help="Backend auth token (required for /health check and cache tests)")
 
@@ -1379,6 +1384,7 @@ def main() -> None:
         args.verbose,
         args.dry_run,
         log_file,
+        no_cache=args.no_cache,
     )
 
     # Cache tests

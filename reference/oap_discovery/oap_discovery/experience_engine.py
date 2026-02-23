@@ -42,8 +42,15 @@ Focus on the core action, not surface wording.
 Examples:
 - "Search text files for regex" → {"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}
 - "Find lines matching a pattern" → {"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}
+- "Filter lines containing 'error'" → {"fingerprint": "search.text.pattern_match", "domain": "developer.tools"}
+- "Pull out lines with email addresses" → {"fingerprint": "filter.text.email_extraction", "domain": "text.processing"}
+- "Count lines containing 'error'" → {"fingerprint": "search.text.count_matches", "domain": "developer.tools"}
+- "How many lines match this pattern" → {"fingerprint": "search.text.count_matches", "domain": "developer.tools"}
 - "Count the words in this text" → {"fingerprint": "count.text.word_count", "domain": "text.processing"}
 - "How many lines in this file" → {"fingerprint": "count.text.line_count", "domain": "text.processing"}
+- "Count the lines in this text" → {"fingerprint": "count.text.line_count", "domain": "text.processing"}
+- "Show lines NOT containing 'ok'" → {"fingerprint": "search.text.inverted_match", "domain": "developer.tools"}
+- "Case-insensitive search for 'ERROR'" → {"fingerprint": "search.text.case_insensitive", "domain": "developer.tools"}
 - "What is 2+2" → {"fingerprint": "compute.math.calculation", "domain": "math.arithmetic"}
 - "Calculate 15% tip on $80" → {"fingerprint": "compute.math.calculation", "domain": "math.arithmetic"}
 - "What time is it" → {"fingerprint": "query.system.date_time", "domain": "system.info"}

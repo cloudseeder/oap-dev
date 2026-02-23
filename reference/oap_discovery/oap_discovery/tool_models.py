@@ -90,3 +90,4 @@ class ChatRequest(BaseModel):
     oap_auto_execute: bool = Field(default=True, description="Auto-execute tool calls")
     oap_max_rounds: int = Field(default=3, ge=1, le=10, description="Max tool call rounds")
     oap_debug: bool = Field(default=False, description="Include debug trace in response")
+    oap_no_cache: bool = Field(default=False, description="Skip experience cache (always run full discovery)")

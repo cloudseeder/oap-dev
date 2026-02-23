@@ -259,14 +259,15 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
 
     # Discover tools from the last user message
     if req.oap_discover and last_user_msg:
-        # Try experience cache first
-        cached_tools, cached_registry, exp_fingerprint, exp_intent_domain, exp_id = (
-            await _check_experience_cache(last_user_msg, store)
-        )
-        if cached_tools:
-            tools, registry = cached_tools, cached_registry
-            exp_cache_hit = True
-        else:
+        # Try experience cache first (unless oap_no_cache is set)
+        if not req.oap_no_cache:
+            cached_tools, cached_registry, exp_fingerprint, exp_intent_domain, exp_id = (
+                await _check_experience_cache(last_user_msg, store)
+            )
+            if cached_tools:
+                tools, registry = cached_tools, cached_registry
+                exp_cache_hit = True
+        if not exp_cache_hit:
             tools, registry = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
             )
