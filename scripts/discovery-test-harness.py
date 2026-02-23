@@ -16,7 +16,7 @@ Usage:
     python scripts/discovery-test-harness.py --json results.json   # JSON report
     python scripts/discovery-test-harness.py --log smoke.jsonl     # full response log
     python scripts/discovery-test-harness.py --url http://host:8300
-    python scripts/discovery-test-harness.py --model qwen3t:4b
+    python scripts/discovery-test-harness.py --model qwen3:8b
     python scripts/discovery-test-harness.py --timeout 120
     python scripts/discovery-test-harness.py --include-cache-tests --token <secret>
 """
@@ -1305,8 +1305,8 @@ def main() -> None:
     )
     parser.add_argument("--url", default="http://localhost:8300",
                         help="Discovery API base URL (default: http://localhost:8300)")
-    parser.add_argument("--model", default="qwen3t:4b",
-                        help="Ollama model (default: qwen3t:4b)")
+    parser.add_argument("--model", default="qwen3:8b",
+                        help="Ollama model (default: qwen3:8b)")
     parser.add_argument("--timeout", type=float, default=120,
                         help="Per-request timeout in seconds (default: 120)")
     parser.add_argument("--category",
