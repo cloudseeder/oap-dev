@@ -66,27 +66,47 @@ def _require_enabled() -> tuple[DiscoveryEngine, ManifestStore, OllamaConfig, To
     return _engine, _store, _ollama_cfg, _tool_bridge_cfg
 
 
+MAX_INJECTED_TOOLS = 3
+
+
 async def _discover_tools(
     engine: DiscoveryEngine,
     store: ManifestStore,
     task: str,
     top_k: int,
 ) -> tuple[list[Tool], dict[str, ToolRegistryEntry]]:
-    """Run discovery and convert the top match to an Ollama tool.
+    """Run discovery and convert the top matches to Ollama tools.
 
-    Only injects the LLM's top pick (not all candidates) to keep the
-    chat context small.  With 10 tool definitions, qwen3:4b spends
-    100+ seconds on the first chat call; with 1 tool it's ~12s.
+    Injects up to MAX_INJECTED_TOOLS from the LLM's top pick plus
+    highest-scoring candidates.  This gives the chat model options
+    when vector search ranks the wrong manifest first (e.g. "email"
+    pulling spfquery above grep).
     """
     result = await engine.discover(task, top_k=top_k)
 
     tools: list[Tool] = []
     registry: dict[str, ToolRegistryEntry] = {}
+    seen_domains: set[str] = set()
 
+    # Start with the LLM's top pick
     if result.match:
+        seen_domains.add(result.match.domain)
         manifest = store.get_manifest(result.match.domain)
         if manifest is not None:
             entry = manifest_to_tool(result.match.domain, manifest)
+            tools.append(entry.tool)
+            registry[entry.tool.function.name] = entry
+
+    # Fill remaining slots from candidates (by vector score order)
+    for candidate in result.candidates:
+        if len(tools) >= MAX_INJECTED_TOOLS:
+            break
+        if candidate.domain in seen_domains:
+            continue
+        seen_domains.add(candidate.domain)
+        manifest = store.get_manifest(candidate.domain)
+        if manifest is not None:
+            entry = manifest_to_tool(candidate.domain, manifest)
             tools.append(entry.tool)
             registry[entry.tool.function.name] = entry
 
