@@ -63,6 +63,37 @@ def _format_candidates(hits: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _extract_search_query(task: str) -> str:
+    """Extract the intent portion of a task for vector search embedding.
+
+    User tasks often contain inline data after the intent:
+      'filter lines containing "warning" from:\\ninfo: ok\\nwarning: disk full'
+
+    Embedding the full text dilutes the intent signal. This extracts
+    just the intent so vector search matches the right manifests.
+    """
+    # Take first line only — inline data follows newlines
+    first_line = task.split("\n")[0].strip()
+
+    # Strip trailing prepositions that introduce data blocks
+    cleaned = re.sub(r'\s+(from|in)(\s+\w+)*\s*:\s*$', '', first_line)
+
+    # Remove quoted literal values (data, not intent)
+    cleaned = re.sub(r'"[^"]*"', '', cleaned)
+
+    # Collapse whitespace
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+    if not cleaned:
+        return task
+
+    # If result doesn't mention text-processing concepts, add context
+    if not re.search(r'\b(lines?|text|string|pattern|file)\b', cleaned, re.I):
+        cleaned += " in text"
+
+    return cleaned
+
+
 class DiscoveryEngine:
     """Combines vector search with LLM reasoning for manifest discovery."""
 
@@ -79,8 +110,9 @@ class DiscoveryEngine:
         """
         t0 = time.monotonic()
 
-        # Step 1: Embed task
-        query_embedding, embed_metrics = await self._ollama.embed_query(task)
+        # Step 1: Extract intent and embed for vector search
+        search_query = _extract_search_query(task)
+        query_embedding, embed_metrics = await self._ollama.embed_query(search_query)
 
         # Step 2: Vector search
         hits = self._store.search(query_embedding, n_results=top_k)
