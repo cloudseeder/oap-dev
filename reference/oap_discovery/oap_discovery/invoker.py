@@ -87,14 +87,18 @@ async def invoke_manifest(
     method = invoke_spec.method.upper()
 
     if method == "STDIO":
+        # Support default flags in invoke URL: "grep -E" → cmd="grep", flags=["-E"]
+        cmd_parts = invoke_spec.url.split()
+        cmd_name = cmd_parts[0]
+        default_args = cmd_parts[1:]
         try:
-            resolved_cmd = _validate_stdio_command(invoke_spec.url)
+            resolved_cmd = _validate_stdio_command(cmd_name)
         except ValueError as e:
             return InvocationResult(
                 status="failure", latency_ms=0, error=f"Blocked: {e}"
             )
         return await _invoke_stdio(
-            resolved_cmd, params, stdin_text, timeout=stdio_timeout
+            resolved_cmd, default_args, params, stdin_text, timeout=stdio_timeout
         )
     elif method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
         try:
@@ -183,6 +187,7 @@ async def _invoke_http(
 
 async def _invoke_stdio(
     command: str,
+    default_args: list[str],
     params: dict[str, Any] | None,
     stdin_text: str | None,
     timeout: int,
@@ -190,10 +195,10 @@ async def _invoke_stdio(
     """Execute a stdio invocation via subprocess."""
     start = time.monotonic()
 
-    # Build argv: command + any param values as positional args.
+    # Build argv: command + default flags + any param values as positional args.
     # Expand ~ so the shell-less subprocess resolves home directories
     # correctly (e.g. ~brooks → /Users/brooks on macOS, /home/brooks on Linux).
-    argv = [command]
+    argv = [command] + default_args
     if params:
         for v in params.values():
             argv.append(os.path.expanduser(str(v)))
@@ -214,7 +219,11 @@ async def _invoke_stdio(
         latency = int((time.monotonic() - start) * 1000)
         output = stdout.decode(errors="replace")[:MAX_RESPONSE_BYTES]
         err_output = stderr.decode(errors="replace")[:MAX_RESPONSE_BYTES]
-        success = proc.returncode == 0
+        # Many Unix tools use exit 1 for "no results" (grep, diff, cmp).
+        # Treat exit 1 with no stderr as success (empty output, not error).
+        success = proc.returncode == 0 or (
+            proc.returncode == 1 and not err_output.strip()
+        )
 
         return InvocationResult(
             status="success" if success else "failure",

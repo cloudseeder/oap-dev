@@ -12,6 +12,6 @@
   },
   "invoke": {
     "method": "stdio",
-    "url": "grep"
+    "url": "grep -E"
   }
 }
