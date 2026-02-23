@@ -256,9 +256,16 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     if client_tools:
         tools.extend(client_tools)
 
-    # Build Ollama request
+    # Build Ollama request — prepend a system message to keep qwen3 concise
     original_messages = [m.model_dump(exclude_none=True) for m in req.messages]
-    messages = list(original_messages)
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": (
+            "You are a tool-calling assistant. Be brief. "
+            "Call the right tool immediately — do not explain your reasoning. "
+            "After a tool result, reply in 1-2 sentences."
+        )},
+        *original_messages,
+    ]
 
     for _attempt in range(2):
         for round_num in range(max_rounds):
@@ -396,7 +403,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             tools_executed = False
             tools_called = set()
             debug_rounds = []
-            messages = list(original_messages)
+            messages = [messages[0], *original_messages]  # preserve system prompt
             tools, registry = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
             )
