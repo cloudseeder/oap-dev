@@ -72,26 +72,23 @@ async def _discover_tools(
     task: str,
     top_k: int,
 ) -> tuple[list[Tool], dict[str, ToolRegistryEntry]]:
-    """Run discovery and convert results to Ollama tools."""
+    """Run discovery and convert the top match to an Ollama tool.
+
+    Only injects the LLM's top pick (not all candidates) to keep the
+    chat context small.  With 10 tool definitions, qwen3:4b spends
+    100+ seconds on the first chat call; with 1 tool it's ~12s.
+    """
     result = await engine.discover(task, top_k=top_k)
 
     tools: list[Tool] = []
     registry: dict[str, ToolRegistryEntry] = {}
 
-    # Collect all candidate domains
-    domains = set()
     if result.match:
-        domains.add(result.match.domain)
-    for c in result.candidates:
-        domains.add(c.domain)
-
-    for domain in domains:
-        manifest = store.get_manifest(domain)
-        if manifest is None:
-            continue
-        entry = manifest_to_tool(domain, manifest)
-        tools.append(entry.tool)
-        registry[entry.tool.function.name] = entry
+        manifest = store.get_manifest(result.match.domain)
+        if manifest is not None:
+            entry = manifest_to_tool(result.match.domain, manifest)
+            tools.append(entry.tool)
+            registry[entry.tool.function.name] = entry
 
     return tools, registry
 
