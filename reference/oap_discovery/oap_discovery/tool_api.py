@@ -261,7 +261,8 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": (
             "You are a tool-calling assistant. Be brief. "
-            "Call the right tool immediately — do not explain your reasoning. "
+            "Use function calls to invoke tools — never write JSON in your response. "
+            "Always include both 'args' and 'stdin' parameters for text-processing tools. "
             "After a tool result, reply in 1-2 sentences."
         )},
         *original_messages,
