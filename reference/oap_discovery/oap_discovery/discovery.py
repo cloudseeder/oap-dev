@@ -104,6 +104,13 @@ def _extract_search_query(task: str) -> str:
     if not re.search(r'\b(lines?|text|string|pattern|file)\b', cleaned, re.I):
         cleaned += " in text"
 
+    # Line-filtering queries need search/match vocabulary to distinguish
+    # grep from other line-processing tools (sort, uniq, comm, col, etc.)
+    # that also mention "lines" in their descriptions.
+    if re.search(r'\blines?\b', cleaned, re.I):
+        if not re.search(r'\b(search|match|grep|pattern|find)\b', cleaned, re.I):
+            cleaned += " search matching pattern"
+
     return cleaned
 
 

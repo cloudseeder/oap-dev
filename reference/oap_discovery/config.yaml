@@ -39,7 +39,7 @@ experience:
 # that convert OAP manifests to Ollama tool definitions.
 tool_bridge:
   enabled: true
-  default_top_k: 10
+  default_top_k: 20
   max_rounds: 3
   ollama_timeout: 120    # seconds for Ollama /api/chat calls (model inference)
   http_timeout: 30       # seconds for HTTP tool execution against manifest endpoints
