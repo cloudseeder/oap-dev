@@ -14,7 +14,7 @@ import yaml
 class OllamaConfig:
     base_url: str = "http://localhost:11434"
     embed_model: str = "nomic-embed-text"
-    generate_model: str = "qwen3:4b"
+    generate_model: str = "qwen3:8b"
     timeout: int = 30
     num_ctx: int = 4096
     keep_alive: str = "-1m"

@@ -274,6 +274,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 "model": req.model,
                 "messages": messages,
                 "stream": False,
+                "think": False,
                 "options": {"num_ctx": ollama_cfg.num_ctx},
                 "keep_alive": ollama_cfg.keep_alive,
             }
