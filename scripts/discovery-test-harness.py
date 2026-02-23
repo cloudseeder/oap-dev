@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Discovery Test Harness — integration tests for OAP tool bridge discovery and execution.
 
-Tests semantic matching quality, invocation correctness, and execution success
-across all local manifests (grep, wc, jq, date, bc, apropos, man). Hits a live
-/v1/chat endpoint with oap_debug enabled.
+Tests task completion across all local manifests (grep, wc, jq, date, bc,
+apropos, man). Uses output-first verdicts: if the task produces correct output,
+the tool identity is secondary. A correct result via an unexpected tool is SOFT,
+not FAIL — reflecting the OAP thesis that discovery should find *a* capable tool,
+not *the* specific tool. Hits a live /v1/chat endpoint with oap_debug enabled.
 
 Usage:
     python scripts/discovery-test-harness.py --token <secret>       # run all
@@ -158,7 +160,17 @@ def _normalize_tool(name: str | list[str] | None) -> list[str]:
 
 
 def verify_test(tc: TestCase, response: dict[str, Any] | None, duration_s: float) -> TestResult:
-    """Apply the verdict logic to a single test response."""
+    """Apply output-first verdict logic to a single test response.
+
+    The core principle: if the task produces correct output, the tool identity
+    is secondary.  A correct result via an unexpected tool is SOFT, not FAIL.
+    This reflects the OAP thesis — discover *a* capable tool, not *the* tool.
+
+    Verdict priority:
+      1. Output correctness (if expect_in_output specified)
+      2. Error presence (unexpected errors are failures unless output recovered)
+      3. Tool identity (tiebreaker when output can't be verified)
+    """
 
     if response is None:
         return TestResult(tc.id, SKIP, "", duration_s, tc.task, detail="No response (timeout or server error)")
@@ -183,56 +195,85 @@ def verify_test(tc: TestCase, response: dict[str, Any] | None, duration_s: float
     expected = _normalize_tool(tc.expect_tool)
     primary_tool = tools_called[0] if tools_called else ""
 
+    # Pre-compute output correctness and tool identity
+    output_correct = True
+    missing_output = ""
+    if tc.expect_in_output:
+        for substr in tc.expect_in_output:
+            if substr not in combined:
+                output_correct = False
+                missing_output = substr
+                break
+
+    has_error = any(r.startswith("Error") for r in tool_results)
+    matched_expected = any(t in expected for t in tools_called) if expected else False
+    matched_alt = any(t in tc.allow_alternatives for t in tools_called)
+
+    # --- Verdict logic (output-first) ---
+
     # 1. No tool called
     if not tools_called:
-        if tc.allow_no_tool:
-            return TestResult(tc.id, WARN, "", duration_s, tc.task,
-                              detail="No tool called (allow_no_tool)", debug=debug_info)
         if not expected:
             # Negative test — expected no tool
             return TestResult(tc.id, PASS, "", duration_s, tc.task, debug=debug_info)
+        # Output correct without any tool (LLM answered from knowledge)
+        if output_correct and tc.expect_in_output:
+            return TestResult(tc.id, SOFT, "", duration_s, tc.task,
+                              detail="Correct output without tool call", debug=debug_info)
+        if tc.allow_no_tool:
+            return TestResult(tc.id, WARN, "", duration_s, tc.task,
+                              detail="No tool called (allow_no_tool)", debug=debug_info)
         return TestResult(tc.id, FAIL, "", duration_s, tc.task,
                           detail=f"Expected {expected}, no tool called", debug=debug_info)
 
-    # 2. Tool was called
-    # Check if any called tool matches expected
-    matched_expected = any(t in expected for t in tools_called) if expected else False
-
-    # Check alternatives
-    matched_alt = any(t in tc.allow_alternatives for t in tools_called)
-
-    # 3. Error check
-    has_error = any(r.startswith("Error") for r in tool_results)
-    if has_error and not tc.expect_error:
-        # Unexpected error — but if the tool was right, still count as FAIL with detail
+    # 2. Expected error tests (e.g. grep no-match)
+    if tc.expect_error:
+        if has_error:
+            if matched_expected:
+                return TestResult(tc.id, PASS, primary_tool, duration_s, tc.task, debug=debug_info)
+            return TestResult(tc.id, SOFT, primary_tool, duration_s, tc.task,
+                              detail=f"Expected error via {primary_tool} (expected {expected})", debug=debug_info)
         return TestResult(tc.id, FAIL, primary_tool, duration_s, tc.task,
-                          detail=f"Unexpected error in tool result", debug=debug_info)
+                          detail="Expected error but got success", debug=debug_info)
 
-    # 4. Tool match check
+    # 3. Unexpected error — fail only if output didn't recover
+    if has_error and not output_correct:
+        return TestResult(tc.id, FAIL, primary_tool, duration_s, tc.task,
+                          detail="Unexpected error in tool result", debug=debug_info)
+
+    # 4. Negative test — expected no tool but one was called
     if not expected:
-        # Negative test expected no tool but one was called
         return TestResult(tc.id, FAIL, primary_tool, duration_s, tc.task,
                           detail=f"Expected no tool, got {primary_tool}", debug=debug_info)
 
-    if not matched_expected and not matched_alt:
-        return TestResult(tc.id, FAIL, primary_tool, duration_s, tc.task,
-                          detail=f"Expected {expected}, got {primary_tool}", debug=debug_info)
-
-    # 5. Output check
-    for substr in tc.expect_in_output:
-        if substr not in combined:
-            verdict = SOFT if matched_alt and not matched_expected else FAIL
-            return TestResult(tc.id, verdict, primary_tool, duration_s, tc.task,
-                              detail=f'Expected output "{substr}" not found', debug=debug_info)
-
-    # 6. Final verdict
-    if matched_expected:
-        return TestResult(tc.id, PASS, primary_tool, duration_s, tc.task, debug=debug_info)
-    if matched_alt:
+    # 5. Output correct — tool identity is secondary
+    if output_correct and tc.expect_in_output:
+        if matched_expected:
+            return TestResult(tc.id, PASS, primary_tool, duration_s, tc.task, debug=debug_info)
+        if matched_alt:
+            return TestResult(tc.id, SOFT, primary_tool, duration_s, tc.task,
+                              detail=f"Correct output via alternative {primary_tool}", debug=debug_info)
+        # Different tool but correct output — the task was completed
         return TestResult(tc.id, SOFT, primary_tool, duration_s, tc.task,
-                          detail=f"Alternative tool {primary_tool} used", debug=debug_info)
+                          detail=f"Correct output via {primary_tool} (expected {expected})", debug=debug_info)
 
-    return TestResult(tc.id, PASS, primary_tool, duration_s, tc.task, debug=debug_info)
+    # 6. No output to verify — fall back to tool identity
+    if not tc.expect_in_output:
+        if matched_expected:
+            return TestResult(tc.id, PASS, primary_tool, duration_s, tc.task, debug=debug_info)
+        if matched_alt:
+            return TestResult(tc.id, SOFT, primary_tool, duration_s, tc.task,
+                              detail=f"Alternative tool {primary_tool} used", debug=debug_info)
+        # Wrong tool, can't verify output — ambiguous
+        return TestResult(tc.id, WARN, primary_tool, duration_s, tc.task,
+                          detail=f"Got {primary_tool}, expected {expected} (no output check)", debug=debug_info)
+
+    # 7. Output incorrect
+    if matched_expected or matched_alt:
+        return TestResult(tc.id, FAIL, primary_tool, duration_s, tc.task,
+                          detail=f'Expected output "{missing_output}" not found', debug=debug_info)
+    return TestResult(tc.id, FAIL, primary_tool, duration_s, tc.task,
+                      detail=f'Wrong tool {primary_tool}, expected output "{missing_output}" not found', debug=debug_info)
 
 
 # ---------------------------------------------------------------------------
@@ -1265,6 +1306,14 @@ def print_report(results: list[TestResult], total_duration: float) -> None:
         for i in range(0, len(items), 2):
             pair = items[i:i+2]
             print("  ".join(pair))
+
+    # Soft passes (correct output via different tool or without tool call)
+    softs = [r for r in results if r.verdict == SOFT]
+    if softs:
+        print(f"\n  Soft passes (correct output, different mechanism):")
+        for r in softs:
+            detail = r.detail or "alternative mechanism"
+            print(f"    {yellow(r.test_id)}: {detail}")
 
     if failures:
         print(f"\n  Failures:")
