@@ -78,6 +78,14 @@ def _extract_search_query(task: str) -> str:
     # Strip trailing prepositions that introduce data blocks
     cleaned = re.sub(r'\s+(from|in)(\s+\w+)*\s*:\s*$', '', first_line)
 
+    # Strip content-specifying clauses — these describe what's being
+    # processed, not what tool is needed.  "pull out lines with email
+    # addresses" → "pull out lines" (grep territory, not email tools).
+    cleaned = re.sub(
+        r'\s+(with|containing|that\s+contain|that\s+match|matching)\b.*$',
+        '', cleaned, flags=re.I,
+    )
+
     # Remove quoted literal values (data, not intent)
     cleaned = re.sub(r'"[^"]*"', '', cleaned)
 
