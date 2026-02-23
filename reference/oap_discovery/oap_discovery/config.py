@@ -55,7 +55,7 @@ class ExperienceConfig:
 @dataclass
 class ToolBridgeConfig:
     enabled: bool = True
-    default_top_k: int = 5
+    default_top_k: int = 10
     max_rounds: int = 3
     ollama_timeout: int = 300
     http_timeout: int = 30

@@ -89,6 +89,11 @@ def _extract_search_query(task: str) -> str:
     # Remove quoted literal values (data, not intent)
     cleaned = re.sub(r'"[^"]*"', '', cleaned)
 
+    # Normalize colloquial verbs to standard text-processing vocabulary.
+    # "pull out lines" → "filter lines" (matches grep's "filtering" description)
+    cleaned = re.sub(r'\bpull\s+out\b', 'filter', cleaned, flags=re.I)
+    cleaned = re.sub(r'\bpick\s+out\b', 'filter', cleaned, flags=re.I)
+
     # Collapse whitespace
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
 
