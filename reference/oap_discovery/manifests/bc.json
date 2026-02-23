@@ -1,10 +1,10 @@
 {
   "oap": "1.0",
   "name": "bc",
-  "description": "Evaluate arbitrary-precision mathematical expressions. Reads expressions from standard input and computes the result. Supports addition (+), subtraction (-), multiplication (*), division (/), modulo (%), and exponentiation (^). Use scale=N to set decimal precision. Includes math library functions with -l flag: sine (s), cosine (c), natural log (l), exponential (e), arctangent (a), and square root (sqrt). Use for precise arithmetic, unit conversions, or any calculation that needs more than floating-point precision.",
+  "description": "bc — the standard Unix calculator. Calculate, compute, and evaluate arithmetic and mathematical expressions. Use bc to add, subtract, multiply, divide, or raise to a power. Reads expressions from standard input and prints the result. Supports integers and decimals: addition (+), subtraction (-), multiplication (*), division (/), modulo (%), and exponentiation (^). Use scale=N to set decimal precision. Math library functions are always available: sine (s), cosine (c), natural log (l), exponential (e), arctangent (a), and square root (sqrt). Use for any math calculation, arithmetic, unit conversion, or numeric computation.",
   "input": {
     "format": "text/plain",
-    "description": "Mathematical expression(s) to evaluate, provided on standard input. One expression per line."
+    "description": "The mathematical expression to compute, provided on standard input (not as an argument). One expression per line. Examples: '2 + 3', 'scale=4; 22/7', '2^16', '100 * 1.08'."
   },
   "output": {
     "format": "text/plain",
@@ -12,6 +12,6 @@
   },
   "invoke": {
     "method": "stdio",
-    "url": "bc"
+    "url": "bc -l"
   }
 }
