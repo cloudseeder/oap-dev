@@ -370,8 +370,9 @@ def _build_experience_hints(fingerprint: str) -> tuple[str, list[str]]:
     if successes:
         for s in successes:
             tool_name = s.discovery.manifest_matched
-            success_tools.append(tool_name)
-            lines.append(f"- Previously succeeded: {tool_name} for similar task")
+            if tool_name not in success_tools:  # dedupe
+                success_tools.append(tool_name)
+                lines.append(f"- Previously succeeded: {tool_name} for similar task")
 
     return "\n".join(lines), success_tools
 
@@ -462,7 +463,19 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     # Build experience hints from past failures AND successes
     failure_hints = ""
     if exp_fingerprint and _experience_store:
-        failure_hints, _success_domains = _build_experience_hints(exp_fingerprint)
+        failure_hints, success_domains = _build_experience_hints(exp_fingerprint)
+        # Inject tools from successful experiences into the tool list
+        for domain in success_domains:
+            if len(tools) >= MAX_INJECTED_TOOLS + 2:  # allow 2 extra for experience
+                break
+            manifest = store.get_manifest(domain)
+            if manifest is None:
+                continue
+            entry = manifest_to_tool(domain, manifest)
+            if entry.tool.function.name not in registry:
+                tools.append(entry.tool)
+                registry[entry.tool.function.name] = entry
+                log.info("Injected experience success tool: %s (%s)", entry.tool.function.name, domain)
 
     # Build Ollama request — prepend a system message to keep qwen3 concise
     original_messages = [m.model_dump(exclude_none=True) for m in req.messages]
