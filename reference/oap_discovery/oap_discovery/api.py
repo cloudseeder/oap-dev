@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException, Header
 from .config import Config, load_config
 from .db import ManifestStore
 from .discovery import DiscoveryEngine
+from .fts_store import FTSStore
 from . import experience_api
 from . import tool_api
 from .experience_engine import ExperienceEngine
@@ -33,6 +34,7 @@ _store: ManifestStore | None = None
 _ollama: OllamaClient | None = None
 _engine: DiscoveryEngine | None = None
 _cfg: Config | None = None
+_fts_store: FTSStore | None = None
 _experience_store: ExperienceStore | None = None
 
 
@@ -84,6 +86,8 @@ async def _index_local_manifests() -> None:
         domain = f"local/{path.stem}"
         embedding, _ = await _ollama.embed_document(data["description"])
         _store.upsert_manifest(domain, data, embedding)
+        if _fts_store is not None:
+            _fts_store.upsert_manifest(domain, data)
         count += 1
 
     if count:
@@ -92,14 +96,20 @@ async def _index_local_manifests() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _store, _ollama, _engine, _cfg, _experience_store
+    global _store, _ollama, _engine, _cfg, _fts_store, _experience_store
 
     config_path = _find_config()
     _cfg = load_config(config_path)
 
     _store = ManifestStore(_cfg.chromadb)
     _ollama = OllamaClient(_cfg.ollama)
-    _engine = DiscoveryEngine(_store, _ollama)
+
+    # FTS5 keyword search (optional, runs alongside vector search)
+    if _cfg.fts.enabled:
+        _fts_store = FTSStore(_cfg.fts.db_path)
+        log.info("FTS5 enabled — db=%s", _cfg.fts.db_path)
+
+    _engine = DiscoveryEngine(_store, _ollama, fts_store=_fts_store)
 
     # Index local manifests (e.g. Unix tools in manifests/)
     await _index_local_manifests()
@@ -113,6 +123,8 @@ async def lifespan(app: FastAPI):
         log.warning("Model warmup failed — first request may be slow")
 
     log.info("API started — %d manifests indexed", _store.count())
+    if _fts_store is not None:
+        log.info("FTS5 index — %d manifests", _fts_store.count())
 
     # Ollama tool bridge
     if _cfg.tool_bridge.enabled:
@@ -142,6 +154,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    if _fts_store is not None:
+        _fts_store.close()
     if _experience_store is not None:
         _experience_store.close()
     await _ollama.close()

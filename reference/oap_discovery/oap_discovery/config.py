@@ -53,6 +53,12 @@ class ExperienceConfig:
 
 
 @dataclass
+class FTSConfig:
+    enabled: bool = False
+    db_path: str = "./oap_fts.db"
+
+
+@dataclass
 class ToolBridgeConfig:
     enabled: bool = True
     default_top_k: int = 20
@@ -74,6 +80,7 @@ class Config:
     api: APIConfig = field(default_factory=APIConfig)
     experience: ExperienceConfig = field(default_factory=ExperienceConfig)
     tool_bridge: ToolBridgeConfig = field(default_factory=ToolBridgeConfig)
+    fts: FTSConfig = field(default_factory=FTSConfig)
 
 
 def load_credentials(path: str | Path) -> dict[str, dict]:
@@ -98,6 +105,7 @@ def _apply_env_overrides(cfg: Config) -> None:
         "api": cfg.api,
         "experience": cfg.experience,
         "tool_bridge": cfg.tool_bridge,
+        "fts": cfg.fts,
     }
     for section_name, section_obj in section_map.items():
         for f in fields(section_obj):
@@ -138,6 +146,8 @@ def load_config(path: str | Path | None = None) -> Config:
                 cfg.experience = _build_section(ExperienceConfig, raw["experience"])
             if "tool_bridge" in raw:
                 cfg.tool_bridge = _build_section(ToolBridgeConfig, raw["tool_bridge"])
+            if "fts" in raw:
+                cfg.fts = _build_section(FTSConfig, raw["fts"])
 
     _apply_env_overrides(cfg)
     return cfg

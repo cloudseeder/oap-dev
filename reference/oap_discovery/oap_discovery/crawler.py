@@ -18,6 +18,7 @@ import httpx
 
 from .config import Config, CrawlerConfig, load_config
 from .db import ManifestStore
+from .fts_store import FTSStore
 from .ollama_client import OllamaClient
 from .validate import validate_manifest
 
@@ -48,10 +49,12 @@ class Crawler:
         cfg: Config,
         store: ManifestStore,
         ollama: OllamaClient | None = None,
+        fts_store: FTSStore | None = None,
     ) -> None:
         self._cfg = cfg.crawler
         self._store = store
         self._ollama = ollama
+        self._fts_store = fts_store
         self._seen_hashes: dict[str, str] = {}
         self._semaphore = asyncio.Semaphore(self._cfg.concurrency)
 
@@ -97,6 +100,8 @@ class Crawler:
                 embedding = [0.0] * 768
 
             self._store.upsert_manifest(domain, data, embedding)
+            if self._fts_store is not None:
+                self._fts_store.upsert_manifest(domain, data)
             self._seen_hashes[domain] = manifest_hash
             log.info("Indexed seed: %s (%s)", domain, data["name"])
             count += 1
@@ -144,6 +149,8 @@ class Crawler:
 
         embedding, _ = await self._ollama.embed_document(data["description"])
         self._store.upsert_manifest(domain, data, embedding)
+        if self._fts_store is not None:
+            self._fts_store.upsert_manifest(domain, data)
         self._seen_hashes[domain] = manifest_hash
         log.info("Indexed: %s (%s)", domain, data["name"])
         return True

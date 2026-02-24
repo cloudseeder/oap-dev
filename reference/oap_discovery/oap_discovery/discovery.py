@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 from .db import ManifestStore
+from .fts_store import FTSStore
 from .models import DiscoverMatch, DiscoverMeta, DiscoverResponse, InvokeSpec, LLMCallMeta
 from .ollama_client import OllamaClient
 
@@ -75,8 +76,10 @@ def _extract_search_query(task: str) -> str:
     # Take first line only — inline data follows newlines
     first_line = task.split("\n")[0].strip()
 
-    # Strip trailing prepositions that introduce data blocks
-    cleaned = re.sub(r'\s+(from|in)(\s+\w+)*\s*:\s*$', '', first_line)
+    # Strip prepositions that introduce data blocks (including inline data)
+    # "list names from: [{...}]" → "list names"
+    # "filter lines from:" → "filter lines"
+    cleaned = re.sub(r'\s+(from|in)(\s+\w+)*\s*:.*$', '', first_line)
 
     # Strip content-specifying clauses — these describe what's being
     # processed, not what tool is needed.  "pull out lines with email
@@ -100,8 +103,13 @@ def _extract_search_query(task: str) -> str:
     if not cleaned:
         return task
 
-    # If result doesn't mention text-processing concepts, add context
-    if not re.search(r'\b(lines?|text|string|pattern|file)\b', cleaned, re.I):
+    # Detect inline JSON/structured data in original task
+    has_json_data = '{"' in first_line or '[{' in first_line
+
+    # Add domain hint based on data type
+    if has_json_data and not re.search(r'\bjson\b', cleaned, re.I):
+        cleaned += " JSON"
+    elif not re.search(r'\b(lines?|text|string|pattern|file)\b', cleaned, re.I):
         cleaned += " in text"
 
     # Line-filtering queries need search/match vocabulary to distinguish
@@ -117,9 +125,15 @@ def _extract_search_query(task: str) -> str:
 class DiscoveryEngine:
     """Combines vector search with LLM reasoning for manifest discovery."""
 
-    def __init__(self, store: ManifestStore, ollama: OllamaClient) -> None:
+    def __init__(
+        self,
+        store: ManifestStore,
+        ollama: OllamaClient,
+        fts_store: FTSStore | None = None,
+    ) -> None:
         self._store = store
         self._ollama = ollama
+        self._fts_store = fts_store
 
     async def discover(self, task: str, top_k: int = 10) -> DiscoverResponse:
         """Find the best manifest for a task.
@@ -136,6 +150,23 @@ class DiscoveryEngine:
 
         # Step 2: Vector search
         hits = self._store.search(query_embedding, n_results=top_k)
+
+        # Step 2b: FTS5 keyword search (if enabled) — merge into hits
+        if self._fts_store is not None:
+            fts_hits = self._fts_store.search(search_query, n_results=top_k)
+            if fts_hits:
+                seen = {h["domain"] for h in hits}
+                vector_count = len(hits)
+                for fh in fts_hits:
+                    if fh["domain"] not in seen:
+                        hits.append(fh)
+                        seen.add(fh["domain"])
+                fts_added = len(hits) - vector_count
+                if fts_added:
+                    log.info(
+                        "FTS added %d unique candidates (query=%r)",
+                        fts_added, search_query,
+                    )
 
         if not hits:
             total_ms = (time.monotonic() - t0) * 1000
