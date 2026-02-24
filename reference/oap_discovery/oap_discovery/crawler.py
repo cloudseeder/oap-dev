@@ -203,6 +203,11 @@ def main(config_path: str, seed: bool, once: bool, verbose: bool) -> None:
     cfg = load_config(config_path)
     store = ManifestStore(cfg.chromadb)
 
+    fts: FTSStore | None = None
+    if cfg.fts.enabled:
+        fts = FTSStore(cfg.fts.db_path)
+        log.info("FTS5 enabled — db=%s", cfg.fts.db_path)
+
     async def _run() -> None:
         ollama: OllamaClient | None = None
         if not seed:
@@ -211,7 +216,7 @@ def main(config_path: str, seed: bool, once: bool, verbose: bool) -> None:
                 log.error("Ollama is not reachable at %s", cfg.ollama.base_url)
                 sys.exit(1)
 
-        crawler = Crawler(cfg, store, ollama)
+        crawler = Crawler(cfg, store, ollama, fts_store=fts)
 
         try:
             if seed:
@@ -225,6 +230,8 @@ def main(config_path: str, seed: bool, once: bool, verbose: bool) -> None:
         finally:
             if ollama:
                 await ollama.close()
+            if fts:
+                fts.close()
 
     asyncio.run(_run())
 
