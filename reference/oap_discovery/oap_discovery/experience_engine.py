@@ -56,6 +56,10 @@ Examples:
 - "What time is it" → {"fingerprint": "query.system.date_time", "domain": "system.info"}
 - "Show today's date" → {"fingerprint": "query.system.date_time", "domain": "system.info"}
 - "Filter JSON with jq" → {"fingerprint": "transform.data.json_query", "domain": "developer.tools"}
+- "Extract names from: [{"name":"Alice"},{"name":"Bob"}]" → {"fingerprint": "extract.json.field_list", "domain": "developer.tools"}
+- "Sort JSON objects by a field" → {"fingerprint": "sort.json.field_sort", "domain": "developer.tools"}
+- "Count items in a JSON array" → {"fingerprint": "count.json.array_length", "domain": "developer.tools"}
+- "Get a value from {"key": "value"}" → {"fingerprint": "extract.json.field_value", "domain": "developer.tools"}
 - "Find a command for disk usage" → {"fingerprint": "search.system.command_lookup", "domain": "system.tools"}
 - "Read the manual for grep" → {"fingerprint": "query.system.manual_page", "domain": "system.tools"}
 """

@@ -428,6 +428,17 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             tool_calls = resp_message.get("tool_calls")
 
             if not tool_calls or not req.oap_auto_execute:
+                # If cache hit produced errors and LLM gave up, break to let
+                # degradation logic fire instead of returning early.
+                if exp_cache_hit and tools_had_errors and _attempt == 0:
+                    if debug:
+                        debug_rounds.append({
+                            "round": round_num + 1,
+                            "ollama_response": resp_message,
+                            "tool_executions": [],
+                        })
+                    break
+
                 # No tool calls or auto-execute disabled — return as-is
                 ollama_resp["oap_tools_injected"] = len(registry)
                 ollama_resp["oap_round"] = round_num + 1
