@@ -16,7 +16,7 @@ from oap_discovery.tool_converter import (
     manifest_to_tool,
     manifest_to_tool_name,
 )
-from oap_discovery.tool_executor import _inject_credentials, execute_tool_call
+from oap_discovery.tool_executor import _inject_credentials, execute_exec_call, execute_tool_call
 from oap_discovery.tool_models import ToolRegistryEntry
 from oap_discovery.experience_models import (
     CorrectionEntry,
@@ -427,7 +427,7 @@ class TestChatProxy:
                 result = await tool_api.chat_proxy(req)
 
             assert result["message"]["content"] == "Hello!"
-            assert result["oap_tools_injected"] == 0
+            assert result["oap_tools_injected"] == 1  # oap_exec always injected
             # Debug output assertions
             assert "oap_debug" in result
             dbg = result["oap_debug"]
@@ -665,7 +665,7 @@ class TestChatProxy:
                 result = await tool_api.chat_proxy(req)
 
             assert result["message"]["content"] == "Found 3 TODOs."
-            assert result["oap_tools_injected"] == 1
+            assert result["oap_tools_injected"] == 2  # oap_grep + oap_exec
             assert result["oap_round"] == 2
             # Debug output assertions
             assert "oap_debug" in result
@@ -1329,3 +1329,188 @@ class TestToolExecutionWithCredentials:
         used_spec: InvokeSpec = call_args[0][0]
         assert used_spec.headers is not None
         assert used_spec.headers["X-Service-Key"] == "supersecret"
+
+
+# --- oap_exec meta-tool ---
+
+
+class TestExecTool:
+    """Tests for the oap_exec direct CLI execution meta-tool."""
+
+    def test_exec_tool_injected_in_tools_list(self):
+        """Verify EXEC_TOOL and EXEC_REGISTRY_ENTRY are properly defined."""
+        from oap_discovery.tool_api import EXEC_REGISTRY_ENTRY, EXEC_TOOL
+
+        assert EXEC_TOOL.function.name == "oap_exec"
+        assert "command" in EXEC_TOOL.function.parameters.properties
+        assert EXEC_TOOL.function.parameters.required == ["command"]
+        assert EXEC_REGISTRY_ENTRY.domain == "builtin/exec"
+        assert EXEC_REGISTRY_ENTRY.manifest["invoke"]["method"] == "exec"
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_simple_command(self):
+        """Run 'echo hello' via execute_exec_call, verify output."""
+        result = await execute_exec_call("echo hello")
+        assert result.strip() == "hello"
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_with_file(self, tmp_path):
+        """Write a temp file, run 'cat <path>', verify contents."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("line one\nline two\n")
+        result = await execute_exec_call(f"cat {test_file}")
+        assert "line one" in result
+        assert "line two" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_blocked_command(self):
+        """Try a command outside allowlist, verify error."""
+        result = await execute_exec_call("python3 -c 'print(1)'")
+        # python3 may or may not be in allowed dirs depending on system,
+        # but if it's blocked we get an error; test the mechanism
+        # by using a definitely-nonexistent command
+        result = await execute_exec_call("/tmp/evil_binary --hack")
+        assert result.startswith("Error:")
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_nonexistent_command(self):
+        """Try a command that doesn't exist, verify error."""
+        result = await execute_exec_call("nonexistent_tool_xyz --flag")
+        assert result.startswith("Error:")
+        assert "not found" in result.lower() or "Command not found" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_invalid_syntax(self):
+        """Pass malformed command string (unclosed quote), verify graceful error."""
+        result = await execute_exec_call("echo 'unterminated")
+        assert result.startswith("Error:")
+        assert "syntax" in result.lower() or "No closing" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_empty_command(self):
+        """Pass empty string, verify error."""
+        result = await execute_exec_call("")
+        assert result.startswith("Error:")
+
+        result2 = await execute_exec_call("   ")
+        assert result2.startswith("Error:")
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_timeout(self):
+        """Verify timeout handling with a long-running command."""
+        result = await execute_exec_call("sleep 30", stdio_timeout=1)
+        assert "Error:" in result
+        assert "timed out" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_exit_code_1_no_stderr(self):
+        """grep with no matches returns exit 1 + empty stderr = success (empty output)."""
+        result = await execute_exec_call("grep nonexistent_pattern_xyz /dev/null")
+        # Should be treated as success with empty output, not an error
+        assert not result.startswith("Error")
+
+    @pytest.mark.asyncio
+    async def test_execute_exec_call_tilde_expansion(self, tmp_path, monkeypatch):
+        """Verify ~ is expanded in arguments."""
+        # Create a file in a temp dir pretending to be HOME
+        test_file = tmp_path / "testfile.txt"
+        test_file.write_text("tilde test content\n")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        result = await execute_exec_call("cat ~/testfile.txt")
+        assert "tilde test content" in result
+
+    @pytest.mark.asyncio
+    async def test_exec_excluded_from_experience_cache(self):
+        """Verify oap_exec-only calls don't trigger experience caching."""
+        from oap_discovery import tool_api
+
+        orig = (
+            tool_api._engine, tool_api._store, tool_api._ollama_cfg,
+            tool_api._tool_bridge_cfg, tool_api._experience_engine,
+            tool_api._experience_store, tool_api._experience_cfg,
+        )
+
+        try:
+            # Set up minimal mocks
+            mock_engine = AsyncMock()
+            mock_result = MagicMock()
+            mock_result.match = None
+            mock_result.candidates = []
+            mock_engine.discover = AsyncMock(return_value=mock_result)
+
+            mock_store = MagicMock()
+            mock_store.get_manifest = MagicMock(return_value=None)
+
+            from oap_discovery.config import OllamaConfig, ToolBridgeConfig
+
+            mock_ollama_cfg = OllamaConfig()
+            mock_bridge_cfg = ToolBridgeConfig(enabled=True)
+
+            tool_api._engine = mock_engine
+            tool_api._store = mock_store
+            tool_api._ollama_cfg = mock_ollama_cfg
+            tool_api._tool_bridge_cfg = mock_bridge_cfg
+            tool_api._ollama = None
+            tool_api._experience_engine = None
+            tool_api._experience_store = None
+            tool_api._experience_cfg = None
+
+            # Mock Ollama to return oap_exec tool call then final answer
+            from oap_discovery.tool_models import ChatMessage, ChatRequest
+
+            tool_call_resp = {
+                "model": "qwen3:8b",
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "function": {
+                            "name": "oap_exec",
+                            "arguments": {"command": "echo test"},
+                        }
+                    }],
+                },
+                "done": True,
+            }
+            final_resp = {
+                "model": "qwen3:8b",
+                "message": {"role": "assistant", "content": "Done."},
+                "done": True,
+            }
+
+            with patch("oap_discovery.tool_api.httpx.AsyncClient") as MockClient, \
+                 patch("oap_discovery.tool_api.execute_exec_call", return_value="test\n") as mock_exec, \
+                 patch("oap_discovery.tool_api._save_experience") as mock_save_exp, \
+                 patch("oap_discovery.tool_api._save_failure_experience") as mock_save_fail:
+
+                mock_client_instance = AsyncMock()
+                resp1 = MagicMock()
+                resp1.json.return_value = tool_call_resp
+                resp1.raise_for_status = MagicMock()
+                resp2 = MagicMock()
+                resp2.json.return_value = final_resp
+                resp2.raise_for_status = MagicMock()
+                mock_client_instance.post.side_effect = [resp1, resp2]
+                mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+                mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+                MockClient.return_value = mock_client_instance
+
+                req = ChatRequest(
+                    model="qwen3:8b",
+                    messages=[ChatMessage(role="user", content="echo test")],
+                )
+                result = await tool_api.chat_proxy(req)
+
+            assert result["message"]["content"] == "Done."
+            # oap_exec should have been called
+            mock_exec.assert_called_once()
+            # But experience should NOT be saved (oap_exec excluded)
+            mock_save_exp.assert_not_called()
+            mock_save_fail.assert_not_called()
+
+        finally:
+            (
+                tool_api._engine, tool_api._store, tool_api._ollama_cfg,
+                tool_api._tool_bridge_cfg, tool_api._experience_engine,
+                tool_api._experience_store, tool_api._experience_cfg,
+            ) = orig

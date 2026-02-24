@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import shlex
 from typing import Any
 
-from .invoker import invoke_manifest
+from .invoker import _validate_stdio_command, invoke_manifest
 from .models import InvokeSpec
 from .ollama_client import OllamaClient
 from .tool_models import ToolRegistryEntry
@@ -253,3 +254,85 @@ async def execute_tool_call(
     except Exception as e:
         log.exception("Tool execution failed: %s", tool_name)
         return f"Error executing {tool_name}: {e}"
+
+
+# Max response bytes — same as invoker.MAX_RESPONSE_BYTES
+_MAX_EXEC_OUTPUT = 100 * 1024
+
+
+async def execute_exec_call(
+    command_str: str,
+    *,
+    stdio_timeout: int = 10,
+    max_output: int = 102400,
+    ollama: OllamaClient | None = None,
+    task: str = "",
+    summarize_threshold: int = 4000,
+    chunk_size: int = 4000,
+) -> str:
+    """Execute a raw CLI command string with the same security as stdio tools.
+
+    Parses the command with shlex, validates the binary against the PATH
+    allowlist, expands ~ in arguments, and runs via create_subprocess_exec
+    (no shell).
+    """
+    if not command_str or not command_str.strip():
+        return "Error: empty command"
+
+    try:
+        parts = shlex.split(command_str)
+    except ValueError as e:
+        return f"Error: invalid command syntax — {e}"
+
+    if not parts:
+        return "Error: empty command"
+
+    cmd_name = parts[0]
+    try:
+        resolved_cmd = _validate_stdio_command(cmd_name)
+    except ValueError as e:
+        return f"Error: {e}"
+
+    # Expand ~ in all arguments (matches _invoke_stdio behavior)
+    argv = [resolved_cmd] + [os.path.expanduser(a) for a in parts[1:]]
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=stdio_timeout,
+        )
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+            await proc.wait()
+        except Exception:
+            pass
+        return f"Error: command timed out after {stdio_timeout}s"
+    except FileNotFoundError:
+        return f"Error: command not found — {resolved_cmd}"
+    except Exception as e:
+        log.exception("exec invocation failed: %s", command_str)
+        return f"Error: {e}"
+
+    output = stdout.decode(errors="replace")[:_MAX_EXEC_OUTPUT]
+    err_output = stderr.decode(errors="replace")[:_MAX_EXEC_OUTPUT]
+
+    # Exit code 1 with no stderr = "no results" (grep, diff, cmp convention)
+    success = proc.returncode == 0 or (
+        proc.returncode == 1 and not err_output.strip()
+    )
+
+    if not success:
+        return f"Error: {err_output.strip() or f'exit code {proc.returncode}'}"
+
+    body = output or "Success (no output)"
+
+    # Summarize large output via map-reduce if Ollama is available
+    if len(body) > summarize_threshold and ollama is not None and task:
+        body = await summarize_result(body, task, ollama, chunk_size, max_output)
+
+    return body

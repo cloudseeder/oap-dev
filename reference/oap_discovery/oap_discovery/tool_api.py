@@ -26,11 +26,14 @@ from .experience_models import (
 from .experience_store import ExperienceStore
 from .ollama_client import OllamaClient
 from .tool_converter import manifest_to_tool
-from .tool_executor import execute_tool_call
+from .tool_executor import execute_exec_call, execute_tool_call
 from .tool_models import (
     ChatMessage,
     ChatRequest,
     Tool,
+    ToolFunction,
+    ToolParameter,
+    ToolParameters,
     ToolRegistryEntry,
     ToolsRequest,
     ToolsResponse,
@@ -69,6 +72,39 @@ def _require_enabled() -> tuple[DiscoveryEngine, ManifestStore, OllamaConfig, To
 
 
 MAX_INJECTED_TOOLS = 3
+
+EXEC_TOOL = Tool(
+    function=ToolFunction(
+        name="oap_exec",
+        description=(
+            "Execute a CLI command directly. Use this when the task involves "
+            "files on disk — pass the complete command line including file paths. "
+            "Example: grep -E 'pattern' /path/to/file"
+        ),
+        parameters=ToolParameters(
+            properties={
+                "command": ToolParameter(
+                    description=(
+                        "The full CLI command to run (e.g. 'grep -E pattern file.txt', "
+                        "'wc -l file.txt', 'jq .field data.json')"
+                    ),
+                ),
+            },
+            required=["command"],
+        ),
+    ),
+)
+
+EXEC_REGISTRY_ENTRY = ToolRegistryEntry(
+    tool=EXEC_TOOL,
+    domain="builtin/exec",
+    manifest={
+        "oap": "1.0",
+        "name": "exec",
+        "description": "Execute a CLI command directly.",
+        "invoke": {"method": "exec", "url": ""},
+    },
+)
 
 
 async def _discover_tools(
@@ -465,6 +501,11 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     if client_tools:
         tools.extend(client_tools)
 
+    # Always inject oap_exec as an available meta-tool
+    if EXEC_TOOL.function.name not in registry:
+        tools.append(EXEC_TOOL)
+        registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
+
     # Build experience hints from past failures AND successes
     failure_hints = ""
     if exp_fingerprint and _experience_store:
@@ -487,8 +528,10 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     system_content = (
         "You are a tool-calling assistant. Be brief. "
         "Use function calls to invoke tools — never write JSON in your response. "
-        "Always include both 'args' and 'stdin' parameters for text-processing tools. "
-        "After a tool result, reply in 1-2 sentences."
+        "When a task involves files on disk, use oap_exec to run the command "
+        "directly (e.g. oap_exec with command='grep -E pattern /path/to/file'). "
+        "For inline text provided in the conversation, use the specific tool's "
+        "stdin parameter. After a tool result, reply in 1-2 sentences."
     )
     if failure_hints:
         system_content += (
@@ -569,23 +612,28 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         "rounds": debug_rounds,
                     }
                 # Cache experience on successful tool execution
-                if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+                # Skip caching when only oap_exec was used (always available, no value)
+                _real_tools = tools_called - {"oap_exec"}
+                if tools_executed and _real_tools and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
                     if not tools_had_errors:
                         await _save_experience(
-                            exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
+                            exp_fingerprint, exp_intent_domain, last_user_msg, registry, _real_tools,
                         )
                     elif successful_calls:
-                        # Self-corrected: save the successful tool as the experience
-                        await _save_experience(
-                            exp_fingerprint, exp_intent_domain, last_user_msg,
-                            registry, {sc["tool"] for sc in successful_calls},
-                        )
+                        _real_success = {sc["tool"] for sc in successful_calls} - {"oap_exec"}
+                        if _real_success:
+                            await _save_experience(
+                                exp_fingerprint, exp_intent_domain, last_user_msg,
+                                registry, _real_success,
+                            )
                 # Cache failure experience when tools had errors
                 if tools_executed and tools_had_errors and exp_fingerprint and exp_intent_domain:
-                    await _save_failure_experience(
-                        exp_fingerprint, exp_intent_domain, last_user_msg,
-                        registry, failed_calls, successful_calls,
-                    )
+                    _real_failed = [fc for fc in failed_calls if fc["tool"] != "oap_exec"]
+                    if _real_failed:
+                        await _save_failure_experience(
+                            exp_fingerprint, exp_intent_domain, last_user_msg,
+                            registry, _real_failed, successful_calls,
+                        )
                 return ollama_resp
 
             # Execute tool calls
@@ -604,19 +652,31 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 tools_called.add(tool_name)
 
                 t0 = time.monotonic()
-                result_str = await execute_tool_call(
-                    tool_name,
-                    tool_args,
-                    registry,
-                    task=last_user_msg,
-                    http_timeout=bridge_cfg.http_timeout,
-                    stdio_timeout=bridge_cfg.stdio_timeout,
-                    credentials=load_credentials(bridge_cfg.credentials_file),
-                    ollama=_ollama,
-                    summarize_threshold=bridge_cfg.summarize_threshold,
-                    chunk_size=bridge_cfg.chunk_size,
-                    max_output=bridge_cfg.max_tool_result,
-                )
+                if tool_name == "oap_exec":
+                    command_str = tool_args.get("command", "")
+                    result_str = await execute_exec_call(
+                        command_str,
+                        stdio_timeout=bridge_cfg.stdio_timeout,
+                        ollama=_ollama,
+                        task=last_user_msg,
+                        summarize_threshold=bridge_cfg.summarize_threshold,
+                        chunk_size=bridge_cfg.chunk_size,
+                        max_output=bridge_cfg.max_tool_result,
+                    )
+                else:
+                    result_str = await execute_tool_call(
+                        tool_name,
+                        tool_args,
+                        registry,
+                        task=last_user_msg,
+                        http_timeout=bridge_cfg.http_timeout,
+                        stdio_timeout=bridge_cfg.stdio_timeout,
+                        credentials=load_credentials(bridge_cfg.credentials_file),
+                        ollama=_ollama,
+                        summarize_threshold=bridge_cfg.summarize_threshold,
+                        chunk_size=bridge_cfg.chunk_size,
+                        max_output=bridge_cfg.max_tool_result,
+                    )
                 duration_ms = int((time.monotonic() - t0) * 1000)
 
                 if result_str.startswith("Error"):
@@ -695,6 +755,10 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         similar_experience_tool_names.append(name)
             if client_tools:
                 tools.extend(client_tools)
+            # Re-inject oap_exec for retry
+            if EXEC_TOOL.function.name not in registry:
+                tools.append(EXEC_TOOL)
+                registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
             continue  # retry the outer loop
 
         # No retry needed — break out
@@ -716,21 +780,26 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             "rounds": debug_rounds,
         }
     # Cache experience on successful tool execution
-    if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+    # Skip caching when only oap_exec was used (always available, no value)
+    _real_tools = tools_called - {"oap_exec"}
+    if tools_executed and _real_tools and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
         if not tools_had_errors:
             await _save_experience(
-                exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
+                exp_fingerprint, exp_intent_domain, last_user_msg, registry, _real_tools,
             )
         elif successful_calls:
-            # Self-corrected: save the successful tool as the experience
-            await _save_experience(
-                exp_fingerprint, exp_intent_domain, last_user_msg,
-                registry, {sc["tool"] for sc in successful_calls},
-            )
+            _real_success = {sc["tool"] for sc in successful_calls} - {"oap_exec"}
+            if _real_success:
+                await _save_experience(
+                    exp_fingerprint, exp_intent_domain, last_user_msg,
+                    registry, _real_success,
+                )
     # Cache failure experience when tools had errors
     if tools_executed and tools_had_errors and exp_fingerprint and exp_intent_domain:
-        await _save_failure_experience(
-            exp_fingerprint, exp_intent_domain, last_user_msg,
-            registry, failed_calls, successful_calls,
-        )
+        _real_failed = [fc for fc in failed_calls if fc["tool"] != "oap_exec"]
+        if _real_failed:
+            await _save_failure_experience(
+                exp_fingerprint, exp_intent_domain, last_user_msg,
+                registry, _real_failed, successful_calls,
+            )
     return ollama_resp
