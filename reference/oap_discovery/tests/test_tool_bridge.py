@@ -1,6 +1,7 @@
 """Tests for Ollama tool bridge: converter, executor, and API."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,7 +18,15 @@ from oap_discovery.tool_converter import (
 )
 from oap_discovery.tool_executor import _inject_credentials, execute_tool_call
 from oap_discovery.tool_models import ToolRegistryEntry
-from oap_discovery.experience_models import InvocationResult
+from oap_discovery.experience_models import (
+    DiscoveryRecord,
+    ExperienceRecord,
+    IntentRecord,
+    InvocationRecord,
+    InvocationResult,
+    OutcomeRecord,
+    ParameterMapping,
+)
 from oap_discovery.models import InvokeSpec
 
 
@@ -412,11 +421,24 @@ class TestChatProxy:
                 req = ChatRequest(
                     model="qwen3:4b",
                     messages=[ChatMessage(role="user", content="hello")],
+                    oap_debug=True,
                 )
                 result = await tool_api.chat_proxy(req)
 
             assert result["message"]["content"] == "Hello!"
             assert result["oap_tools_injected"] == 0
+            # Debug output assertions
+            assert "oap_debug" in result
+            dbg = result["oap_debug"]
+            assert "tools_discovered" in dbg
+            assert "similar_experience_tools" in dbg
+            assert "experience_cache" in dbg
+            assert "experience_fingerprint" in dbg
+            assert "failure_hints" in dbg
+            assert "rounds" in dbg
+            assert dbg["similar_experience_tools"] is None
+            assert dbg["experience_cache"] == "disabled"
+            assert len(dbg["rounds"]) == 1
         finally:
             tool_api._engine, tool_api._store, tool_api._ollama_cfg, tool_api._tool_bridge_cfg = orig
 
@@ -526,12 +548,22 @@ class TestChatProxy:
                 req = ChatRequest(
                     model="qwen3:4b",
                     messages=[ChatMessage(role="user", content="find large files on disk")],
+                    oap_debug=True,
                 )
                 result = await tool_api.chat_proxy(req)
 
-            # The experience store should be empty — errors must not be cached
-            assert exp_store.count() == 0
+            # No success experience should be cached — only a failure record
+            records = exp_store.find_by_fingerprint("search.file.size_filter")
+            assert all(r.outcome.status == "failure" for r in records)
+            assert all(r.discovery.confidence == 0.0 for r in records)
             assert result["oap_experience_cache"] == "miss"
+            # Debug output assertions
+            assert "oap_debug" in result
+            dbg = result["oap_debug"]
+            assert dbg["similar_experience_tools"] is None
+            assert dbg["experience_fingerprint"] == "search.file.size_filter"
+            assert dbg["experience_cache"] == "miss"
+            assert len(dbg["rounds"]) == 2
         finally:
             (
                 tool_api._engine, tool_api._store, tool_api._ollama_cfg,
@@ -627,14 +659,163 @@ class TestChatProxy:
                 req = ChatRequest(
                     model="qwen3:4b",
                     messages=[ChatMessage(role="user", content="search for TODO in files")],
+                    oap_debug=True,
                 )
                 result = await tool_api.chat_proxy(req)
 
             assert result["message"]["content"] == "Found 3 TODOs."
             assert result["oap_tools_injected"] == 1
             assert result["oap_round"] == 2
+            # Debug output assertions
+            assert "oap_debug" in result
+            dbg = result["oap_debug"]
+            assert dbg["similar_experience_tools"] is None
+            assert dbg["experience_cache"] == "disabled"
+            assert len(dbg["rounds"]) == 2
         finally:
             tool_api._engine, tool_api._store, tool_api._ollama_cfg, tool_api._tool_bridge_cfg = orig
+
+    @pytest.mark.asyncio
+    async def test_chat_debug_shows_similar_experience_tools(self, tmp_path):
+        """When partial experience matches exist, similar_experience_tools is populated in debug."""
+        from oap_discovery import tool_api
+        from oap_discovery.config import ExperienceConfig, OllamaConfig, ToolBridgeConfig
+        from oap_discovery.experience_store import ExperienceStore
+        from oap_discovery.tool_models import ChatMessage, ChatRequest
+        from oap_discovery.models import DiscoverMatch, DiscoverResponse, InvokeSpec
+
+        mock_engine = AsyncMock()
+        mock_store = MagicMock()
+
+        # Discovery returns grep as the top match
+        match = DiscoverMatch(
+            domain="local/grep",
+            name="grep",
+            description="Search text",
+            invoke=InvokeSpec(method="stdio", url="grep"),
+            score=0.1,
+        )
+        mock_engine.discover.return_value = DiscoverResponse(
+            task="extract field names from JSON",
+            match=match,
+            candidates=[match],
+        )
+        # ManifestStore returns manifests for both grep and jq
+        jq_manifest = {
+            "oap": "1.0",
+            "name": "jq",
+            "description": "Process JSON data.",
+            "input": {"format": "text/plain", "description": "JSON data on stdin. The first argument is the jq filter expression."},
+            "invoke": {"method": "stdio", "url": "jq"},
+        }
+        mock_store.get_manifest.side_effect = lambda d: (
+            jq_manifest if d == "local/jq"
+            else {
+                "oap": "1.0", "name": "grep", "description": "Search text",
+                "input": {"format": "text/plain", "description": "Text and pattern"},
+                "invoke": {"method": "stdio", "url": "grep"},
+            }
+        )
+
+        ollama_cfg = OllamaConfig(base_url="http://localhost:11434")
+        bridge_cfg = ToolBridgeConfig(enabled=True)
+
+        # Wire up a real experience store pre-populated with a similar experience
+        exp_store = ExperienceStore(str(tmp_path / "test_sim.db"))
+        now = datetime.now(timezone.utc)
+        exp_store.save(ExperienceRecord(
+            id="exp_sim_jq_001",
+            timestamp=now,
+            use_count=3,
+            last_used=now,
+            intent=IntentRecord(
+                raw="extract field value from JSON",
+                fingerprint="extract.json.field_value",
+                domain="developer.tools",
+            ),
+            discovery=DiscoveryRecord(
+                query_used="extract field value from JSON",
+                manifest_matched="local/jq",
+                manifest_version=None,
+                confidence=0.92,
+            ),
+            invocation=InvocationRecord(
+                endpoint="jq",
+                method="stdio",
+                parameter_mapping={
+                    "filter": ParameterMapping(source="intent", transform=None, value_used=".name"),
+                },
+            ),
+            outcome=OutcomeRecord(
+                status="success",
+                http_code=0,
+                response_summary="extracted field",
+                latency_ms=15,
+            ),
+            corrections=[],
+        ))
+
+        exp_cfg = ExperienceConfig(enabled=True, confidence_threshold=0.85)
+
+        # Mock experience engine: fingerprint returns same prefix (extract.json) but different suffix
+        mock_exp_engine = AsyncMock()
+        mock_exp_engine.fingerprint_intent.return_value = (
+            "extract.json.field_list",
+            "developer.tools",
+        )
+
+        orig = (
+            tool_api._engine, tool_api._store, tool_api._ollama_cfg,
+            tool_api._tool_bridge_cfg, tool_api._experience_engine,
+            tool_api._experience_store, tool_api._experience_cfg,
+        )
+        tool_api._engine = mock_engine
+        tool_api._store = mock_store
+        tool_api._ollama_cfg = ollama_cfg
+        tool_api._tool_bridge_cfg = bridge_cfg
+        tool_api._experience_engine = mock_exp_engine
+        tool_api._experience_store = exp_store
+        tool_api._experience_cfg = exp_cfg
+
+        try:
+            ollama_response = {
+                "model": "qwen3:8b",
+                "message": {"role": "assistant", "content": "Here are the field names."},
+                "done": True,
+            }
+
+            with patch("oap_discovery.tool_api.httpx.AsyncClient") as MockClient:
+                mock_resp = MagicMock()
+                mock_resp.json.return_value = ollama_response
+                mock_resp.raise_for_status = MagicMock()
+
+                mock_client_instance = AsyncMock()
+                mock_client_instance.post.return_value = mock_resp
+                mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+                mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+                MockClient.return_value = mock_client_instance
+
+                req = ChatRequest(
+                    model="qwen3:8b",
+                    messages=[ChatMessage(role="user", content="extract field names from JSON array")],
+                    oap_debug=True,
+                )
+                result = await tool_api.chat_proxy(req)
+
+            assert "oap_debug" in result
+            dbg = result["oap_debug"]
+            assert dbg["similar_experience_tools"] == ["oap_jq"]
+            assert dbg["experience_cache"] == "miss"
+            assert dbg["experience_fingerprint"] == "extract.json.field_list"
+            # Discovery found grep + partial match injected jq
+            assert "oap_jq" in dbg["tools_discovered"]
+        finally:
+            (
+                tool_api._engine, tool_api._store, tool_api._ollama_cfg,
+                tool_api._tool_bridge_cfg, tool_api._experience_engine,
+                tool_api._experience_store, tool_api._experience_cfg,
+            ) = orig
+            exp_store.close()
 
 
 # --- Credential loading ---

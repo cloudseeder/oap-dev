@@ -1136,6 +1136,7 @@ def run_tests(
                 "duration_s": round(duration, 2),
                 "message_content": (response or {}).get("message", {}).get("content", ""),
                 "oap_debug": (response or {}).get("oap_debug"),
+                "similar_experience_tools": (response or {}).get("oap_debug", {}).get("similar_experience_tools") if (response or {}).get("oap_debug") else None,
                 "oap_experience_cache": (response or {}).get("oap_experience_cache"),
                 "oap_tools_injected": (response or {}).get("oap_tools_injected"),
             }
