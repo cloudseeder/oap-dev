@@ -17,6 +17,9 @@ firebase_svc.json
 # database
 *.db
 
+# generated manifests
+reference/oap_discovery/manifests/
+
 # claude code
 .claude/
 

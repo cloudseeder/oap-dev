@@ -19,6 +19,7 @@ from oap_discovery.tool_converter import (
 from oap_discovery.tool_executor import _inject_credentials, execute_tool_call
 from oap_discovery.tool_models import ToolRegistryEntry
 from oap_discovery.experience_models import (
+    CorrectionEntry,
     DiscoveryRecord,
     ExperienceRecord,
     IntentRecord,
@@ -434,7 +435,7 @@ class TestChatProxy:
             assert "similar_experience_tools" in dbg
             assert "experience_cache" in dbg
             assert "experience_fingerprint" in dbg
-            assert "failure_hints" in dbg
+            assert "experience_hints" in dbg
             assert "rounds" in dbg
             assert dbg["similar_experience_tools"] is None
             assert dbg["experience_cache"] == "disabled"
@@ -815,6 +816,246 @@ class TestChatProxy:
                 tool_api._tool_bridge_cfg, tool_api._experience_engine,
                 tool_api._experience_store, tool_api._experience_cfg,
             ) = orig
+            exp_store.close()
+
+
+    @pytest.mark.asyncio
+    async def test_chat_failure_then_success_saves_correction(self, tmp_path):
+        """When round 1 fails and round 2 succeeds, failure experience includes fix."""
+        from oap_discovery import tool_api
+        from oap_discovery.config import ExperienceConfig, OllamaConfig, ToolBridgeConfig
+        from oap_discovery.experience_store import ExperienceStore
+        from oap_discovery.tool_models import ChatMessage, ChatRequest
+        from oap_discovery.models import DiscoverMatch, DiscoverResponse, InvokeSpec
+
+        mock_engine = AsyncMock()
+        mock_store = MagicMock()
+
+        match = DiscoverMatch(
+            domain="local/grep",
+            name="grep",
+            description="Search text",
+            invoke=InvokeSpec(method="stdio", url="grep"),
+            score=0.1,
+        )
+        mock_engine.discover.return_value = DiscoverResponse(
+            task="search for errors",
+            match=match,
+            candidates=[match],
+        )
+        mock_store.get_manifest.return_value = {
+            "oap": "1.0",
+            "name": "grep",
+            "description": "Search text",
+            "input": {"format": "text/plain", "description": "Text and pattern"},
+            "invoke": {"method": "stdio", "url": "grep"},
+        }
+
+        ollama_cfg = OllamaConfig(base_url="http://localhost:11434")
+        bridge_cfg = ToolBridgeConfig(enabled=True)
+
+        exp_store = ExperienceStore(str(tmp_path / "test_correction.db"))
+        exp_cfg = ExperienceConfig(enabled=True, confidence_threshold=0.85)
+
+        mock_exp_engine = AsyncMock()
+        mock_exp_engine.fingerprint_intent.return_value = (
+            "search.text.pattern_match",
+            "text.processing",
+        )
+
+        orig = (
+            tool_api._engine, tool_api._store, tool_api._ollama_cfg,
+            tool_api._tool_bridge_cfg, tool_api._experience_engine,
+            tool_api._experience_store, tool_api._experience_cfg,
+        )
+        tool_api._engine = mock_engine
+        tool_api._store = mock_store
+        tool_api._ollama_cfg = ollama_cfg
+        tool_api._tool_bridge_cfg = bridge_cfg
+        tool_api._experience_engine = mock_exp_engine
+        tool_api._experience_store = exp_store
+        tool_api._experience_cfg = exp_cfg
+
+        try:
+            # Round 1: tool call with bad args → error
+            tool_call_bad = {
+                "model": "qwen3:8b",
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "function": {
+                            "name": "oap_grep",
+                            "arguments": {"args": "[-Ei] error", "stdin": "log data"},
+                        }
+                    }],
+                },
+                "done": True,
+            }
+            # Round 2: tool call with correct args → success
+            tool_call_good = {
+                "model": "qwen3:8b",
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "function": {
+                            "name": "oap_grep",
+                            "arguments": {"args": "-i error", "stdin": "log data"},
+                        }
+                    }],
+                },
+                "done": True,
+            }
+            # Round 3: final answer
+            final_resp = {
+                "model": "qwen3:8b",
+                "message": {"role": "assistant", "content": "Found errors in log."},
+                "done": True,
+            }
+
+            error_result = InvocationResult(
+                status="failure", error="Error: invalid option", latency_ms=10
+            )
+            success_result = InvocationResult(
+                status="success", response_body="error: disk full\nerror: timeout", latency_ms=10
+            )
+
+            with patch("oap_discovery.tool_api.httpx.AsyncClient") as MockClient, \
+                 patch("oap_discovery.tool_executor.invoke_manifest") as mock_invoke:
+
+                mock_invoke.side_effect = [error_result, success_result]
+
+                mock_client_instance = AsyncMock()
+                resp1 = MagicMock()
+                resp1.json.return_value = tool_call_bad
+                resp1.raise_for_status = MagicMock()
+                resp2 = MagicMock()
+                resp2.json.return_value = tool_call_good
+                resp2.raise_for_status = MagicMock()
+                resp3 = MagicMock()
+                resp3.json.return_value = final_resp
+                resp3.raise_for_status = MagicMock()
+                mock_client_instance.post.side_effect = [resp1, resp2, resp3]
+                mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+                mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+                MockClient.return_value = mock_client_instance
+
+                req = ChatRequest(
+                    model="qwen3:8b",
+                    messages=[ChatMessage(role="user", content="search for errors in log data")],
+                )
+                result = await tool_api.chat_proxy(req)
+
+            assert result["message"]["content"] == "Found errors in log."
+
+            # Failure experience should be saved with fix populated
+            failures = exp_store.find_failures_by_fingerprint("search.text.pattern_match")
+            assert len(failures) >= 1
+            fc = failures[0]
+            assert fc.outcome.status == "failure"
+            assert len(fc.corrections) >= 1
+            # The fix should reference the successful call
+            assert fc.corrections[0].fix != ""
+            assert "oap_grep" in fc.corrections[0].fix
+
+            # Success experience should also be saved (self-correction)
+            successes = exp_store.find_by_fingerprint("search.text.pattern_match")
+            success_records = [r for r in successes if r.outcome.status == "success"]
+            assert len(success_records) >= 1
+        finally:
+            (
+                tool_api._engine, tool_api._store, tool_api._ollama_cfg,
+                tool_api._tool_bridge_cfg, tool_api._experience_engine,
+                tool_api._experience_store, tool_api._experience_cfg,
+            ) = orig
+            exp_store.close()
+
+    @pytest.mark.asyncio
+    async def test_build_experience_hints_uses_prefix(self, tmp_path):
+        """Failure hints from prefix-matched fingerprints are returned."""
+        from oap_discovery import tool_api
+        from oap_discovery.experience_store import ExperienceStore
+
+        exp_store = ExperienceStore(str(tmp_path / "test_prefix_hints.db"))
+        now = datetime.now(timezone.utc)
+
+        # Save a failure for extract.json.field_list
+        exp_store.save(ExperienceRecord(
+            id="fail_exp_jq_prefix_001",
+            timestamp=now,
+            use_count=1,
+            last_used=now,
+            intent=IntentRecord(
+                raw="extract names from JSON",
+                fingerprint="extract.json.field_list",
+                domain="developer.tools",
+            ),
+            discovery=DiscoveryRecord(
+                query_used="extract names from JSON",
+                manifest_matched="local/jq",
+                manifest_version=None,
+                confidence=0.0,
+            ),
+            invocation=InvocationRecord(
+                endpoint="jq",
+                method="stdio",
+            ),
+            outcome=OutcomeRecord(
+                status="failure",
+                response_summary="Error: invalid filter",
+            ),
+            corrections=[CorrectionEntry(
+                attempted="oap_jq({\"args\": \".names[]\"})",
+                error="Error: null is not iterable",
+                fix="",
+            )],
+        ))
+
+        # Save a success for extract.json.field_value
+        exp_store.save(ExperienceRecord(
+            id="exp_jq_success_001",
+            timestamp=now,
+            use_count=5,
+            last_used=now,
+            intent=IntentRecord(
+                raw="get name from JSON object",
+                fingerprint="extract.json.field_value",
+                domain="developer.tools",
+            ),
+            discovery=DiscoveryRecord(
+                query_used="get name from JSON",
+                manifest_matched="local/jq",
+                manifest_version=None,
+                confidence=0.92,
+            ),
+            invocation=InvocationRecord(
+                endpoint="jq",
+                method="stdio",
+            ),
+            outcome=OutcomeRecord(
+                status="success",
+                response_summary="extracted field",
+            ),
+            corrections=[],
+        ))
+
+        orig_store = tool_api._experience_store
+        tool_api._experience_store = exp_store
+
+        try:
+            # Query with a different suffix but same prefix (extract.json)
+            hints, success_tools = tool_api._build_experience_hints("extract.json.field_value")
+
+            # Should find the failure from extract.json.field_list via prefix match
+            assert "oap_jq" in hints
+            assert "null is not iterable" in hints
+
+            # Should find the success for the prefix
+            assert "local/jq" in success_tools
+            assert "Previously succeeded" in hints
+        finally:
+            tool_api._experience_store = orig_store
             exp_store.close()
 
 

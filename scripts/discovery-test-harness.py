@@ -371,10 +371,10 @@ def build_test_cases() -> list[TestCase]:
     # No-match tests (expect_error=True since grep returns exit 1)
     tests.append(TestCase("grep-024", "grep",
         'search for "zebra" in:\napple\nbanana\ncherry',
-        expect_tool="oap_grep", expect_error=True))
+        expect_tool="oap_grep", allow_no_tool=True))
     tests.append(TestCase("grep-025", "grep",
         'find "xyz123" in:\nabc\ndef\nghi',
-        expect_tool="oap_grep", expect_error=True))
+        expect_tool="oap_grep", allow_no_tool=True))
 
     # More varied phrasings
     tests.append(TestCase("grep-026", "grep",

@@ -141,6 +141,32 @@ class ExperienceStore:
         ).fetchall()
         return [self._row_to_record(r) for r in rows]
 
+    def find_failures_by_prefix(
+        self, prefix: str, limit: int = 5
+    ) -> list[ExperienceRecord]:
+        """Find failure records matching a fingerprint prefix."""
+        rows = self._db.execute(
+            """SELECT * FROM experiences
+               WHERE intent_fingerprint LIKE ? AND outcome_status = 'failure'
+               ORDER BY last_used DESC
+               LIMIT ?""",
+            (f"{prefix}%", limit),
+        ).fetchall()
+        return [self._row_to_record(r) for r in rows]
+
+    def find_successes_by_prefix(
+        self, prefix: str, limit: int = 3
+    ) -> list[ExperienceRecord]:
+        """Find successful records matching a fingerprint prefix."""
+        rows = self._db.execute(
+            """SELECT * FROM experiences
+               WHERE intent_fingerprint LIKE ? AND outcome_status = 'success'
+               ORDER BY use_count DESC, last_used DESC
+               LIMIT ?""",
+            (f"{prefix}%", limit),
+        ).fetchall()
+        return [self._row_to_record(r) for r in rows]
+
     def find_similar(
         self,
         intent_domain: str,
