@@ -972,15 +972,16 @@ class TestChatProxy:
             exp_store.close()
 
     @pytest.mark.asyncio
-    async def test_build_experience_hints_uses_prefix(self, tmp_path):
-        """Failure hints from prefix-matched fingerprints are returned."""
+    async def test_build_experience_hints_exact_failures_prefix_successes(self, tmp_path):
+        """Exact fingerprint failures are returned; prefix failures are NOT (too aggressive).
+        Prefix successes ARE returned (safe — suggests what works)."""
         from oap_discovery import tool_api
         from oap_discovery.experience_store import ExperienceStore
 
         exp_store = ExperienceStore(str(tmp_path / "test_prefix_hints.db"))
         now = datetime.now(timezone.utc)
 
-        # Save a failure for extract.json.field_list
+        # Save a failure for extract.json.field_list (different suffix)
         exp_store.save(ExperienceRecord(
             id="fail_exp_jq_prefix_001",
             timestamp=now,
@@ -1008,6 +1009,38 @@ class TestChatProxy:
             corrections=[CorrectionEntry(
                 attempted="oap_jq({\"args\": \".names[]\"})",
                 error="Error: null is not iterable",
+                fix="",
+            )],
+        ))
+
+        # Save a failure for extract.json.field_value (exact match)
+        exp_store.save(ExperienceRecord(
+            id="fail_exp_jq_exact_001",
+            timestamp=now,
+            use_count=1,
+            last_used=now,
+            intent=IntentRecord(
+                raw="get price from JSON",
+                fingerprint="extract.json.field_value",
+                domain="developer.tools",
+            ),
+            discovery=DiscoveryRecord(
+                query_used="get price from JSON",
+                manifest_matched="local/jq",
+                manifest_version=None,
+                confidence=0.0,
+            ),
+            invocation=InvocationRecord(
+                endpoint="jq",
+                method="stdio",
+            ),
+            outcome=OutcomeRecord(
+                status="failure",
+                response_summary="Error: bad filter",
+            ),
+            corrections=[CorrectionEntry(
+                attempted="oap_jq({\"args\": \".price\"})",
+                error="Error: cannot index string",
                 fix="",
             )],
         ))
@@ -1044,14 +1077,13 @@ class TestChatProxy:
         tool_api._experience_store = exp_store
 
         try:
-            # Query with a different suffix but same prefix (extract.json)
             hints, success_tools = tool_api._build_experience_hints("extract.json.field_value")
 
-            # Should find the failure from extract.json.field_list via prefix match
-            assert "oap_jq" in hints
-            assert "null is not iterable" in hints
+            # Should find the exact-match failure (field_value), NOT the prefix failure (field_list)
+            assert "cannot index string" in hints
+            assert "null is not iterable" not in hints
 
-            # Should find the success for the prefix
+            # Should find the prefix success
             assert "local/jq" in success_tools
             assert "Previously succeeded" in hints
         finally:

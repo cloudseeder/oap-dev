@@ -338,23 +338,24 @@ async def _save_failure_experience(
 
 
 def _build_experience_hints(fingerprint: str) -> tuple[str, list[str]]:
-    """Build hints from past failures AND successes for this fingerprint prefix.
+    """Build hints from past exact-match failures and prefix-match successes.
 
     Returns (hints_str, success_tool_names) so the caller can also inject
     successful tools into discovery results.
+
+    Only exact fingerprint failures are included — prefix failure matching
+    was too aggressive: one wc failure at count.text.line_count would poison
+    ALL count.text.* tasks, causing the LLM to refuse tool calls entirely.
+    Prefix successes are safe (they suggest what works, not what to avoid).
     """
     if _experience_store is None:
         return "", []
 
+    # Exact fingerprint failures only — no prefix matching for failures
+    failures = _experience_store.find_failures_by_fingerprint(fingerprint, limit=5)
+
+    # Prefix successes (safe — suggests what works for similar tasks)
     prefix = ".".join(fingerprint.split(".")[:2])
-
-    # Exact + prefix failures (deduped)
-    failures = _experience_store.find_failures_by_fingerprint(fingerprint, limit=3)
-    seen_ids = {e.id for e in failures}
-    prefix_failures = _experience_store.find_failures_by_prefix(prefix, limit=3)
-    failures.extend(f for f in prefix_failures if f.id not in seen_ids)
-
-    # Prefix successes
     successes = _experience_store.find_successes_by_prefix(prefix, limit=3)
 
     lines: list[str] = []
@@ -473,8 +474,8 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     )
     if failure_hints:
         system_content += (
-            f"\n\nIMPORTANT — learning from previous attempts at this type of task:\n"
-            f"{failure_hints}\nUse successful approaches. Avoid failed ones."
+            f"\n\nNote — previous attempts at this exact task type:\n"
+            f"{failure_hints}\nUse different arguments if retrying the same tool."
         )
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_content},
