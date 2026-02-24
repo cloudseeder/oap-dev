@@ -162,6 +162,54 @@ async def _check_experience_cache(
     return [], {}, fingerprint, intent_domain, None
 
 
+async def _get_similar_experience_tools(
+    fingerprint: str,
+    intent_domain: str,
+    store: ManifestStore,
+) -> tuple[list[Tool], dict[str, ToolRegistryEntry]]:
+    """Get tools from similar (partial match) experience records.
+
+    When the exact cache misses, similar experiences (same fingerprint
+    prefix + domain) can still inform which tools to inject.
+    """
+    if _experience_store is None:
+        return [], {}
+
+    fp_parts = fingerprint.split(".")
+    if len(fp_parts) < 2:
+        return [], {}
+
+    prefix = ".".join(fp_parts[:2])
+    similar = _experience_store.find_similar(intent_domain, prefix)
+
+    tools: list[Tool] = []
+    registry: dict[str, ToolRegistryEntry] = {}
+    seen_domains: set[str] = set()
+
+    for exp in similar:
+        if exp.outcome.status != "success" or exp.discovery.confidence < 0.5:
+            continue
+        domain = exp.discovery.manifest_matched
+        if domain in seen_domains:
+            continue
+        seen_domains.add(domain)
+        manifest = store.get_manifest(domain)
+        if manifest is None:
+            continue
+        entry = manifest_to_tool(domain, manifest)
+        tools.append(entry.tool)
+        registry[entry.tool.function.name] = entry
+
+    if tools:
+        log.info(
+            "Similar experience tools for %s.* : %s",
+            prefix,
+            [t.function.name for t in tools],
+        )
+
+    return tools, registry
+
+
 async def _save_experience(
     fingerprint: str,
     intent_domain: str,
@@ -335,6 +383,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     tools_called: set[str] = set()
     failed_calls: list[dict[str, Any]] = []
     exp_cache_status: str | None = None  # "hit", "miss", "degraded", or None
+    similar_experience_tool_names: list[str] = []
 
     # Extract last user message (used for discovery and summarization)
     last_user_msg = ""
@@ -362,6 +411,17 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             tools, registry = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
             )
+            # Inject tools from similar experiences (partial fingerprint match)
+            if exp_fingerprint and exp_intent_domain:
+                sim_tools, sim_registry = await _get_similar_experience_tools(
+                    exp_fingerprint, exp_intent_domain, store,
+                )
+                for st in sim_tools:
+                    name = st.function.name
+                    if name not in registry and len(tools) < MAX_INJECTED_TOOLS:
+                        tools.append(st)
+                        registry[name] = sim_registry[name]
+                        similar_experience_tool_names.append(name)
 
     # Merge client-provided tools
     client_tools = list(req.tools) if req.tools else []
@@ -453,6 +513,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                     })
                     ollama_resp["oap_debug"] = {
                         "tools_discovered": list(registry.keys()),
+                        "similar_experience_tools": similar_experience_tool_names or None,
                         "experience_cache": cache_label or "disabled",
                         "experience_fingerprint": exp_fingerprint,
                         "failure_hints": failure_hints or None,
@@ -555,6 +616,18 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             tools, registry = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
             )
+            # Also inject similar experience tools on retry
+            similar_experience_tool_names = []
+            if exp_fingerprint and exp_intent_domain:
+                sim_tools, sim_registry = await _get_similar_experience_tools(
+                    exp_fingerprint, exp_intent_domain, store,
+                )
+                for st in sim_tools:
+                    name = st.function.name
+                    if name not in registry and len(tools) < MAX_INJECTED_TOOLS:
+                        tools.append(st)
+                        registry[name] = sim_registry[name]
+                        similar_experience_tool_names.append(name)
             if client_tools:
                 tools.extend(client_tools)
             continue  # retry the outer loop
@@ -571,6 +644,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     if debug:
         ollama_resp["oap_debug"] = {
             "tools_discovered": list(registry.keys()),
+            "similar_experience_tools": similar_experience_tool_names or None,
             "experience_cache": cache_label or "disabled",
             "experience_fingerprint": exp_fingerprint,
             "failure_hints": failure_hints or None,
