@@ -1013,6 +1013,38 @@ class TestChatProxy:
             )],
         ))
 
+        # Save a DUPLICATE failure for extract.json.field_list (same tool+error)
+        exp_store.save(ExperienceRecord(
+            id="fail_exp_jq_prefix_002",
+            timestamp=now,
+            use_count=1,
+            last_used=now,
+            intent=IntentRecord(
+                raw="extract names from JSON again",
+                fingerprint="extract.json.field_list",
+                domain="developer.tools",
+            ),
+            discovery=DiscoveryRecord(
+                query_used="extract names from JSON",
+                manifest_matched="local/jq",
+                manifest_version=None,
+                confidence=0.0,
+            ),
+            invocation=InvocationRecord(
+                endpoint="jq",
+                method="stdio",
+            ),
+            outcome=OutcomeRecord(
+                status="failure",
+                response_summary="Error: null is not iterable",
+            ),
+            corrections=[CorrectionEntry(
+                attempted="oap_jq({\"args\": \".names[]\"})",
+                error="Error: null is not iterable",
+                fix="",
+            )],
+        ))
+
         # Save a failure for extract.json.field_value (exact match)
         exp_store.save(ExperienceRecord(
             id="fail_exp_jq_exact_001",
@@ -1021,6 +1053,38 @@ class TestChatProxy:
             last_used=now,
             intent=IntentRecord(
                 raw="get price from JSON",
+                fingerprint="extract.json.field_value",
+                domain="developer.tools",
+            ),
+            discovery=DiscoveryRecord(
+                query_used="get price from JSON",
+                manifest_matched="local/jq",
+                manifest_version=None,
+                confidence=0.0,
+            ),
+            invocation=InvocationRecord(
+                endpoint="jq",
+                method="stdio",
+            ),
+            outcome=OutcomeRecord(
+                status="failure",
+                response_summary="Error: bad filter",
+            ),
+            corrections=[CorrectionEntry(
+                attempted="oap_jq({\"args\": \".price\"})",
+                error="Error: cannot index string",
+                fix="",
+            )],
+        ))
+
+        # Save a DUPLICATE exact-match failure (same tool+error as fail_exp_jq_exact_001)
+        exp_store.save(ExperienceRecord(
+            id="fail_exp_jq_exact_002",
+            timestamp=now,
+            use_count=1,
+            last_used=now,
+            intent=IntentRecord(
+                raw="get price from JSON again",
                 fingerprint="extract.json.field_value",
                 domain="developer.tools",
             ),
@@ -1082,6 +1146,9 @@ class TestChatProxy:
             # Should find the exact-match failure (field_value), NOT the prefix failure (field_list)
             assert "cannot index string" in hints
             assert "null is not iterable" not in hints
+
+            # Duplicate exact-match failures should be deduped
+            assert hints.count("cannot index string") == 1
 
             # Should find the prefix success
             assert "local/jq" in success_tools

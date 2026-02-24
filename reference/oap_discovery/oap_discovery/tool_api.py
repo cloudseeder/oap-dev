@@ -359,8 +359,13 @@ def _build_experience_hints(fingerprint: str) -> tuple[str, list[str]]:
     successes = _experience_store.find_successes_by_prefix(prefix, limit=3)
 
     lines: list[str] = []
+    seen_failures: set[str] = set()
     for exp in failures:
         for c in exp.corrections:
+            key = f"{c.attempted}|{c.error}"
+            if key in seen_failures:
+                continue
+            seen_failures.add(key)
             hint = f"- {c.attempted} → {c.error}"
             if c.fix:
                 hint += f" — instead try: {c.fix}"
