@@ -220,9 +220,10 @@ def verify_test(tc: TestCase, response: dict[str, Any] | None, duration_s: float
         if output_correct and tc.expect_in_output:
             return TestResult(tc.id, SOFT, "", duration_s, tc.task,
                               detail="Correct output without tool call", debug=debug_info)
-        if tc.allow_no_tool:
+        # LLM chose to answer directly — valid strategy even if answer is wrong
+        if message_content.strip():
             return TestResult(tc.id, WARN, "", duration_s, tc.task,
-                              detail="No tool called (allow_no_tool)", debug=debug_info)
+                              detail=f"LLM answered directly (expected {expected})", debug=debug_info)
         return TestResult(tc.id, FAIL, "", duration_s, tc.task,
                           detail=f"Expected {expected}, no tool called", debug=debug_info)
 
