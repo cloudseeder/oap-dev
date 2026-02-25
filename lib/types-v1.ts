@@ -38,6 +38,7 @@ export interface OAPManifest {
   input?: IOSpec
   output?: IOSpec
 
+  usage?: string
   url?: string
   publisher?: Publisher
   examples?: Example[]

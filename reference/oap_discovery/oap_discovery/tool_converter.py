@@ -184,10 +184,14 @@ def manifest_to_tool(domain: str, manifest: dict[str, Any]) -> ToolRegistryEntry
     name = manifest_to_tool_name(manifest["name"])
     parameters = _build_parameters(manifest)
 
+    desc = manifest["description"]
+    if manifest.get("usage"):
+        desc += f"\nUsage: {manifest['usage']}"
+
     tool = Tool(
         function=ToolFunction(
             name=name,
-            description=manifest["description"],
+            description=desc,
             parameters=parameters,
         )
     )

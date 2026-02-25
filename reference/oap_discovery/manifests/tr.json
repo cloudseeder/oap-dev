@@ -2,6 +2,7 @@
   "oap": "1.0",
   "name": "tr",
   "description": "Translate, squeeze, or delete characters from text. Reads from standard input and replaces each character in set1 with the corresponding character in set2. Use -d to delete characters in set1, -s to squeeze repeated characters, -c to complement set1. Supports character classes like [:upper:], [:lower:], [:digit:], [:space:]. Use for case conversion, removing unwanted characters, collapsing whitespace, or transliterating text.",
+  "usage": "tr [-d] [-s] [-c] SET1 [SET2]",
   "input": {
     "format": "text/plain",
     "description": "Text to translate, provided on standard input. The first argument is the source character set (set1) and optional second argument is the replacement set (set2)."

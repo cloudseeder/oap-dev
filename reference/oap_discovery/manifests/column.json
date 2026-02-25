@@ -2,6 +2,7 @@
   "oap": "1.0",
   "name": "column",
   "description": "Format text into aligned columns or a table. Reads from standard input and arranges text into neatly spaced columns. Use -t to create a table from delimited input (whitespace by default), -s to specify a custom input delimiter, -x to fill columns before rows. Use for pretty-printing tabular data, aligning whitespace-separated fields, or formatting command output into readable tables.",
+  "usage": "column [-t] [-s DELIM] [FILE...]",
   "input": {
     "format": "text/plain",
     "description": "Text to format, provided on standard input. The first argument is flags (e.g. '-t', '-t -s,')."

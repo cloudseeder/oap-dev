@@ -499,6 +499,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     successful_calls: list[dict[str, Any]] = []
     exp_cache_status: str | None = None  # "hit", "miss", "degraded", or None
     similar_experience_tool_names: list[str] = []
+    discovered_usage: list[str] = []
 
     # Extract last user message (used for discovery and summarization)
     last_user_msg = ""
@@ -527,6 +528,11 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             if cached_tools:
                 tools, registry = cached_tools, cached_registry
                 exp_cache_hit = True
+                discovered_usage = [
+                    entry.manifest.get("usage")
+                    for entry in registry.values()
+                    if entry.manifest.get("usage")
+                ]
         if not exp_cache_hit:
             tools, registry = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
@@ -542,6 +548,14 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         tools.append(st)
                         registry[name] = sim_registry[name]
                         similar_experience_tool_names.append(name)
+
+            # Collect usage from discovered manifests before stdio suppression
+            # (suppressed manifests still contribute their usage hints)
+            discovered_usage = [
+                entry.manifest.get("usage")
+                for entry in registry.values()
+                if entry.manifest.get("usage")
+            ]
 
             # Filter out discovered stdio tools — oap_exec handles CLI commands
             # better (LLMs write perfect regex in CLI syntax but mangle tool params).
@@ -610,8 +624,15 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             f"\n\nNote — previous attempts at this exact task type:\n"
             f"{failure_hints}\nUse different arguments if retrying the same tool."
         )
+    # Inject discovered usage hints into system prompt
+    usage_hint = ""
+    if discovered_usage:
+        usage_hint = (
+            "\n\nRelevant commands for this task:\n"
+            + "\n".join(f"  {u}" for u in discovered_usage)
+        )
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_content},
+        {"role": "system", "content": system_content + usage_hint},
         *original_messages,
     ]
 
@@ -826,6 +847,12 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             tools, registry = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
             )
+            # Collect usage from retry tools before stdio suppression
+            discovered_usage = [
+                entry.manifest.get("usage")
+                for entry in registry.values()
+                if entry.manifest.get("usage")
+            ]
             # Suppress discovered stdio tools — oap_exec handles CLI better
             stdio_names = [
                 name for name, entry in registry.items()
@@ -857,6 +884,17 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             if EXEC_TOOL.function.name not in registry:
                 tools.insert(0, EXEC_TOOL)
                 registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
+            # Rebuild system prompt with retry usage hints
+            usage_hint = ""
+            if discovered_usage:
+                usage_hint = (
+                    "\n\nRelevant commands for this task:\n"
+                    + "\n".join(f"  {u}" for u in discovered_usage)
+                )
+            messages = [
+                {"role": "system", "content": system_content + usage_hint},
+                *original_messages,
+            ]
             continue  # retry the outer loop
 
         # No retry needed — break out

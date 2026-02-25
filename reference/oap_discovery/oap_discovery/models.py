@@ -52,6 +52,7 @@ class Manifest(BaseModel):
     output: IOSpec | None = None
 
     # Optional
+    usage: str | None = None
     url: str | None = None
     publisher: Publisher | None = None
     examples: list[Example] | None = None

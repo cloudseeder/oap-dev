@@ -11,6 +11,7 @@ Host a JSON file at `/.well-known/oap.json` on your domain over HTTPS.
   "oap": "1.0",
   "name": "string — Capability name",
   "description": "string — What this does, in plain English. Write for an LLM that needs to decide if this capability fits a task. Be specific about what makes this different from alternatives. Max 1000 chars.",
+  "usage": "string (optional) — Brief invocation synopsis, like a man page SYNOPSIS line. Helps LLMs construct correct invocations. Under 120 characters.",
   "url": "string (optional) — Human-facing URL",
 
   "input": {

@@ -109,7 +109,7 @@ MAN_PAGE_MAX_CHARS = 5000
 HELP_MAX_CHARS = 5000
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-OLLAMA_MODEL = "qwen3t:4b"
+OLLAMA_MODEL = "qwen3:8b"
 
 
 def load_example(name: str) -> str:
@@ -456,6 +456,7 @@ Rules:
 - output.format: use "application/json" for JSON responses
 - output.description: describe what the response contains
 - Keep descriptions concise but informative — an LLM needs to decide if this endpoint fits a task
+- usage: a brief SYNOPSIS line showing invocation (e.g. method + path + key params). Under 120 chars.
 
 Base URL for this API: {self._base_url}
 
@@ -530,6 +531,7 @@ Rules:
 - input.description: if the tool reads from stdin, say so. If it takes command-line arguments, use the word "argument" in the description (this is critical for routing).
 - input.format and output.format: use "text/plain" for text tools, "application/json" for JSON output
 - Keep descriptions concise but informative — an LLM needs to decide if this tool fits a task
+- usage: a brief SYNOPSIS line showing invocation with flags in brackets, arguments in CAPS. Under 120 chars.
 
 Here are three gold-standard examples:
 
@@ -702,7 +704,7 @@ def _generate_manifest(
     system_prompt: str,
     ollama_url: str,
 ) -> dict | None:
-    """Call qwen3t:4b to generate a manifest."""
+    """Call Ollama to generate a manifest."""
     payload = {
         "model": OLLAMA_MODEL,
         "messages": [
