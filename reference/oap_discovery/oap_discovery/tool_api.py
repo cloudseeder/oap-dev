@@ -107,17 +107,23 @@ EXEC_TOOL = Tool(
         name="oap_exec",
         description=(
             "Execute a CLI command directly. Write the full command as you would "
-            "in a terminal. For files on disk, include the path in the command. "
+            "in a terminal. Supports pipes (|) for chaining commands. "
+            "For files on disk, include the path in the command. "
             "For text in the conversation, pass it as stdin. "
-            "Examples: grep -E 'pattern' /path/to/file, wc -l /path/to/file, "
-            "jq '.field' /path/to/data.json"
+            "Examples: grep -E 'pattern' /path/file, wc -l /path/file, "
+            "jq '.field' /path/data.json, "
+            "grep -oE 'regex' /path/file | sort -u, "
+            "grep '@' /path/file | sed 's/.*@//' | sort -u"
         ),
         parameters=ToolParameters(
             properties={
                 "command": ToolParameter(
                     description=(
-                        "The full CLI command (e.g. 'grep -E pattern file.txt', "
-                        "'wc -l file.txt', 'jq .field data.json')"
+                        "The full CLI command — supports pipes. "
+                        "Examples: 'grep -E pattern file.txt', "
+                        "'jq .field data.json', "
+                        "'grep -oE regex file | sort -u', "
+                        "'grep pattern file | wc -l'"
                     ),
                 ),
                 "stdin": ToolParameter(
@@ -605,8 +611,14 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     system_content = (
         "You are a tool-calling assistant. Be brief. "
         "Use function calls to invoke tools — never write JSON in your response. "
-        "IMPORTANT: Always prefer oap_exec. Write the command exactly as you would "
-        "in a terminal. For files: oap_exec(command='grep -E pattern /path/file'). "
+        "IMPORTANT: Always use oap_exec — NEVER answer without calling a tool. "
+        "Write the command exactly as you would in a terminal. "
+        "Use pipes (|) to chain commands for complex tasks. "
+        "For files: oap_exec(command='grep -E pattern /path/file'). "
+        "For pipes: oap_exec(command='grep -oE regex /path/file | sort -u'). "
+        "For jq: oap_exec(command='jq \"[.[] | select(.field > 90)] | length\" /path/file'). "
+        "For counting matches: oap_exec(command='grep -c pattern /path/file'). "
+        "For extraction + uniqueness: oap_exec(command='grep -oE regex /path/file | sort -u'). "
         "For inline text: oap_exec(command='grep -E pattern', stdin='the text'). "
         "CRITICAL: Text-processing commands (grep, wc, sort, jq, sed, awk, etc.) "
         "need input — if there is no file path in the command, you MUST pass the "
