@@ -90,20 +90,22 @@ EXEC_TOOL = Tool(
     function=ToolFunction(
         name="oap_exec",
         description=(
-            "Execute a CLI command. Use this for ALL tasks — write the command "
-            "exactly as you would in a terminal. For files: grep -E 'pattern' /path/to/file. "
-            "For inline text: pass the text as stdin and the command as command."
+            "Execute a CLI command directly. Write the full command as you would "
+            "in a terminal. For files on disk, include the path in the command. "
+            "For text in the conversation, pass it as stdin. "
+            "Examples: grep -E 'pattern' /path/to/file, wc -l /path/to/file, "
+            "jq '.field' /path/to/data.json"
         ),
         parameters=ToolParameters(
             properties={
                 "command": ToolParameter(
                     description=(
-                        "The full CLI command to run (e.g. 'grep -E pattern file.txt', "
+                        "The full CLI command (e.g. 'grep -E pattern file.txt', "
                         "'wc -l file.txt', 'jq .field data.json')"
                     ),
                 ),
                 "stdin": ToolParameter(
-                    description="Text to pipe to the command's standard input (optional)",
+                    description="Text to pipe to the command via standard input",
                 ),
             },
             required=["command"],
@@ -518,12 +520,25 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         registry[name] = sim_registry[name]
                         similar_experience_tool_names.append(name)
 
+            # Filter out discovered stdio tools — oap_exec handles CLI commands
+            # better (LLMs write perfect regex in CLI syntax but mangle tool params).
+            # Keep HTTP/API tools since oap_exec can't call those.
+            stdio_names = [
+                name for name, entry in registry.items()
+                if entry.manifest.get("invoke", {}).get("method", "").upper() == "STDIO"
+            ]
+            if stdio_names:
+                for name in stdio_names:
+                    del registry[name]
+                tools = [t for t in tools if t.function.name not in stdio_names]
+                log.info("Suppressed stdio tools in favor of oap_exec: %s", stdio_names)
+
     # Merge client-provided tools
     client_tools = list(req.tools) if req.tools else []
     if client_tools:
         tools.extend(client_tools)
 
-    # Always inject oap_exec — as the only tool for file tasks, first tool otherwise
+    # Always inject oap_exec as the first tool
     if EXEC_TOOL.function.name not in registry:
         tools.insert(0, EXEC_TOOL)
         registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
@@ -534,20 +549,20 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     failure_hints = ""
     if exp_fingerprint and _experience_store:
         failure_hints, success_domains = _build_experience_hints(exp_fingerprint)
-        # Inject tools from successful experiences into the tool list
-        # (skip when file path detected — oap_exec only)
-        if not task_has_files:
-            for domain in success_domains:
-                if len(tools) >= MAX_INJECTED_TOOLS + 2:  # allow 2 extra for experience
-                    break
-                manifest = store.get_manifest(domain)
-                if manifest is None:
-                    continue
-                entry = manifest_to_tool(domain, manifest)
-                if entry.tool.function.name not in registry:
-                    tools.append(entry.tool)
-                    registry[entry.tool.function.name] = entry
-                    log.info("Injected experience success tool: %s (%s)", entry.tool.function.name, domain)
+        # Inject non-stdio tools from successful experiences
+        for domain in success_domains:
+            if len(tools) >= MAX_INJECTED_TOOLS + 2:  # allow 2 extra for experience
+                break
+            manifest = store.get_manifest(domain)
+            if manifest is None:
+                continue
+            if manifest.get("invoke", {}).get("method", "").upper() == "STDIO":
+                continue  # oap_exec handles stdio tools
+            entry = manifest_to_tool(domain, manifest)
+            if entry.tool.function.name not in registry:
+                tools.append(entry.tool)
+                registry[entry.tool.function.name] = entry
+                log.info("Injected experience success tool: %s (%s)", entry.tool.function.name, domain)
 
     # Build Ollama request — prepend a system message to keep qwen3 concise
     original_messages = [m.model_dump(exclude_none=True) for m in req.messages]
@@ -768,6 +783,16 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             tools, registry = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
             )
+            # Suppress discovered stdio tools — oap_exec handles CLI better
+            stdio_names = [
+                name for name, entry in registry.items()
+                if entry.manifest.get("invoke", {}).get("method", "").upper() == "STDIO"
+            ]
+            if stdio_names:
+                for name in stdio_names:
+                    del registry[name]
+                tools = [t for t in tools if t.function.name not in stdio_names]
+                log.info("Suppressed stdio tools on retry in favor of oap_exec: %s", stdio_names)
             # Also inject similar experience tools on retry
             similar_experience_tool_names = []
             if exp_fingerprint and exp_intent_domain:
@@ -777,6 +802,9 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 for st in sim_tools:
                     name = st.function.name
                     if name not in registry and len(tools) < MAX_INJECTED_TOOLS:
+                        sim_manifest = sim_registry[name].manifest
+                        if sim_manifest.get("invoke", {}).get("method", "").upper() == "STDIO":
+                            continue  # oap_exec handles stdio tools
                         tools.append(st)
                         registry[name] = sim_registry[name]
                         similar_experience_tool_names.append(name)

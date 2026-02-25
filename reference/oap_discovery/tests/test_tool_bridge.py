@@ -624,8 +624,8 @@ class TestChatProxy:
                     "tool_calls": [
                         {
                             "function": {
-                                "name": "oap_grep",
-                                "arguments": {"stdin": "file contents here", "args": "TODO"},
+                                "name": "oap_exec",
+                                "arguments": {"command": "grep TODO file.txt"},
                             }
                         }
                     ],
@@ -638,12 +638,8 @@ class TestChatProxy:
                 "done": True,
             }
 
-            mock_invocation = InvocationResult(
-                status="success", response_body="TODO: fix\nTODO: test\nTODO: deploy", latency_ms=10
-            )
-
             with patch("oap_discovery.tool_api.httpx.AsyncClient") as MockClient, \
-                 patch("oap_discovery.tool_executor.invoke_manifest", return_value=mock_invocation):
+                 patch("oap_discovery.tool_api.execute_exec_call", return_value="TODO: fix\nTODO: test\nTODO: deploy"):
 
                 mock_client_instance = AsyncMock()
                 resp1 = MagicMock()
@@ -665,7 +661,7 @@ class TestChatProxy:
                 result = await tool_api.chat_proxy(req)
 
             assert result["message"]["content"] == "Found 3 TODOs."
-            assert result["oap_tools_injected"] == 2  # oap_grep + oap_exec
+            assert result["oap_tools_injected"] == 1  # oap_exec only (stdio tools suppressed)
             assert result["oap_round"] == 2
             # Debug output assertions
             assert "oap_debug" in result
@@ -808,8 +804,9 @@ class TestChatProxy:
             assert dbg["similar_experience_tools"] == ["oap_jq"]
             assert dbg["experience_cache"] == "miss"
             assert dbg["experience_fingerprint"] == "extract.json.field_list"
-            # Discovery found grep + partial match injected jq
-            assert "oap_jq" in dbg["tools_discovered"]
+            # Stdio tools (grep, jq) are suppressed in favor of oap_exec
+            assert "oap_exec" in dbg["tools_discovered"]
+            assert "oap_jq" not in dbg["tools_discovered"]  # stdio, suppressed
         finally:
             (
                 tool_api._engine, tool_api._store, tool_api._ollama_cfg,
@@ -877,7 +874,7 @@ class TestChatProxy:
         tool_api._experience_cfg = exp_cfg
 
         try:
-            # Round 1: tool call with bad args → error
+            # Round 1: oap_exec with bad command → error
             tool_call_bad = {
                 "model": "qwen3:8b",
                 "message": {
@@ -885,14 +882,14 @@ class TestChatProxy:
                     "content": "",
                     "tool_calls": [{
                         "function": {
-                            "name": "oap_grep",
-                            "arguments": {"args": "[-Ei] error", "stdin": "log data"},
+                            "name": "oap_exec",
+                            "arguments": {"command": "grep [-Ei] error", "stdin": "log data"},
                         }
                     }],
                 },
                 "done": True,
             }
-            # Round 2: tool call with correct args → success
+            # Round 2: oap_exec with correct command → success
             tool_call_good = {
                 "model": "qwen3:8b",
                 "message": {
@@ -900,8 +897,8 @@ class TestChatProxy:
                     "content": "",
                     "tool_calls": [{
                         "function": {
-                            "name": "oap_grep",
-                            "arguments": {"args": "-i error", "stdin": "log data"},
+                            "name": "oap_exec",
+                            "arguments": {"command": "grep -i error", "stdin": "log data"},
                         }
                     }],
                 },
@@ -914,17 +911,13 @@ class TestChatProxy:
                 "done": True,
             }
 
-            error_result = InvocationResult(
-                status="failure", error="Error: invalid option", latency_ms=10
-            )
-            success_result = InvocationResult(
-                status="success", response_body="error: disk full\nerror: timeout", latency_ms=10
-            )
+            exec_results = iter([
+                "Error: invalid option",
+                "error: disk full\nerror: timeout",
+            ])
 
             with patch("oap_discovery.tool_api.httpx.AsyncClient") as MockClient, \
-                 patch("oap_discovery.tool_executor.invoke_manifest") as mock_invoke:
-
-                mock_invoke.side_effect = [error_result, success_result]
+                 patch("oap_discovery.tool_api.execute_exec_call", side_effect=lambda *a, **kw: next(exec_results)):
 
                 mock_client_instance = AsyncMock()
                 resp1 = MagicMock()
@@ -957,7 +950,7 @@ class TestChatProxy:
             assert len(fc.corrections) >= 1
             # The fix should reference the successful call
             assert fc.corrections[0].fix != ""
-            assert "oap_grep" in fc.corrections[0].fix
+            assert "oap_exec" in fc.corrections[0].fix
 
             # Success experience should also be saved (self-correction)
             successes = exp_store.find_by_fingerprint("search.text.pattern_match")
