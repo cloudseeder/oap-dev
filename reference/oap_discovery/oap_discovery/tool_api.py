@@ -598,6 +598,9 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
         "CRITICAL: Text-processing commands (grep, wc, sort, jq, sed, awk, etc.) "
         "need input — if there is no file path in the command, you MUST pass the "
         "inline text as the stdin parameter or the command will produce no output. "
+        "You have NO access to real-time information. For ANY question about the "
+        "current date, time, day, month, or year, you MUST call oap_exec with the "
+        "date command — never answer from memory. "
         "After a tool result, reply in 1-2 sentences."
     )
     if failure_hints:
