@@ -263,6 +263,7 @@ _MAX_EXEC_OUTPUT = 100 * 1024
 async def execute_exec_call(
     command_str: str,
     *,
+    stdin_text: str | None = None,
     stdio_timeout: int = 10,
     max_output: int = 102400,
     ollama: OllamaClient | None = None,
@@ -274,7 +275,7 @@ async def execute_exec_call(
 
     Parses the command with shlex, validates the binary against the PATH
     allowlist, expands ~ in arguments, and runs via create_subprocess_exec
-    (no shell).
+    (no shell).  Optional stdin_text is piped to the process.
     """
     if not command_str or not command_str.strip():
         return "Error: empty command"
@@ -296,14 +297,20 @@ async def execute_exec_call(
     # Expand ~ in all arguments (matches _invoke_stdio behavior)
     argv = [resolved_cmd] + [os.path.expanduser(a) for a in parts[1:]]
 
+    # Ensure stdin ends with newline (matches _invoke_stdio behavior)
+    if stdin_text and not stdin_text.endswith('\n'):
+        stdin_text += '\n'
+    stdin_bytes = stdin_text.encode() if stdin_text else None
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *argv,
+            stdin=asyncio.subprocess.PIPE if stdin_bytes else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=stdio_timeout,
+            proc.communicate(input=stdin_bytes), timeout=stdio_timeout,
         )
     except asyncio.TimeoutError:
         try:

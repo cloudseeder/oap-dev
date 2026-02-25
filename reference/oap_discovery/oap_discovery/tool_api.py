@@ -90,9 +90,9 @@ EXEC_TOOL = Tool(
     function=ToolFunction(
         name="oap_exec",
         description=(
-            "Execute a CLI command directly. Use this when the task involves "
-            "files on disk — pass the complete command line including file paths. "
-            "Example: grep -E 'pattern' /path/to/file"
+            "Execute a CLI command. Use this for ALL tasks — write the command "
+            "exactly as you would in a terminal. For files: grep -E 'pattern' /path/to/file. "
+            "For inline text: pass the text as stdin and the command as command."
         ),
         parameters=ToolParameters(
             properties={
@@ -101,6 +101,9 @@ EXEC_TOOL = Tool(
                         "The full CLI command to run (e.g. 'grep -E pattern file.txt', "
                         "'wc -l file.txt', 'jq .field data.json')"
                     ),
+                ),
+                "stdin": ToolParameter(
+                    description="Text to pipe to the command's standard input (optional)",
                 ),
             },
             required=["command"],
@@ -551,12 +554,10 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     system_content = (
         "You are a tool-calling assistant. Be brief. "
         "Use function calls to invoke tools — never write JSON in your response. "
-        "IMPORTANT: If the user mentions a file path (like /tmp/file.txt, ~/data.json, etc.), "
-        "you MUST use oap_exec — pass the complete command including the file path "
-        "(e.g. oap_exec with command='grep -E pattern /tmp/file.txt'). "
-        "NEVER pass a file path as stdin — stdin is only for inline text from the conversation. "
-        "Only use other tools (like oap_grep, oap_jq) when the user provides the actual text "
-        "content directly in their message. After a tool result, reply in 1-2 sentences."
+        "IMPORTANT: Always prefer oap_exec. Write the command exactly as you would "
+        "in a terminal. For files: oap_exec(command='grep -E pattern /path/file'). "
+        "For inline text: oap_exec(command='grep -E pattern', stdin='the text'). "
+        "After a tool result, reply in 1-2 sentences."
     )
     if failure_hints:
         system_content += (
@@ -675,8 +676,10 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                 t0 = time.monotonic()
                 if tool_name == "oap_exec":
                     command_str = tool_args.get("command", "")
+                    stdin_str = tool_args.get("stdin", "") or ""
                     result_str = await execute_exec_call(
                         command_str,
+                        stdin_text=stdin_str if stdin_str else None,
                         stdio_timeout=bridge_cfg.stdio_timeout,
                         ollama=_ollama,
                         task=last_user_msg,

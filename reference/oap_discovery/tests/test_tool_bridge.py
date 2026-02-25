@@ -1403,6 +1403,17 @@ class TestExecTool:
         assert "timed out" in result
 
     @pytest.mark.asyncio
+    async def test_execute_exec_call_with_stdin(self):
+        """Pipe inline text via stdin to a command."""
+        result = await execute_exec_call(
+            "grep -E '[a-z]+@[a-z]+\\.[a-z]+'",
+            stdin_text="alice@example.com\nbob smith\ncharlie@test.org",
+        )
+        assert "alice@example.com" in result
+        assert "charlie@test.org" in result
+        assert "bob smith" not in result
+
+    @pytest.mark.asyncio
     async def test_execute_exec_call_exit_code_1_no_stderr(self):
         """grep with no matches returns exit 1 + empty stderr = success (empty output)."""
         result = await execute_exec_call("grep nonexistent_pattern_xyz /dev/null")
