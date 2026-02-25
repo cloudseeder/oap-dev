@@ -439,14 +439,13 @@ def _build_experience_hints(fingerprint: str) -> tuple[str, list[str]]:
     seen_failures: set[str] = set()
     for exp in failures:
         for c in exp.corrections:
+            if not c.fix:
+                continue  # skip failures without a fix — they just scare the LLM off
             key = f"{c.attempted}|{c.error}"
             if key in seen_failures:
                 continue
             seen_failures.add(key)
-            hint = f"- {c.attempted} → {c.error}"
-            if c.fix:
-                hint += f" — instead try: {c.fix}"
-            lines.append(hint)
+            lines.append(f"- {c.attempted} → {c.error} — instead try: {c.fix}")
 
     success_tools: list[str] = []
     if successes:
