@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
+from starlette.responses import StreamingResponse
 
 from .config import ExperienceConfig, OllamaConfig, ToolBridgeConfig, load_credentials
 from .discovery import DiscoveryEngine
@@ -472,8 +473,42 @@ async def discover_tools(req: ToolsRequest) -> ToolsResponse:
     return ToolsResponse(tools=tools, registry=registry)
 
 
+async def _stream_ollama_response(result: dict[str, Any]):
+    """Wrap a completed chat response in Ollama NDJSON streaming format.
+
+    Standard Ollama clients (ollama run, Open WebUI) send stream=true by default.
+    The tool bridge processes everything non-streaming internally (tool loops need
+    full responses). This emits the final result as two NDJSON lines: a content
+    chunk followed by a done sentinel — valid Ollama streaming format.
+    """
+    msg = result.get("message", {})
+    model = result.get("model", "")
+
+    # Content chunk
+    yield json.dumps({
+        "model": model,
+        "message": msg,
+        "done": False,
+    }) + "\n"
+
+    # Done sentinel with timing metrics from the original response
+    sentinel: dict[str, Any] = {
+        "model": model,
+        "message": {"role": "assistant", "content": ""},
+        "done": True,
+        "done_reason": "stop",
+    }
+    # Forward Ollama timing metrics if present
+    for key in ("total_duration", "load_duration", "prompt_eval_count",
+                "prompt_eval_duration", "eval_count", "eval_duration"):
+        if key in result:
+            sentinel[key] = result[key]
+    yield json.dumps(sentinel) + "\n"
+
+
 @router.post("/v1/chat")
-async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
+@router.post("/api/chat")
+async def chat_proxy(req: ChatRequest) -> Any:
     """Transparent Ollama proxy with OAP tool discovery.
 
     1. Extract task from the last user message
@@ -482,6 +517,9 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     4. Forward to Ollama /api/chat
     5. If tool_calls, execute via invoker and loop
     6. Return final response with metadata
+
+    When stream=true (default for standard Ollama clients), returns NDJSON
+    streaming format wrapping the final result.
     """
     engine, store, ollama_cfg, bridge_cfg = _require_enabled()
 
@@ -733,6 +771,11 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                     await _save_failure_experience(
                         exp_fingerprint, exp_intent_domain, last_user_msg,
                         registry, failed_calls, successful_calls,
+                    )
+                if req.stream:
+                    return StreamingResponse(
+                        _stream_ollama_response(ollama_resp),
+                        media_type="application/x-ndjson",
                     )
                 return ollama_resp
 
@@ -1001,5 +1044,10 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
         await _save_failure_experience(
             exp_fingerprint, exp_intent_domain, last_user_msg,
             registry, failed_calls, successful_calls,
+        )
+    if req.stream:
+        return StreamingResponse(
+            _stream_ollama_response(ollama_resp),
+            media_type="application/x-ndjson",
         )
     return ollama_resp

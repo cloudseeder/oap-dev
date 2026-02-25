@@ -8,8 +8,10 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, HTTPException, Header, Request
+from starlette.responses import StreamingResponse
 
 from .config import Config, load_config
 from .db import ManifestStore
@@ -208,6 +210,73 @@ async def health() -> HealthResponse:
         ollama=ollama_ok,
         index_count=count,
     )
+
+
+# ---------------------------------------------------------------------------
+# Ollama pass-through proxy — forward /api/* (except /api/chat which the tool
+# bridge handles) to the real Ollama server so standard Ollama clients can use
+# the OAP server as a drop-in replacement.
+# ---------------------------------------------------------------------------
+
+async def _proxy_to_ollama(path: str, request: Request):
+    """Forward a request to the real Ollama server and stream the response back."""
+    if _cfg is None:
+        raise HTTPException(status_code=503, detail="Server not initialized")
+
+    ollama_url = f"{_cfg.ollama.base_url.rstrip('/')}{path}"
+    body = await request.body()
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(_cfg.ollama.timeout, read=300.0)) as client:
+        try:
+            resp = await client.send(
+                client.build_request(
+                    method=request.method,
+                    url=ollama_url,
+                    content=body,
+                    headers={"content-type": "application/json"} if body else {},
+                ),
+                stream=True,
+            )
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"Ollama unreachable: {type(e).__name__}: {e}")
+
+        # Stream response bytes through (handles both streaming and non-streaming Ollama responses)
+        return StreamingResponse(
+            resp.aiter_bytes(),
+            status_code=resp.status_code,
+            media_type=resp.headers.get("content-type", "application/json"),
+        )
+
+
+@app.get("/api/tags")
+async def ollama_tags(request: Request):
+    """List models — used by every Ollama client on startup."""
+    return await _proxy_to_ollama("/api/tags", request)
+
+
+@app.post("/api/show")
+async def ollama_show(request: Request):
+    """Model info."""
+    return await _proxy_to_ollama("/api/show", request)
+
+
+@app.get("/api/ps")
+async def ollama_ps(request: Request):
+    """List loaded models."""
+    return await _proxy_to_ollama("/api/ps", request)
+
+
+@app.post("/api/generate")
+async def ollama_generate(request: Request):
+    """Text generation — pass through to Ollama."""
+    return await _proxy_to_ollama("/api/generate", request)
+
+
+@app.post("/api/embed")
+@app.post("/api/embeddings")
+async def ollama_embed(request: Request):
+    """Embeddings — pass through to Ollama."""
+    return await _proxy_to_ollama(request.url.path, request)
 
 
 def main() -> None:
