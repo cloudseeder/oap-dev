@@ -175,11 +175,10 @@ app = FastAPI(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all incoming requests — helps diagnose routing issues."""
+    import sys
+    print(f"[OAP] {request.method} {request.url.path}", flush=True, file=sys.stderr)
     response = await call_next(request)
-    if response.status_code >= 400:
-        log.warning("%s %s → %d", request.method, request.url.path, response.status_code)
-    else:
-        log.info("%s %s → %d", request.method, request.url.path, response.status_code)
+    print(f"[OAP] {request.method} {request.url.path} → {response.status_code}", flush=True, file=sys.stderr)
     return response
 
 
@@ -287,6 +286,13 @@ async def _proxy_to_ollama(path: str, request: Request):
             status_code=resp.status_code,
             media_type=resp.headers.get("content-type", "application/json"),
         )
+
+
+@app.head("/")
+@app.get("/")
+async def ollama_root(request: Request):
+    """Root — Ollama CLI checks HEAD / on startup."""
+    return Response(content="Ollama is running", media_type="text/plain")
 
 
 @app.get("/api/version")
