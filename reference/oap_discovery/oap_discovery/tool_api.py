@@ -73,6 +73,19 @@ def _require_enabled() -> tuple[DiscoveryEngine, ManifestStore, OllamaConfig, To
 
 MAX_INJECTED_TOOLS = 3
 
+# Detect file paths in user messages — when present, only offer oap_exec
+# (small LLMs ignore system prompt instructions and pick the "named" tool)
+import re as _re
+_FILE_PATH_RE = _re.compile(
+    r'(?:^|[\s\'"])([~/.][\w./~-]*\.\w+|/[\w./~-]+)'
+)
+
+
+def _task_has_file_path(task: str) -> bool:
+    """Return True if the task mentions what looks like a file path."""
+    return bool(_FILE_PATH_RE.search(task))
+
+
 EXEC_TOOL = Tool(
     function=ToolFunction(
         name="oap_exec",
@@ -470,8 +483,13 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     if _experience_engine and last_user_msg:
         exp_fingerprint, exp_intent_domain = await _experience_engine.fingerprint_intent(last_user_msg)
 
+    # When the task mentions file paths, only offer oap_exec — small LLMs
+    # ignore system prompt instructions and pick the "named" tool (oap_grep),
+    # then pass the file path as literal stdin text instead of a CLI argument.
+    task_has_files = _task_has_file_path(last_user_msg)
+
     # Discover tools from the last user message
-    if req.oap_discover and last_user_msg:
+    if req.oap_discover and last_user_msg and not task_has_files:
         # Try experience cache first (unless oap_no_cache is set)
         if not req.oap_no_cache and exp_fingerprint:
             cached_tools, cached_registry, _, _, exp_id = (
@@ -501,10 +519,12 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     if client_tools:
         tools.extend(client_tools)
 
-    # Always inject oap_exec as the FIRST tool — small LLMs prefer earlier tools
+    # Always inject oap_exec — as the only tool for file tasks, first tool otherwise
     if EXEC_TOOL.function.name not in registry:
         tools.insert(0, EXEC_TOOL)
         registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
+    if task_has_files:
+        log.info("File path detected in task — oap_exec only (suppressing discovered tools)")
 
     # Build experience hints from past failures AND successes
     failure_hints = ""
