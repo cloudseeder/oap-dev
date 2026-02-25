@@ -531,17 +531,19 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     if exp_fingerprint and _experience_store:
         failure_hints, success_domains = _build_experience_hints(exp_fingerprint)
         # Inject tools from successful experiences into the tool list
-        for domain in success_domains:
-            if len(tools) >= MAX_INJECTED_TOOLS + 2:  # allow 2 extra for experience
-                break
-            manifest = store.get_manifest(domain)
-            if manifest is None:
-                continue
-            entry = manifest_to_tool(domain, manifest)
-            if entry.tool.function.name not in registry:
-                tools.append(entry.tool)
-                registry[entry.tool.function.name] = entry
-                log.info("Injected experience success tool: %s (%s)", entry.tool.function.name, domain)
+        # (skip when file path detected — oap_exec only)
+        if not task_has_files:
+            for domain in success_domains:
+                if len(tools) >= MAX_INJECTED_TOOLS + 2:  # allow 2 extra for experience
+                    break
+                manifest = store.get_manifest(domain)
+                if manifest is None:
+                    continue
+                entry = manifest_to_tool(domain, manifest)
+                if entry.tool.function.name not in registry:
+                    tools.append(entry.tool)
+                    registry[entry.tool.function.name] = entry
+                    log.info("Injected experience success tool: %s (%s)", entry.tool.function.name, domain)
 
     # Build Ollama request — prepend a system message to keep qwen3 concise
     original_messages = [m.model_dump(exclude_none=True) for m in req.messages]
