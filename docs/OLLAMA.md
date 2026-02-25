@@ -305,24 +305,17 @@ Standard Ollama clients send `stream: true` by default (including `ollama run`).
 
 ### Ollama CLI
 
-The `ollama` CLI uses the `OLLAMA_HOST` environment variable to determine which server to connect to. This works for all subcommands — `run`, `list`, `show`, `ps`, etc.
+> **macOS limitation:** On macOS, the `ollama` CLI communicates with the Ollama desktop app through a local socket, bypassing `OLLAMA_HOST` entirely. Setting `OLLAMA_HOST=http://localhost:8300` has no effect — requests go directly to the local Ollama app, not through the OAP server. This applies to all subcommands (`run`, `list`, `show`, etc.).
+>
+> On **Linux**, `OLLAMA_HOST` works as expected — the CLI uses HTTP to connect to whatever server you specify:
 
 ```bash
-# Interactive chat with tool discovery
-OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b
-
-# One-shot task
+# Linux only — macOS ignores OLLAMA_HOST
 OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b "count lines in /tmp/data.txt"
-
-# List models (proxied to real Ollama)
 OLLAMA_HOST=http://localhost:8300 ollama list
-
-# Shell alias for convenience
-alias oap='OLLAMA_HOST=http://localhost:8300 ollama'
-oap run qwen3:8b
 ```
 
-> **Note:** The Ollama Mac desktop app runs its own embedded server and does not support changing the endpoint. Use the `ollama` CLI (which ships with the Mac app) with `OLLAMA_HOST` instead.
+On macOS, use HTTP clients directly (curl, Open WebUI, LangChain, etc.) instead of the `ollama` CLI.
 
 ### Open WebUI
 
@@ -357,7 +350,7 @@ Any application that speaks the Ollama API can use the OAP server. Common patter
 
 | Client | Configuration |
 |--------|--------------|
-| `ollama` CLI | `OLLAMA_HOST=http://localhost:8300` |
+| `ollama` CLI (Linux) | `OLLAMA_HOST=http://localhost:8300` |
 | Open WebUI | `OLLAMA_BASE_URL=http://localhost:8300` |
 | chatbot-ui | `OLLAMA_API_BASE_URL=http://localhost:8300` |
 | Flowise | Ollama node → Base URL: `http://localhost:8300` |
