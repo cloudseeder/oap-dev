@@ -9,13 +9,29 @@
 #   - Ollama running on :11434
 #
 # Usage:
-#   ./scripts/demo-ollama-compat.sh [oap_url]
+#   ./scripts/demo-ollama-compat.sh --token <secret> [oap_url]
 #
 # Default oap_url: http://localhost:8300
 
 set -euo pipefail
 
-OAP="${1:-http://localhost:8300}"
+TOKEN=""
+OAP="http://localhost:8300"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --token) TOKEN="$2"; shift 2 ;;
+        *) OAP="$1"; shift ;;
+    esac
+done
+
+if [ -z "$TOKEN" ]; then
+    TOKEN="${OAP_BACKEND_TOKEN:-}"
+fi
+if [ -z "$TOKEN" ]; then
+    printf "Error: --token <secret> or OAP_BACKEND_TOKEN env var required\n" >&2
+    exit 1
+fi
 BOLD='\033[1m'
 DIM='\033[2m'
 GREEN='\033[32m'
@@ -43,11 +59,11 @@ printf "with /api/chat adding automatic tool discovery + execution.\n"
 # -------------------------------------------------------------------
 header "1. Health check"
 step "Verify OAP server is running"
-cmd "curl -sf $OAP/health"
-if health=$(curl -sf "$OAP/health" 2>/dev/null); then
+cmd "curl -sf $OAP/health -H 'X-Backend-Token: ***'"
+if health=$(curl -sf "$OAP/health" -H "X-Backend-Token: $TOKEN" 2>/dev/null); then
     ok "Server is up: $health"
 else
-    err "Server not reachable at $OAP"
+    err "Server not reachable at $OAP (check URL and token)"
     printf "\nStart the OAP discovery service first:\n"
     printf "  source .venv/bin/activate && oap-api\n"
     exit 1
