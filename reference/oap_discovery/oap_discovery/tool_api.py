@@ -213,10 +213,14 @@ async def _check_experience_cache(
     for exp in matches:
         if exp.discovery.confidence >= threshold and exp.outcome.status == "success":
             # Cache hit — load manifest and convert to tool
-            manifest = store.get_manifest(exp.discovery.manifest_matched)
-            if manifest is None:
-                continue
-            entry = manifest_to_tool(exp.discovery.manifest_matched, manifest)
+            if exp.discovery.manifest_matched == "builtin/exec":
+                # oap_exec is synthetic — not in ManifestStore
+                entry = EXEC_REGISTRY_ENTRY
+            else:
+                manifest = store.get_manifest(exp.discovery.manifest_matched)
+                if manifest is None:
+                    continue
+                entry = manifest_to_tool(exp.discovery.manifest_matched, manifest)
             log.info(
                 "Experience cache hit: %s → %s (confidence=%.2f, used %d times)",
                 fingerprint,
@@ -263,10 +267,13 @@ async def _get_similar_experience_tools(
         if domain in seen_domains:
             continue
         seen_domains.add(domain)
-        manifest = store.get_manifest(domain)
-        if manifest is None:
-            continue
-        entry = manifest_to_tool(domain, manifest)
+        if domain == "builtin/exec":
+            entry = EXEC_REGISTRY_ENTRY
+        else:
+            manifest = store.get_manifest(domain)
+            if manifest is None:
+                continue
+            entry = manifest_to_tool(domain, manifest)
         tools.append(entry.tool)
         registry[entry.tool.function.name] = entry
 
