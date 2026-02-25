@@ -636,28 +636,22 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         "rounds": debug_rounds,
                     }
                 # Cache experience on successful tool execution
-                # Skip caching when only oap_exec was used (always available, no value)
-                _real_tools = tools_called - {"oap_exec"}
-                if tools_executed and _real_tools and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+                if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
                     if not tools_had_errors:
                         await _save_experience(
-                            exp_fingerprint, exp_intent_domain, last_user_msg, registry, _real_tools,
+                            exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
                         )
                     elif successful_calls:
-                        _real_success = {sc["tool"] for sc in successful_calls} - {"oap_exec"}
-                        if _real_success:
-                            await _save_experience(
-                                exp_fingerprint, exp_intent_domain, last_user_msg,
-                                registry, _real_success,
-                            )
+                        await _save_experience(
+                            exp_fingerprint, exp_intent_domain, last_user_msg,
+                            registry, {sc["tool"] for sc in successful_calls},
+                        )
                 # Cache failure experience when tools had errors
                 if tools_executed and tools_had_errors and exp_fingerprint and exp_intent_domain:
-                    _real_failed = [fc for fc in failed_calls if fc["tool"] != "oap_exec"]
-                    if _real_failed:
-                        await _save_failure_experience(
-                            exp_fingerprint, exp_intent_domain, last_user_msg,
-                            registry, _real_failed, successful_calls,
-                        )
+                    await _save_failure_experience(
+                        exp_fingerprint, exp_intent_domain, last_user_msg,
+                        registry, failed_calls, successful_calls,
+                    )
                 return ollama_resp
 
             # Execute tool calls
@@ -804,26 +798,20 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             "rounds": debug_rounds,
         }
     # Cache experience on successful tool execution
-    # Skip caching when only oap_exec was used (always available, no value)
-    _real_tools = tools_called - {"oap_exec"}
-    if tools_executed and _real_tools and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+    if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
         if not tools_had_errors:
             await _save_experience(
-                exp_fingerprint, exp_intent_domain, last_user_msg, registry, _real_tools,
+                exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
             )
         elif successful_calls:
-            _real_success = {sc["tool"] for sc in successful_calls} - {"oap_exec"}
-            if _real_success:
-                await _save_experience(
-                    exp_fingerprint, exp_intent_domain, last_user_msg,
-                    registry, _real_success,
-                )
+            await _save_experience(
+                exp_fingerprint, exp_intent_domain, last_user_msg,
+                registry, {sc["tool"] for sc in successful_calls},
+            )
     # Cache failure experience when tools had errors
     if tools_executed and tools_had_errors and exp_fingerprint and exp_intent_domain:
-        _real_failed = [fc for fc in failed_calls if fc["tool"] != "oap_exec"]
-        if _real_failed:
-            await _save_failure_experience(
-                exp_fingerprint, exp_intent_domain, last_user_msg,
-                registry, _real_failed, successful_calls,
-            )
+        await _save_failure_experience(
+            exp_fingerprint, exp_intent_domain, last_user_msg,
+            registry, failed_calls, successful_calls,
+        )
     return ollama_resp

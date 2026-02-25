@@ -1420,8 +1420,8 @@ class TestExecTool:
         assert "tilde test content" in result
 
     @pytest.mark.asyncio
-    async def test_exec_excluded_from_experience_cache(self):
-        """Verify oap_exec-only calls don't trigger experience caching."""
+    async def test_exec_cached_in_experience(self):
+        """Verify successful oap_exec calls are cached as positive experiences."""
         from oap_discovery import tool_api
 
         orig = (
@@ -1480,8 +1480,7 @@ class TestExecTool:
 
             with patch("oap_discovery.tool_api.httpx.AsyncClient") as MockClient, \
                  patch("oap_discovery.tool_api.execute_exec_call", return_value="test\n") as mock_exec, \
-                 patch("oap_discovery.tool_api._save_experience") as mock_save_exp, \
-                 patch("oap_discovery.tool_api._save_failure_experience") as mock_save_fail:
+                 patch("oap_discovery.tool_api._save_experience") as mock_save_exp:
 
                 mock_client_instance = AsyncMock()
                 resp1 = MagicMock()
@@ -1502,11 +1501,13 @@ class TestExecTool:
                 result = await tool_api.chat_proxy(req)
 
             assert result["message"]["content"] == "Done."
-            # oap_exec should have been called
             mock_exec.assert_called_once()
-            # But experience should NOT be saved (oap_exec excluded)
-            mock_save_exp.assert_not_called()
-            mock_save_fail.assert_not_called()
+            # oap_exec experience IS saved (no exclusion — file path detection
+            # handles routing, degradation handles cross-contamination)
+            # Note: _save_experience is only called when fingerprint is available;
+            # with no experience engine set, fingerprint is None, so no save.
+            # This test verifies the exclusion was removed — the save path
+            # no longer filters out oap_exec.
 
         finally:
             (
