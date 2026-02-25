@@ -501,9 +501,9 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     if client_tools:
         tools.extend(client_tools)
 
-    # Always inject oap_exec as an available meta-tool
+    # Always inject oap_exec as the FIRST tool — small LLMs prefer earlier tools
     if EXEC_TOOL.function.name not in registry:
-        tools.append(EXEC_TOOL)
+        tools.insert(0, EXEC_TOOL)
         registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
 
     # Build experience hints from past failures AND successes
@@ -528,10 +528,12 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     system_content = (
         "You are a tool-calling assistant. Be brief. "
         "Use function calls to invoke tools — never write JSON in your response. "
-        "When a task involves files on disk, use oap_exec to run the command "
-        "directly (e.g. oap_exec with command='grep -E pattern /path/to/file'). "
-        "For inline text provided in the conversation, use the specific tool's "
-        "stdin parameter. After a tool result, reply in 1-2 sentences."
+        "IMPORTANT: If the user mentions a file path (like /tmp/file.txt, ~/data.json, etc.), "
+        "you MUST use oap_exec — pass the complete command including the file path "
+        "(e.g. oap_exec with command='grep -E pattern /tmp/file.txt'). "
+        "NEVER pass a file path as stdin — stdin is only for inline text from the conversation. "
+        "Only use other tools (like oap_grep, oap_jq) when the user provides the actual text "
+        "content directly in their message. After a tool result, reply in 1-2 sentences."
     )
     if failure_hints:
         system_content += (
@@ -755,9 +757,9 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         similar_experience_tool_names.append(name)
             if client_tools:
                 tools.extend(client_tools)
-            # Re-inject oap_exec for retry
+            # Re-inject oap_exec as first tool for retry
             if EXEC_TOOL.function.name not in registry:
-                tools.append(EXEC_TOOL)
+                tools.insert(0, EXEC_TOOL)
                 registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
             continue  # retry the outer loop
 
