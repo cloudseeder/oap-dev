@@ -170,6 +170,19 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests — helps diagnose routing issues."""
+    response = await call_next(request)
+    if response.status_code >= 400:
+        log.warning("%s %s → %d", request.method, request.url.path, response.status_code)
+    else:
+        log.info("%s %s → %d", request.method, request.url.path, response.status_code)
+    return response
+
+
 # Tool bridge routes — no auth (local-only, secured by Cloudflare Tunnel path filtering)
 app.include_router(tool_api.router)
 # Experience routes — auth required
