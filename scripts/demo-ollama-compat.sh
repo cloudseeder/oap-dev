@@ -50,6 +50,20 @@ ok()     { printf "${GREEN}  ✓ %s${RESET}\n" "$1"; pass=$((pass + 1)); }
 err()    { printf "${RED}  ✗ %s${RESET}\n" "$1"; fail=$((fail + 1)); }
 note()   { printf "${YELLOW}  → %s${RESET}\n" "$1"; }
 
+# Helper: run curl and capture both response body and HTTP status code.
+# Usage: run_curl <args...>
+# Sets: CURL_BODY, CURL_CODE
+run_curl() {
+    local tmp
+    tmp=$(mktemp)
+    CURL_CODE=$(curl -s -o "$tmp" -w '%{http_code}' "$@" 2>/dev/null) || CURL_CODE="000"
+    CURL_BODY=$(cat "$tmp")
+    rm -f "$tmp"
+}
+
+# Helper: check if last run_curl succeeded (2xx status)
+curl_ok() { [[ "$CURL_CODE" == 2* ]]; }
+
 # -------------------------------------------------------------------
 header "OAP Ollama Compatibility Demo"
 printf "OAP server: ${BOLD}%s${RESET}\n" "$OAP"
@@ -73,8 +87,9 @@ fi
 header "2. GET /api/tags — List models"
 step "Standard Ollama endpoint to list available models"
 cmd "curl -s $OAP/api/tags | jq '.models[].name'"
-if tags=$(curl -sf "$OAP/api/tags" 2>/dev/null); then
-    models=$(echo "$tags" | python3 -c "import sys,json; [print(m['name']) for m in json.loads(sys.stdin.read()).get('models',[])]" 2>/dev/null || echo "(parse error)")
+run_curl "$OAP/api/tags"
+if curl_ok; then
+    models=$(echo "$CURL_BODY" | python3 -c "import sys,json; [print(m['name']) for m in json.loads(sys.stdin.read()).get('models',[])]" 2>/dev/null || echo "(parse error)")
     if [ -n "$models" ]; then
         ok "Models found:"
         echo "$models" | head -5 | while read -r m; do printf "    %s\n" "$m"; done
@@ -84,15 +99,16 @@ if tags=$(curl -sf "$OAP/api/tags" 2>/dev/null); then
         err "No models returned"
     fi
 else
-    err "/api/tags failed"
+    err "/api/tags failed (HTTP $CURL_CODE): $CURL_BODY"
 fi
 
 # -------------------------------------------------------------------
 header "3. GET /api/ps — Loaded models"
 step "Check which models are currently loaded in memory"
 cmd "curl -s $OAP/api/ps | jq '.models[].name'"
-if ps=$(curl -sf "$OAP/api/ps" 2>/dev/null); then
-    loaded=$(echo "$ps" | python3 -c "import sys,json; [print(m['name']) for m in json.loads(sys.stdin.read()).get('models',[])]" 2>/dev/null || echo "")
+run_curl "$OAP/api/ps"
+if curl_ok; then
+    loaded=$(echo "$CURL_BODY" | python3 -c "import sys,json; [print(m['name']) for m in json.loads(sys.stdin.read()).get('models',[])]" 2>/dev/null || echo "")
     if [ -n "$loaded" ]; then
         ok "Loaded models:"
         echo "$loaded" | while read -r m; do printf "    %s\n" "$m"; done
@@ -100,45 +116,48 @@ if ps=$(curl -sf "$OAP/api/ps" 2>/dev/null); then
         ok "No models currently loaded (they load on first request)"
     fi
 else
-    err "/api/ps failed"
+    err "/api/ps failed (HTTP $CURL_CODE): $CURL_BODY"
 fi
 
 # -------------------------------------------------------------------
 header "4. POST /api/show — Model info"
 step "Get details about a specific model"
-cmd "curl -s $OAP/api/show -d '{\"name\":\"qwen3:8b\"}' | jq '.details'"
-if show=$(curl -sf "$OAP/api/show" -d '{"name":"qwen3:8b"}' 2>/dev/null); then
-    family=$(echo "$show" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()).get('details',{}); print(f\"{d.get('family','?')} {d.get('parameter_size','?')}\")" 2>/dev/null || echo "")
+cmd "curl -s $OAP/api/show -d '{\"model\":\"qwen3:8b\"}' | jq '.details'"
+run_curl "$OAP/api/show" -d '{"model":"qwen3:8b"}'
+if curl_ok; then
+    family=$(echo "$CURL_BODY" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()).get('details',{}); print(f\"{d.get('family','?')} {d.get('parameter_size','?')}\")" 2>/dev/null || echo "")
     if [ -n "$family" ]; then
         ok "Model info: $family"
     else
         ok "Response received (model may not be pulled)"
     fi
 else
-    err "/api/show failed (is qwen3:8b pulled?)"
+    err "/api/show failed (HTTP $CURL_CODE): $(echo "$CURL_BODY" | head -c 200)"
 fi
 
 # -------------------------------------------------------------------
 header "5. POST /api/chat (non-streaming) — Tool bridge"
 step "Send a task through /api/chat — OAP discovers tools and executes"
 cmd "curl -s $OAP/api/chat -d '{\"model\":\"qwen3:8b\",\"messages\":[{\"role\":\"user\",\"content\":\"what is 42 * 17?\"}],\"stream\":false}'"
-if chat=$(curl -sf "$OAP/api/chat" -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"what is 42 * 17?"}],"stream":false}' --max-time 120 2>/dev/null); then
-    content=$(echo "$chat" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('message',{}).get('content','(empty)'))" 2>/dev/null || echo "(parse error)")
-    tools_injected=$(echo "$chat" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('oap_tools_injected','?'))" 2>/dev/null || echo "?")
-    rounds=$(echo "$chat" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('oap_round','?'))" 2>/dev/null || echo "?")
+run_curl --max-time 120 "$OAP/api/chat" -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"what is 42 * 17?"}],"stream":false}'
+if curl_ok; then
+    content=$(echo "$CURL_BODY" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('message',{}).get('content','(empty)'))" 2>/dev/null || echo "(parse error)")
+    tools_injected=$(echo "$CURL_BODY" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('oap_tools_injected','?'))" 2>/dev/null || echo "?")
+    rounds=$(echo "$CURL_BODY" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('oap_round','?'))" 2>/dev/null || echo "?")
     ok "Response: $content"
     note "Tools injected: $tools_injected, rounds: $rounds"
 else
-    err "/api/chat non-streaming failed"
+    err "/api/chat non-streaming failed (HTTP $CURL_CODE): $(echo "$CURL_BODY" | head -c 200)"
 fi
 
 # -------------------------------------------------------------------
 header "6. POST /api/chat (streaming) — NDJSON format"
 step "Same request with stream=true — returns NDJSON like standard Ollama"
 cmd "curl -s $OAP/api/chat -d '{\"model\":\"qwen3:8b\",\"messages\":[{\"role\":\"user\",\"content\":\"what is 6 + 7?\"}],\"stream\":true}'"
-if stream_out=$(curl -sf "$OAP/api/chat" -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"what is 6 + 7?"}],"stream":true}' --max-time 120 2>/dev/null); then
-    line_count=$(echo "$stream_out" | wc -l | tr -d ' ')
-    has_done=$(echo "$stream_out" | python3 -c "
+run_curl --max-time 120 "$OAP/api/chat" -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"what is 6 + 7?"}],"stream":true}'
+if curl_ok; then
+    line_count=$(echo "$CURL_BODY" | wc -l | tr -d ' ')
+    has_done=$(echo "$CURL_BODY" | python3 -c "
 import sys, json
 for line in sys.stdin:
     line = line.strip()
@@ -150,25 +169,27 @@ for line in sys.stdin:
 " 2>/dev/null || echo "no")
     if [ "$has_done" = "yes" ]; then
         ok "Streaming response: $line_count NDJSON lines with done sentinel"
-        echo "$stream_out" | head -2 | while read -r line; do
+        echo "$CURL_BODY" | head -2 | while read -r line; do
             printf "    %s\n" "$(echo "$line" | python3 -c "import sys; print(sys.stdin.read()[:120])" 2>/dev/null)"
         done
     else
         err "Streaming response missing done sentinel"
+        note "Response: $(echo "$CURL_BODY" | head -c 200)"
     fi
 else
-    err "/api/chat streaming failed"
+    err "/api/chat streaming failed (HTTP $CURL_CODE): $(echo "$CURL_BODY" | head -c 200)"
 fi
 
 # -------------------------------------------------------------------
 header "7. POST /api/generate — Pass-through"
 step "Text generation passes through to Ollama directly (no tool bridge)"
 cmd "curl -s $OAP/api/generate -d '{\"model\":\"qwen3:8b\",\"prompt\":\"Say hello in one word.\",\"stream\":false,\"options\":{\"num_ctx\":512}}'"
-if gen=$(curl -sf "$OAP/api/generate" -d '{"model":"qwen3:8b","prompt":"Say hello in one word.","stream":false,"options":{"num_ctx":512}}' --max-time 60 2>/dev/null); then
-    gen_resp=$(echo "$gen" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('response','(empty)')[:100])" 2>/dev/null || echo "(parse error)")
+run_curl --max-time 60 "$OAP/api/generate" -d '{"model":"qwen3:8b","prompt":"Say hello in one word.","stream":false,"options":{"num_ctx":512}}'
+if curl_ok; then
+    gen_resp=$(echo "$CURL_BODY" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('response','(empty)')[:100])" 2>/dev/null || echo "(parse error)")
     ok "Generate response: $gen_resp"
 else
-    err "/api/generate failed"
+    err "/api/generate failed (HTTP $CURL_CODE): $(echo "$CURL_BODY" | head -c 200)"
 fi
 
 # -------------------------------------------------------------------

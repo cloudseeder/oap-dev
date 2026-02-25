@@ -11,7 +11,8 @@ from pathlib import Path
 import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Header, Request
-from starlette.responses import StreamingResponse
+from starlette.background import BackgroundTask
+from starlette.responses import Response, StreamingResponse
 
 from .config import Config, load_config
 from .db import ManifestStore
@@ -219,30 +220,57 @@ async def health() -> HealthResponse:
 # ---------------------------------------------------------------------------
 
 async def _proxy_to_ollama(path: str, request: Request):
-    """Forward a request to the real Ollama server and stream the response back."""
+    """Forward a request to the real Ollama server and return the response.
+
+    For non-streaming Ollama responses (the common case for /api/tags, /api/show,
+    /api/ps, and non-streaming /api/generate), reads the full response and returns
+    it directly.  For streaming responses (chunked transfer-encoding), pipes bytes
+    through a StreamingResponse with a background cleanup task to keep the httpx
+    client alive until the stream completes.
+    """
     if _cfg is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
 
     ollama_url = f"{_cfg.ollama.base_url.rstrip('/')}{path}"
     body = await request.body()
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(_cfg.ollama.timeout, read=300.0)) as client:
-        try:
-            resp = await client.send(
-                client.build_request(
-                    method=request.method,
-                    url=ollama_url,
-                    content=body,
-                    headers={"content-type": "application/json"} if body else {},
-                ),
-                stream=True,
-            )
-        except httpx.HTTPError as e:
-            raise HTTPException(status_code=502, detail=f"Ollama unreachable: {type(e).__name__}: {e}")
+    client = httpx.AsyncClient(timeout=httpx.Timeout(_cfg.ollama.timeout, read=300.0))
+    try:
+        resp = await client.send(
+            client.build_request(
+                method=request.method,
+                url=ollama_url,
+                content=body,
+                headers={"content-type": "application/json"} if body else {},
+            ),
+            stream=True,
+        )
+    except httpx.HTTPError as e:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail=f"Ollama unreachable: {type(e).__name__}: {e}")
 
-        # Stream response bytes through (handles both streaming and non-streaming Ollama responses)
+    # Check if response is streamed (chunked transfer-encoding)
+    is_chunked = resp.headers.get("transfer-encoding", "").lower() == "chunked"
+
+    if is_chunked:
+        # Keep client alive until streaming completes
+        async def cleanup():
+            await resp.aclose()
+            await client.aclose()
+
         return StreamingResponse(
             resp.aiter_bytes(),
+            status_code=resp.status_code,
+            media_type=resp.headers.get("content-type", "application/json"),
+            background=BackgroundTask(cleanup),
+        )
+    else:
+        # Non-streaming: read full response, close client, return
+        content = await resp.aread()
+        await resp.aclose()
+        await client.aclose()
+        return Response(
+            content=content,
             status_code=resp.status_code,
             media_type=resp.headers.get("content-type", "application/json"),
         )
