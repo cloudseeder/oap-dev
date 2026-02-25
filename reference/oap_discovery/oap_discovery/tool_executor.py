@@ -262,6 +262,94 @@ async def execute_tool_call(
 _MAX_EXEC_OUTPUT = 100 * 1024
 
 
+def _split_pipeline(parts: list[str]) -> list[list[str]]:
+    """Split shlex-tokenized command into pipeline stages at '|' tokens.
+
+    Returns a list of stages, each a list of tokens.  Single-command
+    invocations return a one-element list (no behavior change).
+    """
+    stages: list[list[str]] = [[]]
+    for token in parts:
+        if token == "|":
+            if stages[-1]:  # skip empty stages from leading/double pipes
+                stages.append([])
+        else:
+            stages[-1].append(token)
+    # Drop any trailing empty stage
+    return [s for s in stages if s]
+
+
+async def _run_single(
+    argv: list[str],
+    stdin_bytes: bytes | None,
+    stdio_timeout: int,
+) -> tuple[bytes, bytes, int]:
+    """Run a single subprocess, return (stdout, stderr, returncode)."""
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        stdin=asyncio.subprocess.PIPE if stdin_bytes is not None else None,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(
+        proc.communicate(input=stdin_bytes), timeout=stdio_timeout,
+    )
+    return stdout, stderr, proc.returncode
+
+
+async def _run_pipeline(
+    pipeline: list[list[str]],
+    stdin_bytes: bytes | None,
+    stdio_timeout: int,
+) -> tuple[bytes, bytes, int]:
+    """Execute a multi-stage pipeline, piping stdout→stdin between stages.
+
+    Returns (final_stdout, combined_stderr, last_returncode).
+    Uses the same timeout for the entire pipeline.
+    """
+    current_input = stdin_bytes
+    all_stderr: list[bytes] = []
+
+    for i, argv in enumerate(pipeline):
+        is_last = i == len(pipeline) - 1
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdin=asyncio.subprocess.PIPE if current_input is not None else None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=current_input), timeout=stdio_timeout,
+            )
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
+            raise
+
+        if stderr:
+            all_stderr.append(stderr)
+
+        # Exit code 1 with no stderr = "no results" convention — but only
+        # treat it as fatal for non-last stages (last stage is checked by caller)
+        if not is_last and proc.returncode not in (0, 1):
+            return stdout, b"".join(all_stderr) + stderr, proc.returncode
+
+        current_input = stdout
+
+    return stdout, b"".join(all_stderr), proc.returncode  # type: ignore[possibly-undefined]
+
+
+def _resolve_stage(stage: list[str]) -> list[str]:
+    """Validate the command and expand ~ in arguments for a pipeline stage."""
+    cmd_name = stage[0]
+    resolved_cmd = _validate_stdio_command(cmd_name)  # raises ValueError
+    return [resolved_cmd] + [os.path.expanduser(a) for a in stage[1:]]
+
+
 async def execute_exec_call(
     command_str: str,
     *,
@@ -278,6 +366,9 @@ async def execute_exec_call(
     Parses the command with shlex, validates the binary against the PATH
     allowlist, expands ~ in arguments, and runs via create_subprocess_exec
     (no shell).  Optional stdin_text is piped to the process.
+
+    Supports shell-style pipelines (cmd1 | cmd2 | cmd3) — each command in
+    the pipeline is validated against the allowlist independently.
     """
     if not command_str or not command_str.strip():
         return "Error: empty command"
@@ -290,14 +381,16 @@ async def execute_exec_call(
     if not parts:
         return "Error: empty command"
 
-    cmd_name = parts[0]
+    # Split into pipeline stages
+    stages = _split_pipeline(parts)
+    if not stages:
+        return "Error: empty command"
+
+    # Validate and resolve every command in the pipeline
     try:
-        resolved_cmd = _validate_stdio_command(cmd_name)
+        pipeline = [_resolve_stage(s) for s in stages]
     except ValueError as e:
         return f"Error: {e}"
-
-    # Expand ~ in all arguments (matches _invoke_stdio behavior)
-    argv = [resolved_cmd] + [os.path.expanduser(a) for a in parts[1:]]
 
     # Ensure stdin ends with newline (matches _invoke_stdio behavior)
     if stdin_text and not stdin_text.endswith('\n'):
@@ -305,38 +398,32 @@ async def execute_exec_call(
     stdin_bytes = stdin_text.encode() if stdin_text else None
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdin=asyncio.subprocess.PIPE if stdin_bytes else None,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(input=stdin_bytes), timeout=stdio_timeout,
-        )
+        if len(pipeline) == 1:
+            stdout, stderr_bytes, returncode = await _run_single(
+                pipeline[0], stdin_bytes, stdio_timeout,
+            )
+        else:
+            stdout, stderr_bytes, returncode = await _run_pipeline(
+                pipeline, stdin_bytes, stdio_timeout,
+            )
     except asyncio.TimeoutError:
-        try:
-            proc.kill()
-            await proc.wait()
-        except Exception:
-            pass
         return f"Error: command timed out after {stdio_timeout}s"
-    except FileNotFoundError:
-        return f"Error: command not found — {resolved_cmd}"
+    except FileNotFoundError as e:
+        return f"Error: command not found — {e}"
     except Exception as e:
         log.exception("exec invocation failed: %s", command_str)
         return f"Error: {e}"
 
     output = stdout.decode(errors="replace")[:_MAX_EXEC_OUTPUT]
-    err_output = stderr.decode(errors="replace")[:_MAX_EXEC_OUTPUT]
+    err_output = stderr_bytes.decode(errors="replace")[:_MAX_EXEC_OUTPUT]
 
     # Exit code 1 with no stderr = "no results" (grep, diff, cmp convention)
-    success = proc.returncode == 0 or (
-        proc.returncode == 1 and not err_output.strip()
+    success = returncode == 0 or (
+        returncode == 1 and not err_output.strip()
     )
 
     if not success:
-        return f"Error: {err_output.strip() or f'exit code {proc.returncode}'}"
+        return f"Error: {err_output.strip() or f'exit code {returncode}'}"
 
     body = output or "Success (no output)"
 
