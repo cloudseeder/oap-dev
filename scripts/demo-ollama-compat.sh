@@ -139,7 +139,7 @@ fi
 header "5. POST /api/chat (non-streaming) — Tool bridge"
 step "Send a task through /api/chat — OAP discovers tools and executes"
 cmd "curl -s $OAP/api/chat -d '{\"model\":\"qwen3:8b\",\"messages\":[{\"role\":\"user\",\"content\":\"what is 42 * 17?\"}],\"stream\":false}'"
-run_curl --max-time 120 "$OAP/api/chat" -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"what is 42 * 17?"}],"stream":false}'
+run_curl --max-time 120 "$OAP/api/chat" -H 'Content-Type: application/json' -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"what is 42 * 17?"}],"stream":false}'
 if curl_ok; then
     content=$(echo "$CURL_BODY" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('message',{}).get('content','(empty)'))" 2>/dev/null || echo "(parse error)")
     tools_injected=$(echo "$CURL_BODY" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('oap_tools_injected','?'))" 2>/dev/null || echo "?")
@@ -154,7 +154,7 @@ fi
 header "6. POST /api/chat (streaming) — NDJSON format"
 step "Same request with stream=true — returns NDJSON like standard Ollama"
 cmd "curl -s $OAP/api/chat -d '{\"model\":\"qwen3:8b\",\"messages\":[{\"role\":\"user\",\"content\":\"what is 6 + 7?\"}],\"stream\":true}'"
-run_curl --max-time 120 "$OAP/api/chat" -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"what is 6 + 7?"}],"stream":true}'
+run_curl --max-time 120 "$OAP/api/chat" -H 'Content-Type: application/json' -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"what is 6 + 7?"}],"stream":true}'
 if curl_ok; then
     line_count=$(echo "$CURL_BODY" | wc -l | tr -d ' ')
     has_done=$(echo "$CURL_BODY" | python3 -c "
