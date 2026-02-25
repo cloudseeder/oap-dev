@@ -276,6 +276,13 @@ async def _proxy_to_ollama(path: str, request: Request):
         )
 
 
+@app.get("/api/version")
+@app.head("/api/version")
+async def ollama_version(request: Request):
+    """Ollama version — CLI checks this on startup."""
+    return await _proxy_to_ollama("/api/version", request)
+
+
 @app.get("/api/tags")
 async def ollama_tags(request: Request):
     """List models — used by every Ollama client on startup."""
