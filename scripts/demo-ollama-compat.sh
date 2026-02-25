@@ -46,8 +46,8 @@ fail=0
 header() { printf "\n${BOLD}${CYAN}=== %s ===${RESET}\n\n" "$1"; }
 step()   { printf "${BOLD}%s${RESET}\n" "$1"; }
 cmd()    { printf "${DIM}  \$ %s${RESET}\n" "$1"; }
-ok()     { printf "${GREEN}  ✓ %s${RESET}\n" "$1"; ((pass++)); }
-err()    { printf "${RED}  ✗ %s${RESET}\n" "$1"; ((fail++)); }
+ok()     { printf "${GREEN}  ✓ %s${RESET}\n" "$1"; pass=$((pass + 1)); }
+err()    { printf "${RED}  ✗ %s${RESET}\n" "$1"; fail=$((fail + 1)); }
 note()   { printf "${YELLOW}  → %s${RESET}\n" "$1"; }
 
 # -------------------------------------------------------------------
