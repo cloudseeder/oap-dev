@@ -279,6 +279,47 @@ def _split_pipeline(parts: list[str]) -> list[list[str]]:
     return [s for s in stages if s]
 
 
+def _raw_pipe_split(cmd: str) -> list[str]:
+    """Split a raw command string at unquoted '|' characters.
+
+    Used as a fallback when shlex.split() fails on the full command due to
+    quoting that only makes sense per-stage (e.g. ``cut -d" -f2``).
+    Respects single and double quotes to avoid splitting inside them.
+    """
+    stages: list[str] = []
+    current: list[str] = []
+    in_single = False
+    in_double = False
+    for ch in cmd:
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            current.append(ch)
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+            current.append(ch)
+        elif ch == "|" and not in_single and not in_double:
+            stages.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        stages.append("".join(current))
+    return [s.strip() for s in stages if s.strip()]
+
+
+def _tokenize_stage(stage_str: str) -> list[str]:
+    """Tokenize a single pipeline stage, with shlex fallback.
+
+    Tries shlex.split() first for proper quote handling.  Falls back to
+    simple whitespace splitting when shlex can't parse the quoting
+    (e.g. ``cut -d" -f2`` where " is a literal delimiter character).
+    """
+    try:
+        return shlex.split(stage_str)
+    except ValueError:
+        return stage_str.split()
+
+
 async def _run_single(
     argv: list[str],
     stdin_bytes: bytes | None,
@@ -375,14 +416,14 @@ async def execute_exec_call(
 
     try:
         parts = shlex.split(command_str)
-    except ValueError as e:
-        return f"Error: invalid command syntax — {e}"
+        stages = _split_pipeline(parts)
+    except ValueError:
+        # shlex can't handle the quoting — common with LLM-generated
+        # commands mixing quote styles across pipe stages (e.g.
+        # grep -oE '"[^"]+"' file | cut -d" -f2).  Fall back to
+        # splitting at raw | first, then tokenize each stage.
+        stages = [_tokenize_stage(s) for s in _raw_pipe_split(command_str)]
 
-    if not parts:
-        return "Error: empty command"
-
-    # Split into pipeline stages
-    stages = _split_pipeline(parts)
     if not stages:
         return "Error: empty command"
 
