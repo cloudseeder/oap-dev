@@ -1,0 +1,17 @@
+{
+  "oap": "1.0",
+  "name": "awk",
+  "description": "Pattern-directed scanning and text processing language. Reads from standard input line by line, splits each line into fields ($1, $2, etc.), and applies pattern-action rules. Supports field separators (-F), variables (-v), conditionals, loops, arithmetic, and built-in functions (length, substr, split, printf). Use for extracting columns from tabular data, computing sums and averages, reformatting output, or filtering lines by field values.",
+  "input": {
+    "format": "text/plain",
+    "description": "Text to process, provided on standard input. The first argument is the awk program (e.g. '{print $1}', '-F, {sum+=$2} END{print sum}')."
+  },
+  "output": {
+    "format": "text/plain",
+    "description": "Processed output as specified by the awk program, one line per output statement."
+  },
+  "invoke": {
+    "method": "stdio",
+    "url": "awk"
+  }
+}

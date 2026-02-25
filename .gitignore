@@ -17,8 +17,21 @@ firebase_svc.json
 # database
 *.db
 
-# generated manifests
-reference/oap_discovery/manifests/
+# generated manifests (keep hand-coded starter set)
+reference/oap_discovery/manifests/*
+!reference/oap_discovery/manifests/grep.json
+!reference/oap_discovery/manifests/wc.json
+!reference/oap_discovery/manifests/jq.json
+!reference/oap_discovery/manifests/date.json
+!reference/oap_discovery/manifests/bc.json
+!reference/oap_discovery/manifests/apropos.json
+!reference/oap_discovery/manifests/man.json
+!reference/oap_discovery/manifests/sed.json
+!reference/oap_discovery/manifests/awk.json
+!reference/oap_discovery/manifests/cut.json
+!reference/oap_discovery/manifests/tr.json
+!reference/oap_discovery/manifests/paste.json
+!reference/oap_discovery/manifests/column.json
 
 # claude code
 .claude/

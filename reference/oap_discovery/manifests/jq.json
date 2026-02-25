@@ -1,0 +1,17 @@
+{
+  "oap": "1.0",
+  "name": "jq",
+  "description": "Process JSON data using a query language. Reads from standard input or files, applies a JSON filter to transform the input, and outputs the result as JSON. Supports input as JSON entities (whitespace-separated) or raw text (with --raw-input), and output formatting options. Use for filtering, transforming, and manipulating JSON documents, such as extracting fields, aggregating data, or converting between JSON structures.",
+  "input": {
+    "format": "text/plain",
+    "description": "JSON data provided via standard input (whitespace-separated entities) or files as command-line arguments. The first argument is the JSON filter expression."
+  },
+  "output": {
+    "format": "text/plain",
+    "description": "Transformed JSON data, one JSON entity per line, or a single JSON object if the filter produces a single result."
+  },
+  "invoke": {
+    "method": "stdio",
+    "url": "jq"
+  }
+}
