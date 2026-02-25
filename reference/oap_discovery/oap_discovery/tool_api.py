@@ -686,7 +686,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             if not tool_calls or not req.oap_auto_execute:
                 # If cache hit produced errors and LLM gave up, break to let
                 # degradation logic fire instead of returning early.
-                if exp_cache_hit and tools_had_errors and _attempt == 0:
+                if (exp_cache_hit or task_has_files) and tools_had_errors and _attempt == 0:
                     if debug:
                         debug_rounds.append({
                             "round": round_num + 1,
@@ -892,6 +892,64 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             if client_tools:
                 tools.extend(client_tools)
             # Re-inject oap_exec as first tool for retry
+            if EXEC_TOOL.function.name not in registry:
+                tools.insert(0, EXEC_TOOL)
+                registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
+            # Rebuild system prompt with retry usage hints
+            usage_hint = ""
+            if discovered_usage:
+                usage_hint = (
+                    "\n\nRelevant commands for this task:\n"
+                    + "\n".join(f"  {u}" for u in discovered_usage)
+                )
+            messages = [
+                {"role": "system", "content": system_content + usage_hint},
+                *original_messages,
+            ]
+            continue  # retry the outer loop
+
+        # File-path retry: oap_exec failed — try full discovery with named tools.
+        # Unlike normal file-path mode, we keep stdio tools (jq, grep, etc.) since
+        # oap_exec already failed and the named tool's parameter schema may guide
+        # the LLM to construct better arguments.
+        if task_has_files and tools_had_errors and _attempt == 0:
+            log.warning(
+                "oap_exec failed on file-path task — retrying with full discovery (stdio tools enabled)"
+            )
+            exp_cache_status = "exec_fallback"
+            tools_had_errors = False
+            tools_had_output = False
+            tools_executed = False
+            tools_called = set()
+            failed_calls = []
+            successful_calls = []
+            debug_rounds = []
+            messages = [messages[0], *original_messages]  # preserve system prompt
+            tools, registry = await _discover_tools(
+                engine, store, last_user_msg, req.oap_top_k,
+            )
+            # Collect usage from retry tools (before any filtering)
+            discovered_usage = [
+                entry.manifest.get("usage")
+                for entry in registry.values()
+                if entry.manifest.get("usage")
+            ]
+            # Keep stdio tools — that's the point of this retry
+            # Inject similar experience tools (including stdio)
+            similar_experience_tool_names = []
+            if exp_fingerprint and exp_intent_domain:
+                sim_tools, sim_registry = await _get_similar_experience_tools(
+                    exp_fingerprint, exp_intent_domain, store,
+                )
+                for st in sim_tools:
+                    name = st.function.name
+                    if name not in registry and len(tools) < MAX_INJECTED_TOOLS:
+                        tools.append(st)
+                        registry[name] = sim_registry[name]
+                        similar_experience_tool_names.append(name)
+            if client_tools:
+                tools.extend(client_tools)
+            # Keep oap_exec as first tool alongside discovered tools
             if EXEC_TOOL.function.name not in registry:
                 tools.insert(0, EXEC_TOOL)
                 registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
