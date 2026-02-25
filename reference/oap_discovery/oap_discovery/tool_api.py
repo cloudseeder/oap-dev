@@ -465,6 +465,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
     exp_id: str | None = None
     tools_executed = False
     tools_had_errors = False
+    tools_had_output = False  # True when at least one tool produced substantive output
     tools_called: set[str] = set()
     failed_calls: list[dict[str, Any]] = []
     successful_calls: list[dict[str, Any]] = []
@@ -636,7 +637,9 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         "rounds": debug_rounds,
                     }
                 # Cache experience on successful tool execution
-                if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+                # Skip caching when tools produced no output — ambiguous result
+                # (could be correct "no results" or a mangled pattern/args)
+                if tools_executed and tools_had_output and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
                     if not tools_had_errors:
                         await _save_experience(
                             exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
@@ -705,6 +708,8 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         "error": result_str,
                     })
                 else:
+                    if result_str and result_str != "Success (no output)":
+                        tools_had_output = True
                     if tools_had_errors:  # success AFTER a failure in this session
                         successful_calls.append({
                             "tool": tool_name,
@@ -750,6 +755,7 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             exp_cache_hit = False
             exp_cache_status = "degraded"
             tools_had_errors = False
+            tools_had_output = False
             tools_executed = False
             tools_called = set()
             failed_calls = []
@@ -798,7 +804,8 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
             "rounds": debug_rounds,
         }
     # Cache experience on successful tool execution
-    if tools_executed and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
+    # Skip caching when tools produced no output — ambiguous result
+    if tools_executed and tools_had_output and not exp_cache_hit and exp_fingerprint and exp_intent_domain:
         if not tools_had_errors:
             await _save_experience(
                 exp_fingerprint, exp_intent_domain, last_user_msg, registry, tools_called,
