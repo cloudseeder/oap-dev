@@ -17,8 +17,10 @@ from .tool_models import ToolRegistryEntry
 log = logging.getLogger("oap.tool_executor")
 
 _SUMMARIZE_SYSTEM = (
-    "Summarize this data concisely. "
-    "Preserve key facts, names, dates, numbers, and decisions. No preamble."
+    "Condense this data to the essential facts only. "
+    "For lists: keep item names, drop descriptions. "
+    "For text: keep key facts, names, numbers. Drop boilerplate. "
+    "Maximum 5 lines. No preamble, no commentary."
 )
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -74,7 +76,7 @@ async def summarize_result(
         prompt = f"User task: {task}\n\nData:\n{chunk}"
         try:
             raw, metrics = await ollama.generate(
-                prompt, system=_SUMMARIZE_SYSTEM, timeout=120.0,
+                prompt, system=_SUMMARIZE_SYSTEM, timeout=120.0, think=False,
             )
             summary = _THINK_RE.sub("", raw).strip()
             log.info(
@@ -94,7 +96,7 @@ async def summarize_result(
         prompt = f"User task: {task}\n\nData:\n{combined}"
         try:
             raw, _ = await ollama.generate(
-                prompt, system=_SUMMARIZE_SYSTEM, timeout=120.0,
+                prompt, system=_SUMMARIZE_SYSTEM, timeout=120.0, think=False,
             )
             combined = _THINK_RE.sub("", raw).strip()
         except Exception:
