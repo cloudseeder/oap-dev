@@ -601,6 +601,8 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
         "You have NO access to real-time information. For ANY question about the "
         "current date, time, day, month, or year, you MUST call oap_exec with the "
         "date command — never answer from memory. "
+        "To look up commands or utilities by topic, use `apropos <keyword>` — "
+        "never search through binary files with find or grep. "
         "After a tool result, reply in 1-2 sentences."
     )
     if failure_hints:
