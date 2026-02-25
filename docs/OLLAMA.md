@@ -281,11 +281,107 @@ Every config field can be overridden with an environment variable following the 
 
 Environment variables take precedence over `config.yaml` values.
 
+## Drop-in Ollama replacement
+
+The OAP server implements the full Ollama API surface. Point any standard Ollama client at `localhost:8300` instead of `localhost:11434` and every chat request gets automatic tool discovery + execution — no code changes, no configuration beyond the URL.
+
+### How it works
+
+| Endpoint | Behavior |
+|----------|----------|
+| `POST /api/chat` | Routes through the tool bridge — discovers tools, injects them, executes tool calls, loops until done. Same as `/v1/chat`. |
+| `GET /api/tags` | Pass-through to Ollama — lists available models |
+| `POST /api/show` | Pass-through to Ollama — model info |
+| `GET /api/ps` | Pass-through to Ollama — loaded models |
+| `POST /api/generate` | Pass-through to Ollama — text generation |
+| `POST /api/embed` | Pass-through to Ollama — embeddings |
+| `POST /api/embeddings` | Pass-through to Ollama — embeddings (alias) |
+
+`/api/chat` is the only endpoint with OAP behavior. Everything else proxies directly to the real Ollama server — the OAP server is transparent for non-chat operations.
+
+### Streaming
+
+Standard Ollama clients send `stream: true` by default (including `ollama run`). The tool bridge processes everything non-streaming internally — tool execution loops require complete responses to decide the next action. When the request has `stream: true`, the bridge runs its full tool loop, then emits the final result as NDJSON: a content chunk (`done: false`) followed by a done sentinel (`done: true`) with timing metrics. Clients see the complete response arrive at once rather than token-by-token, which is fine since tool execution (not generation) is the bottleneck.
+
+### Ollama CLI
+
+The `ollama` CLI uses the `OLLAMA_HOST` environment variable to determine which server to connect to. This works for all subcommands — `run`, `list`, `show`, `ps`, etc.
+
+```bash
+# Interactive chat with tool discovery
+OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b
+
+# One-shot task
+OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b "count lines in /tmp/data.txt"
+
+# List models (proxied to real Ollama)
+OLLAMA_HOST=http://localhost:8300 ollama list
+
+# Shell alias for convenience
+alias oap='OLLAMA_HOST=http://localhost:8300 ollama'
+oap run qwen3:8b
+```
+
+> **Note:** The Ollama Mac desktop app runs its own embedded server and does not support changing the endpoint. Use the `ollama` CLI (which ships with the Mac app) with `OLLAMA_HOST` instead.
+
+### Open WebUI
+
+[Open WebUI](https://github.com/open-webui/open-webui) connects to Ollama via the `OLLAMA_BASE_URL` environment variable. Point it at the OAP server:
+
+```bash
+# Docker
+docker run -d -p 3000:8080 \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:8300 \
+  -v open-webui:/app/backend/data \
+  --name open-webui \
+  ghcr.io/open-webui/open-webui:main
+
+# Docker Compose
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports: ["3000:8080"]
+    environment:
+      OLLAMA_BASE_URL: http://host.docker.internal:8300
+    volumes:
+      - open-webui:/app/backend/data
+```
+
+Open WebUI will list models from `/api/tags`, show loaded models from `/api/ps`, and route all chat through `/api/chat` — which means every conversation gets OAP tool discovery automatically. The UI works normally; tool execution happens server-side and the user sees the final answer.
+
+> **Tip:** If Open WebUI is running on the same machine (not in Docker), use `http://localhost:8300` directly.
+
+### Other compatible clients
+
+Any application that speaks the Ollama API can use the OAP server. Common patterns:
+
+| Client | Configuration |
+|--------|--------------|
+| `ollama` CLI | `OLLAMA_HOST=http://localhost:8300` |
+| Open WebUI | `OLLAMA_BASE_URL=http://localhost:8300` |
+| chatbot-ui | `OLLAMA_API_BASE_URL=http://localhost:8300` |
+| Flowise | Ollama node → Base URL: `http://localhost:8300` |
+| n8n | Ollama credentials → Base URL: `http://localhost:8300` |
+| LangChain | `ChatOllama(base_url="http://localhost:8300")` |
+| LlamaIndex | `Ollama(base_url="http://localhost:8300")` |
+| promptfoo | `providers: [{id: "ollama:qwen3:8b", config: {apiBaseUrl: "http://localhost:8300"}}]` |
+| curl | `curl http://localhost:8300/api/chat -d '{"model":"qwen3:8b","messages":[...]}'` |
+
+### Demo
+
+Run the demo script to verify all endpoints work:
+
+```bash
+./scripts/demo-ollama-compat.sh              # default: localhost:8300
+./scripts/demo-ollama-compat.sh http://my-server:8300  # custom URL
+```
+
+The script tests `/api/tags`, `/api/ps`, `/api/show`, `/api/chat` (both streaming and non-streaming), and `/api/generate`.
+
 ## What's next
 
-The tool bridge is functional but minimal. Planned improvements:
+Planned improvements:
 
-- **Streaming support.** The `/v1/chat` proxy currently requires `stream: false`. Streaming proxying with interleaved tool execution is the next priority.
 - **LLM-generated schemas at crawl time.** Instead of heuristic parameter extraction at request time, use the LLM during crawling to generate richer JSON Schema from manifest descriptions. Cache the schemas alongside the manifest embeddings.
 - **Auth credential management.** Manifests declare auth requirements (`api_key`, `bearer`, `oauth2`) but the bridge doesn't yet manage credentials. A local credential store keyed by domain would let the bridge authenticate tool calls automatically.
 - **Parallel tool execution.** When Ollama returns multiple tool calls in a single response, execute them concurrently instead of sequentially.
