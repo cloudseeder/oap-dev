@@ -76,6 +76,7 @@ MAX_INJECTED_TOOLS = 3
 # Detect file paths in user messages — when present, only offer oap_exec
 # (small LLMs ignore system prompt instructions and pick the "named" tool)
 import re as _re
+import shlex as _shlex
 _FILE_PATH_RE = _re.compile(
     r'(?:^|[\s\'"])([~/.][\w./~-]*\.\w+|/[\w./~-]+)'
 )
@@ -84,6 +85,21 @@ _FILE_PATH_RE = _re.compile(
 def _task_has_file_path(task: str) -> bool:
     """Return True if the task mentions what looks like a file path."""
     return bool(_FILE_PATH_RE.search(task))
+
+
+def _cmd_has_file_arg(command_str: str) -> bool:
+    """Return True if command has a non-flag argument that looks like a file path."""
+    try:
+        parts = _shlex.split(command_str)
+    except ValueError:
+        return False
+    # Skip the command itself (parts[0]), check remaining args
+    for arg in parts[1:]:
+        if arg.startswith("-"):
+            continue
+        if _FILE_PATH_RE.search(arg):
+            return True
+    return False
 
 
 EXEC_TOOL = Tool(
@@ -572,6 +588,9 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
         "IMPORTANT: Always prefer oap_exec. Write the command exactly as you would "
         "in a terminal. For files: oap_exec(command='grep -E pattern /path/file'). "
         "For inline text: oap_exec(command='grep -E pattern', stdin='the text'). "
+        "CRITICAL: Text-processing commands (grep, wc, sort, jq, sed, awk, etc.) "
+        "need input — if there is no file path in the command, you MUST pass the "
+        "inline text as the stdin parameter or the command will produce no output. "
         "After a tool result, reply in 1-2 sentences."
     )
     if failure_hints:
@@ -702,6 +721,18 @@ async def chat_proxy(req: ChatRequest) -> dict[str, Any]:
                         chunk_size=bridge_cfg.chunk_size,
                         max_output=bridge_cfg.max_tool_result,
                     )
+                    # Safety net: detect missing stdin when task has inline text
+                    if (
+                        result_str == "Success (no output)"
+                        and not stdin_str
+                        and "\n" in last_user_msg
+                        and not _cmd_has_file_arg(command_str)
+                    ):
+                        result_str = (
+                            "Error: no output — the task contains inline text "
+                            "that should be piped as stdin. Retry with: "
+                            "oap_exec(command='...', stdin='<the text from the task>')"
+                        )
                 else:
                     result_str = await execute_tool_call(
                         tool_name,

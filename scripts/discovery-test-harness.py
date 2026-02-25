@@ -193,6 +193,8 @@ def verify_test(tc: TestCase, response: dict[str, Any] | None, duration_s: float
     combined = "\n".join(tool_results) + "\n" + message_content
 
     expected = _normalize_tool(tc.expect_tool)
+    if expected:
+        expected.append("oap_exec")
     primary_tool = tools_called[0] if tools_called else ""
 
     # Pre-compute output correctness and tool identity
