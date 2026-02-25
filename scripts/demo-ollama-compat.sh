@@ -195,14 +195,13 @@ fi
 # -------------------------------------------------------------------
 header "8. Client integration"
 step "Point any HTTP-based Ollama client at the OAP server"
+note "ollama CLI:  OLLAMA_HOST=$OAP ollama run qwen3:8b  (interactive mode)"
 note "Open WebUI:  OLLAMA_BASE_URL=$OAP"
 note "LangChain:   ChatOllama(base_url=\"$OAP\")"
-note "LlamaIndex:  Ollama(base_url=\"$OAP\")"
 note "curl:        curl $OAP/api/chat -H 'Content-Type: application/json' -d '{...}'"
 note ""
-note "macOS: the ollama CLI talks to the desktop app via local socket,"
-note "ignoring OLLAMA_HOST. Use HTTP clients instead."
-note "Linux: OLLAMA_HOST=$OAP ollama run qwen3:8b"
+note "Note: one-shot mode (ollama run model \"prompt\") uses /api/generate"
+note "(pass-through, no tools). Use interactive mode for tool discovery."
 
 # -------------------------------------------------------------------
 header "Summary"
@@ -211,9 +210,9 @@ printf "  ${GREEN}Passed: %d${RESET}  ${RED}Failed: %d${RESET}\n\n" "$pass" "$fa
 if [ "$fail" -eq 0 ]; then
     printf "${GREEN}All tests passed!${RESET} The OAP server is a working drop-in Ollama replacement.\n\n"
     printf "To use with any HTTP-based Ollama client:\n"
+    printf "  ${BOLD}OLLAMA_HOST=%s ollama run qwen3:8b${RESET}  # interactive mode\n" "$OAP"
     printf "  ${BOLD}OLLAMA_BASE_URL=%s${RESET}  # Open WebUI\n" "$OAP"
-    printf "  ${BOLD}ChatOllama(base_url=\"%s\")${RESET}  # LangChain\n" "$OAP"
-    printf "  ${BOLD}OLLAMA_HOST=%s ollama run qwen3:8b${RESET}  # Linux only\n\n" "$OAP"
+    printf "  ${BOLD}ChatOllama(base_url=\"%s\")${RESET}  # LangChain\n\n" "$OAP"
 else
     printf "${YELLOW}Some tests failed.${RESET} Check that OAP and Ollama are both running.\n\n"
 fi

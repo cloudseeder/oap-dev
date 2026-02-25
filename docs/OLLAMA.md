@@ -305,17 +305,25 @@ Standard Ollama clients send `stream: true` by default (including `ollama run`).
 
 ### Ollama CLI
 
-> **macOS limitation:** On macOS, the `ollama` CLI communicates with the Ollama desktop app through a local socket, bypassing `OLLAMA_HOST` entirely. Setting `OLLAMA_HOST=http://localhost:8300` has no effect — requests go directly to the local Ollama app, not through the OAP server. This applies to all subcommands (`run`, `list`, `show`, etc.).
->
-> On **Linux**, `OLLAMA_HOST` works as expected — the CLI uses HTTP to connect to whatever server you specify:
+The `ollama` CLI uses the `OLLAMA_HOST` environment variable to connect to a custom server. Use **interactive mode** — one-shot mode uses `/api/generate` (pass-through, no tools) instead of `/api/chat` (tool bridge).
 
 ```bash
-# Linux only — macOS ignores OLLAMA_HOST
-OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b "count lines in /tmp/data.txt"
+# Interactive mode — uses /api/chat, gets tool discovery
+OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b
+>>> what day is it?
+It is Wednesday, February 25, 2026.
+
+# List models (proxied to real Ollama)
 OLLAMA_HOST=http://localhost:8300 ollama list
+
+# Shell alias for convenience
+alias oap='OLLAMA_HOST=http://localhost:8300 ollama'
+oap run qwen3:8b
 ```
 
-On macOS, use HTTP clients directly (curl, Open WebUI, LangChain, etc.) instead of the `ollama` CLI.
+> **Note:** One-shot mode (`ollama run qwen3:8b "prompt"`) sends the request via `/api/generate`, which passes through to Ollama without tool discovery. Use interactive mode for tool-augmented chat.
+>
+> **macOS:** Ensure the Ollama desktop app is not also listening on port 8300. Check with `lsof -i :8300` — only the OAP Python process should be listed.
 
 ### Open WebUI
 
@@ -350,7 +358,7 @@ Any application that speaks the Ollama API can use the OAP server. Common patter
 
 | Client | Configuration |
 |--------|--------------|
-| `ollama` CLI (Linux) | `OLLAMA_HOST=http://localhost:8300` |
+| `ollama` CLI (interactive) | `OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b` |
 | Open WebUI | `OLLAMA_BASE_URL=http://localhost:8300` |
 | chatbot-ui | `OLLAMA_API_BASE_URL=http://localhost:8300` |
 | Flowise | Ollama node → Base URL: `http://localhost:8300` |
