@@ -106,7 +106,7 @@ class TaskScheduler:
                 prompt=task["prompt"],
                 model=task.get("model", "qwen3:8b"),
                 timeout=120,
-                debug=self._debug,
+                debug=True,
             )
             duration_ms = int((time.monotonic() - started) * 1000)
             finished = self._db.finish_run(

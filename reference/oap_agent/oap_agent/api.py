@@ -422,7 +422,7 @@ async def _run_task_background(task: dict, run_id: str) -> None:
             prompt=task["prompt"],
             model=task.get("model", _discovery_model),
             timeout=_discovery_timeout,
-            debug=_debug_mode,
+            debug=True,
         )
         duration_ms = int((time.monotonic() - started) * 1000)
         _db.finish_run(
