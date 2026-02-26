@@ -111,11 +111,20 @@ def _inject_credentials(
     domain: str,
     credentials: dict[str, dict],
 ) -> InvokeSpec:
-    """Return a copy of invoke_spec with auth headers injected from credentials.
+    """Return a copy of invoke_spec with credentials injected.
 
-    Supports auth types: api_key (uses auth_name header) and bearer.
+    Supports auth types: api_key (header or query param) and bearer.
+    When auth_in="query", appends the key to the URL as a query parameter.
     """
+    from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
+
     cred = credentials.get(domain)
+    if cred is None:
+        # Fall back to the invoke URL hostname (e.g. "www.alphavantage.co")
+        # so credentials.yaml can use real domain names for local/* manifests.
+        url_host = urlparse(invoke_spec.url).hostname
+        if url_host:
+            cred = credentials.get(url_host)
     if cred is None:
         return invoke_spec
 
@@ -124,13 +133,23 @@ def _inject_credentials(
         return invoke_spec
 
     auth_type = (invoke_spec.auth or "").lower()
-    extra_headers: dict[str, str] = {}
+    auth_in = (invoke_spec.auth_in or "header").lower()
 
     if auth_type == "api_key":
-        header_name = invoke_spec.auth_name or "X-API-Key"
-        extra_headers[header_name] = key
+        param_name = invoke_spec.auth_name or "apikey"
+        if auth_in == "query":
+            # Append credential as URL query parameter
+            parsed = urlparse(invoke_spec.url)
+            qs = parse_qs(parsed.query, keep_blank_values=True)
+            qs[param_name] = [key]
+            new_query = urlencode(qs, doseq=True)
+            new_url = urlunparse(parsed._replace(query=new_query))
+            return invoke_spec.model_copy(update={"url": new_url})
+        else:
+            header_name = invoke_spec.auth_name or "X-API-Key"
+            extra_headers = {header_name: key}
     elif auth_type == "bearer":
-        extra_headers["Authorization"] = f"Bearer {key}"
+        extra_headers = {"Authorization": f"Bearer {key}"}
     else:
         # Unknown auth type — skip injection
         return invoke_spec
