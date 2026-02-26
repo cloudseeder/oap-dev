@@ -110,13 +110,15 @@ def _inject_credentials(
     invoke_spec: InvokeSpec,
     domain: str,
     credentials: dict[str, dict],
-) -> InvokeSpec:
-    """Return a copy of invoke_spec with credentials injected.
+) -> tuple[InvokeSpec, dict[str, str]]:
+    """Inject credentials into invoke_spec and/or return extra query params.
 
-    Supports auth types: api_key (header or query param) and bearer.
-    When auth_in="query", appends the key to the URL as a query parameter.
+    Returns (invoke_spec, extra_query_params). For auth_in="query", the
+    credential is returned as extra_query_params to be merged into the
+    request params dict. For header-based auth, headers are added to
+    invoke_spec and extra_query_params is empty.
     """
-    from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
+    from urllib.parse import urlparse
 
     cred = credentials.get(domain)
     if cred is None:
@@ -129,39 +131,34 @@ def _inject_credentials(
             cred = credentials.get(url_host)
     if cred is None:
         log.info("No credentials found for domain=%s", domain)
-        return invoke_spec
+        return invoke_spec, {}
 
     key = cred.get("key")
     if not key:
-        return invoke_spec
+        return invoke_spec, {}
 
     auth_type = (invoke_spec.auth or "").lower()
     auth_in = (invoke_spec.auth_in or "header").lower()
-    log.info("Injecting credentials for %s: auth=%s, auth_in=%s", domain, auth_type, auth_in)
+    log.info("Injecting credentials for %s: auth=%s, auth_in=%s, key=%s",
+             domain, auth_type, auth_in, key)
 
     if auth_type == "api_key":
         param_name = invoke_spec.auth_name or "apikey"
         if auth_in == "query":
-            # Append credential as URL query parameter
-            parsed = urlparse(invoke_spec.url)
-            qs = parse_qs(parsed.query, keep_blank_values=True)
-            qs[param_name] = [key]
-            new_query = urlencode(qs, doseq=True)
-            new_url = urlunparse(parsed._replace(query=new_query))
-            return invoke_spec.model_copy(update={"url": new_url})
+            # Return as extra query params — caller merges into request params
+            return invoke_spec, {param_name: key}
         else:
             header_name = invoke_spec.auth_name or "X-API-Key"
             extra_headers = {header_name: key}
     elif auth_type == "bearer":
         extra_headers = {"Authorization": f"Bearer {key}"}
     else:
-        # Unknown auth type — skip injection
-        return invoke_spec
+        return invoke_spec, {}
 
     merged_headers = dict(invoke_spec.headers or {})
     merged_headers.update(extra_headers)
 
-    return invoke_spec.model_copy(update={"headers": merged_headers})
+    return invoke_spec.model_copy(update={"headers": merged_headers}), {}
 
 
 async def execute_tool_call(
@@ -195,8 +192,9 @@ async def execute_tool_call(
     invoke_spec = InvokeSpec.model_validate(manifest["invoke"])
 
     # Inject credentials if available for this domain
+    extra_query_params: dict[str, str] = {}
     if credentials:
-        invoke_spec = _inject_credentials(invoke_spec, entry.domain, credentials)
+        invoke_spec, extra_query_params = _inject_credentials(invoke_spec, entry.domain, credentials)
 
     method = invoke_spec.method.upper()
 
@@ -252,18 +250,20 @@ async def execute_tool_call(
                 stdio_timeout=stdio_timeout,
             )
         elif "json" in (manifest.get("input", {}) or {}).get("format", ""):
-            # JSON input: pass arguments directly
+            # JSON input: pass arguments directly (merge any credential query params)
+            merged_params = {**arguments, **extra_query_params} if extra_query_params else arguments
             result = await invoke_manifest(
                 invoke_spec,
-                params=arguments,
+                params=merged_params,
                 http_timeout=http_timeout,
             )
         else:
             # Text input: use 'input' argument as stdin/body
             input_text = arguments.get("input", str(arguments))
+            text_params = {"input": input_text, **extra_query_params} if extra_query_params else {"input": input_text}
             result = await invoke_manifest(
                 invoke_spec,
-                params={"input": input_text},
+                params=text_params,
                 stdin_text=input_text,
                 http_timeout=http_timeout,
             )
