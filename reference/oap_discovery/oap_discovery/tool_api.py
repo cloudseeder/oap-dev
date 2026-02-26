@@ -667,7 +667,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "For date/time questions, call oap_exec(command='date') — never answer from memory. "
         "To look up commands or utilities by topic, use `apropos <keyword>` — "
         "never search through binary files with find or grep. "
-        "When querying weather for US locations, use fahrenheit and mph. "
+        "When querying weather for US locations, use temperature_unit=fahrenheit and wind_speed_unit=mph. "
         "After a tool result, reply in 1-2 sentences."
     )
     if failure_hints:
