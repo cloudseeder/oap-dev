@@ -1,4 +1,5 @@
 import type { Message } from '@/lib/types'
+import Markdown from './Markdown'
 import ToolCallCard from './ToolCallCard'
 import ExperienceBadge from './ExperienceBadge'
 
@@ -20,7 +21,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
               : 'bg-gray-100 text-gray-900 rounded-bl-sm'
           }`}
         >
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          {isUser ? (
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          ) : (
+            <Markdown>{message.content}</Markdown>
+          )}
         </div>
 
         {message.tool_calls && message.tool_calls.length > 0 && (

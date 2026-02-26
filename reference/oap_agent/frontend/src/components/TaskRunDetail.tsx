@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { TaskRun } from '@/lib/types'
+import Markdown from './Markdown'
 import ToolCallCard from './ToolCallCard'
 
 interface TaskRunDetailProps {
@@ -55,7 +56,7 @@ export default function TaskRunDetail({ run, defaultExpanded = false }: TaskRunD
           {run.response && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Response</div>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{run.response}</p>
+              <Markdown>{run.response}</Markdown>
             </div>
           )}
 
