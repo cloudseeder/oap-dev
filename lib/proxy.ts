@@ -3,14 +3,12 @@
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8300'
 const TRUST_URL = process.env.TRUST_URL
 const DASHBOARD_URL = process.env.DASHBOARD_URL
-const AGENT_URL = process.env.AGENT_URL
 const BACKEND_SECRET = process.env.BACKEND_SECRET
 
 /** Port-to-env-var mapping for tunnel deployments */
 const SERVICE_URLS: Record<number, string | undefined> = {
   8301: TRUST_URL,
   8302: DASHBOARD_URL,
-  8303: AGENT_URL,
 }
 
 export interface ProxyOptions {

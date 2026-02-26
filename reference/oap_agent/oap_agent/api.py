@@ -508,6 +508,18 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
+# Static files (Vite SPA)
+# ---------------------------------------------------------------------------
+
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

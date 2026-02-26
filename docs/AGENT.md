@@ -23,20 +23,22 @@ The gap it fills:
 ## Architecture
 
 ```
-Browser
-  │ fetch / SSE
-  ▼
-Next.js  /app/agent/*  +  /app/api/agent/*
-  │ proxyFetch (lib/proxy.ts, port 8303)
-  ▼
-oap_agent (:8303)  ──POST /v1/chat──▶  oap_discovery (:8300)
-  │                                      tool discovery + execution
-  │  SQLite (oap_agent.db)               experience / procedural memory
-  │  APScheduler (in-process cron)       Ollama (qwen3:8b)
-  │  SSE event bus
+Browser → http://localhost:8303
+  ├─ /              → Vite SPA (index.html, React Router)
+  ├─ /chat          → SPA client-side route
+  ├─ /chat/:id      → SPA client-side route
+  ├─ /tasks         → SPA client-side route
+  ├─ /tasks/:id     → SPA client-side route
+  └─ /v1/agent/*    → FastAPI backend (same server)
+                       │
+                       ├──POST /v1/chat──▶  oap_discovery (:8300)
+                       │                      tool discovery + execution
+                       │  SQLite (oap_agent.db)  experience / procedural memory
+                       │  APScheduler (cron)     Ollama (qwen3:8b)
+                       │  SSE event bus
 ```
 
-Two pieces: a Python backend service (`oap_agent`, port 8303) and a Next.js route group (`/app/agent/`). The agent backend is a thin orchestrator — it calls `/v1/chat` on the discovery service for all LLM and tool work. It never talks to Ollama directly.
+Self-contained: one `oap-agent-api` command serves both the FastAPI API and the Vite SPA at `http://localhost:8303`. No Node runtime, no Vercel involvement, no proxy layer. The agent backend is a thin orchestrator — it calls `/v1/chat` on the discovery service for all LLM and tool work. It never talks to Ollama directly.
 
 ### Why a Separate Service?
 
@@ -59,7 +61,7 @@ IDs are prefixed short UUIDs: `conv_`, `msg_`, `task_`, `run_`.
 
 ### API Endpoints
 
-All local-only on `:8303`. No authentication at the backend level (auth is at the Next.js proxy layer via `AGENT_SECRET` when deployed).
+All local-only on `:8303`. No authentication — the agent is a local tool, not exposed publicly.
 
 **Chat:**
 - `POST /v1/agent/chat` — send message, returns SSE stream (message_saved → tool_call* → assistant_message → done)
@@ -120,42 +122,44 @@ reference/oap_agent/
     executor.py           -- execute_chat(), execute_task() — calls /v1/chat on discovery service
     scheduler.py          -- APScheduler setup, task loading, dynamic job management
     events.py             -- EventBus class (asyncio.Queue per subscriber, 50 cap)
-    api.py                -- FastAPI app: routes, SSE streaming, Pydantic models, lifespan, main()
+    api.py                -- FastAPI app: routes, SSE streaming, Pydantic models, lifespan, StaticFiles mount, main()
+    static/               -- Built Vite SPA output (committed, no Node runtime needed)
+  frontend/
+    package.json          -- react 19, react-router 7, tailwindcss 4, vite 6
+    vite.config.ts        -- build output to ../oap_agent/static/, dev proxy to :8303
+    tsconfig.json
+    index.html
+    src/
+      main.tsx            -- React app with BrowserRouter
+      App.tsx             -- React Router routes
+      index.css           -- Tailwind CSS 4 with OAP theme
+      lib/types.ts        -- TypeScript types (Conversation, Message, ToolCall, AgentTask, TaskRun) + parseSSE()
+      components/         -- AgentLayout, AgentSidebar, ChatView, ChatMessage, ChatInput,
+                             AgentEventProvider, TaskList, TaskDetail, TaskForm, TaskRunDetail,
+                             ToolCallCard, ExperienceBadge, CronInput
 ```
 
 Entry point: `oap-agent-api` (installed via `pip install -e reference/oap_agent`).
 
-## Frontend: Next.js
+## Frontend: Vite SPA
 
-### Routes
+Standalone React SPA served by FastAPI's `StaticFiles` mount. No Node runtime on the server — built output is committed to `oap_agent/static/`.
 
-```
-app/agent/
-  layout.tsx              -- Full-height layout: sidebar + main area + EventProvider (no Header/Footer)
-  page.tsx                -- Redirect to /agent/chat
-  chat/
-    page.tsx              -- New conversation
-    [id]/page.tsx         -- Existing conversation
-  tasks/
-    page.tsx              -- Task list + create
-    [id]/page.tsx         -- Task detail + run history
+### Routes (client-side, React Router)
 
-app/api/agent/
-  chat/route.ts           -- SSE streaming proxy to :8303
-  conversations/route.ts  -- GET (paginated) + POST
-  conversations/[id]/route.ts -- GET + PATCH + DELETE
-  tasks/route.ts          -- GET + POST
-  tasks/[id]/route.ts     -- GET + PATCH + DELETE
-  tasks/[id]/run/route.ts -- POST trigger
-  tasks/[id]/runs/route.ts -- GET (paginated)
-  events/route.ts         -- SSE proxy pass-through
-  health/route.ts         -- GET health check proxy
-```
+- `/` — redirect to `/chat`
+- `/chat` — new conversation
+- `/chat/:id` — existing conversation
+- `/tasks` — task list + create
+- `/tasks/:id` — task detail + run history
+
+All API calls go to `/v1/agent/*` directly (same origin, no proxy layer).
 
 ### Components
 
 ```
-components/agent/
+frontend/src/components/
+  AgentLayout.tsx          -- Full-height layout: sidebar + <Outlet> + EventProvider
   AgentSidebar.tsx         -- Dark sidebar (bg-gray-900): conversation list, "New Chat" button, "Tasks" link
   AgentEventProvider.tsx   -- React context wrapping EventSource for background task notifications
   ChatView.tsx             -- Message list + input + SSE stream handling + auto-scroll
@@ -170,9 +174,18 @@ components/agent/
   CronInput.tsx            -- Cron expression input + presets dropdown + human-readable description
 ```
 
+### Dev Workflow
+
+```bash
+cd reference/oap_agent/frontend
+npm install
+npm run dev    # Vite at :5173, proxies /v1/agent → :8303
+npm run build  # Output to ../oap_agent/static/
+```
+
 ### Layout
 
-The agent UI is a standalone app layout — full-height sidebar, no marketing Header/Footer:
+The agent UI is a standalone app layout — full-height sidebar:
 
 ```
 ┌──────────────┬──────────────────────────────────────────┐
@@ -193,14 +206,11 @@ The agent UI is a standalone app layout — full-height sidebar, no marketing He
 
 ## Security
 
-The agent is designed for local use on the Mac Mini — no public exposure. Security is defense-in-depth:
+The agent is designed for local use on the Mac Mini — no public exposure, no tunnel.
 
-- **Authentication** (`AGENT_SECRET` env var): opt-in. When set, all Next.js API routes require `Authorization: Bearer <token>` or `X-Agent-Token` header. When unset (local dev), everything passes through. Checked via `lib/agentAuth.ts`.
-- **Rate limiting**: all 9 Next.js API routes have per-IP rate limits (5-30/min depending on cost). LLM-triggering endpoints are more restricted.
 - **Input validation**: Pydantic models with `max_length` constraints (32K for messages/prompts, 200 for names, 64 for IDs). Model allowlist (`qwen3:8b`, `qwen3:4b`, `llama3.2:3b`, `mistral:7b`). Cron validation rejects schedules more frequent than every 5 minutes. Max 20 tasks.
 - **SQL safety**: parameterized queries throughout, WAL journal mode, `threading.Lock` on all writes.
 - **Error sanitization**: generic error messages to SSE clients and API responses. Full details in server logs only.
-- **IP spoofing mitigation**: `getClientIP()` prefers `x-real-ip` (set by Vercel edge), falls back to last entry in `x-forwarded-for`.
 
 ## Running
 
@@ -214,6 +224,18 @@ oap-agent-api --config custom.yaml   # custom config
 
 # Health check
 curl http://localhost:8303/v1/agent/health
+
+# Open in browser
+open http://localhost:8303
 ```
 
-The Next.js dev server proxies `/api/agent/*` to `:8303` automatically via `lib/proxy.ts`.
+The SPA is served by FastAPI's `StaticFiles` mount — `html=True` returns `index.html` for all unmatched paths (SPA catch-all). API routes registered first take priority over static files.
+
+### Frontend Development
+
+```bash
+cd reference/oap_agent/frontend
+npm install
+npm run dev      # Vite dev server at :5173, proxies /v1/agent → :8303
+npm run build    # Build to ../oap_agent/static/
+```
