@@ -479,6 +479,8 @@ async def sse_events():
     """SSE stream for real-time notifications from background tasks."""
     if _event_bus is None:
         raise HTTPException(status_code=503, detail="Service unavailable")
+    if _event_bus.shutting_down:
+        raise HTTPException(status_code=503, detail="Server is shutting down")
 
     try:
         sub_id, queue = _event_bus.subscribe()
@@ -549,6 +551,7 @@ def main():
         host=cfg.api.host,
         port=cfg.api.port,
         log_level="info",
+        timeout_graceful_shutdown=3,
     )
 
 
