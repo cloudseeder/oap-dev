@@ -72,6 +72,9 @@ export default function Header() {
                   <Link href="/docs/openapi-tool-server" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     OpenAPI Tool Server
                   </Link>
+                  <Link href="/docs/mcp" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    MCP Server
+                  </Link>
                   <Link href="/docs/manifesto" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Manifesto
                   </Link>
