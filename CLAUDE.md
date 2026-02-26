@@ -32,7 +32,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/OLLAMA.md` — OAP + Ollama: manifest discovery as native Ollama tool calling via the tool bridge
 - `docs/OPENAPI-TOOL-SERVER.md` — OpenAPI tool server: exposing manifests as a standard OpenAPI 3.1 spec for Open WebUI, LangChain, etc.
 - `docs/MCP.md` — MCP server: exposing manifests as MCP tools for Claude Desktop and MCP clients
-- `docs/AGENT.md` — Agent app: chat + autonomous task execution architecture and rationale
+- `docs/AGENT.md` — Manifest: chat + autonomous task execution architecture and rationale
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
 
 ### Next.js Application (oap.dev)
@@ -134,7 +134,7 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
 │  ├─ Marketing pages │  Cloudflare   │  Discovery API (:8300)       │
 │  ├─ Spec docs       │◄── Tunnel ──► │  Trust API (:8301)           │
 │  ├─ /playground     │               │  Dashboard API (:8302)       │
-│  ├─ /discover       │               │  Agent (self-contained :8303)│
+│  ├─ /discover       │               │  Manifest (self-contained :8303)│
 │  ├─ /trust          │               │  Crawler (cron)              │
 │  ├─ /dashboard      │               │  ChromaDB (local dir)        │
 │  └─ /api/* (proxy)  │               │  SQLite (*.db)               │
@@ -144,7 +144,7 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
 - **Vercel**: Next.js frontend + API route handlers that proxy to the Mac Mini
 - **Mac Mini**: All Python services, Ollama, ChromaDB, SQLite
 - **Cloudflare Tunnel**: Three hostnames (`api.oap.dev`, `trust.oap.dev`, `dashboard.oap.dev`) routing to local services. Discovery tunnel should only expose `/v1/discover`, `/v1/manifests`, `/health` — tool bridge routes (`/v1/chat`, `/v1/tools`, `/api/chat`), OpenAPI tool server routes (`/v1/openapi.json`, `/v1/tools/call/*`), Ollama pass-through routes (`/api/tags`, `/api/show`, `/api/ps`, `/api/generate`, `/api/embed`), and experience routes (`/v1/experience`) stay local-only on `:8300`
-- **Agent service** (`:8303`): local-only, not tunnel-exposed. Self-contained — serves both FastAPI API and Vite SPA frontend via StaticFiles mount
+- **Manifest** (`:8303`): local-only, not tunnel-exposed. Self-contained — serves both FastAPI API and Vite SPA frontend via StaticFiles mount
 - **Env vars**: `BACKEND_URL` (discovery), `TRUST_URL`, `DASHBOARD_URL` — Cloudflare Tunnel hostnames for proxy routes; `BACKEND_SECRET` / `OAP_BACKEND_SECRET` — shared auth token
 - **Auth model**: Backend token auth (`X-Backend-Token` / `OAP_BACKEND_SECRET`) is per-route, not global. Protected routes: `/v1/discover`, `/v1/manifests`, `/v1/manifests/{domain}`, `/health`, `/v1/experience/*`. Unprotected routes: `/v1/chat`, `/v1/tools`, `/api/chat`, `/v1/openapi.json`, `/v1/tools/call/*`, `/api/tags`, `/api/show`, `/api/ps`, `/api/generate`, `/api/embed`, `/api/embeddings` (local-only, secured by tunnel path filtering)
 - **Ollama tuning**: `ollama.num_ctx: 4096` caps the context window to keep VRAM usage bounded on <24GB machines (Mac Mini M4 has 16GB unified memory). `ollama.timeout: 120` is the base httpx client timeout. `OllamaClient.generate()` accepts per-call `timeout` (default 60s) and `think` (bool, optional) kwargs; `OllamaClient.chat()` also accepts `think`, `temperature`, and `format`. Summarization uses `generate()` with 120s timeout; fingerprinting uses `chat(think=False, temperature=0, format="json")` with 120s timeout; chat tool rounds use `think=False` in the Ollama payload. `num_ctx` is passed via the `options` field to both `/api/generate` and `/api/chat`. Override with `OAP_OLLAMA_NUM_CTX` env var. `ollama.keep_alive: "-1m"` (default) keeps models loaded in memory permanently, preventing cold-start timeouts between requests. Passed to `/api/generate` and `/api/chat` (not `/api/embed` — unsupported). Override in `config.yaml` (e.g. `"30m"`) or set `"0"` to unload immediately after each response. **Model warmup**: during API startup, `lifespan()` sends a throwaway `generate("hello")` call (300s timeout) to force-load the generation model into Ollama memory before any real requests arrive. Logs `Warming up <model>...` / `Model <model> loaded and ready`. If warmup fails, startup continues with a warning. **Model choice — qwen3:8b**: switched from `qwen3t:4b` (patched 4b) to `qwen3:8b` because qwen3:4b's `think=false` is broken at the weight level — the model dumps verbose reasoning (~300-400 tokens, ~10s) into the response content regardless of template or parameter settings. The patched `qwen3t:4b` template suppressed the structured `<think>` block but the model still produced reasoning in the content field. `format="json"` constrains thinking at the grammar level but can't be used for chat rounds (output must be natural language + tool calls). qwen3:8b properly respects `think=false`: 12 tokens, 560ms. Memory: qwen3:8b at 4k context uses ~5.9GB VRAM on M4 unified memory, fitting alongside nomic-embed-text with ~300-500MB free. macOS kernel manages buffer cache aggressively and reclaims as needed. Config uses `generate_model: "qwen3:8b"`. **qwen3t:4b template fix** (historical): `qwen3t:4b` is still available as a patched copy of qwen3:4b created via `ollama create qwen3t:4b` — the template's final block changed from unconditional `<think>` to `{{ if or (not $.IsThinkSet) $.Think }}<think>{{ end }}`. No longer used in production.
@@ -155,9 +155,9 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
   - **HelpAdapter** (`--source help`): scans allowed PATH dirs for executables, reads `<tool> --help 2>&1` output, same blocklist/allowlist and stdio prompt as ManPage. Use case: Go/Rust CLIs in `/usr/local/bin` that have `--help` but no man page.
   - **OpenAPIAdapter** (`--source openapi --spec <path-or-url>`): parses OpenAPI 3.x / Swagger 2.x JSON specs, extracts endpoints by `operationId` or `method + path`, skips deprecated endpoints, generates HTTP manifests with correct `invoke.method` (GET/POST/etc) and `invoke.url` (base + path). Prompt includes HTTP-specific examples. Requires `--spec` argument (local path or URL).
 
-#### Agent (`reference/oap_agent/`)
+#### Manifest (`reference/oap_agent/`)
 
-Chat + autonomous task execution web app. Thin orchestrator that calls `/v1/chat` on the discovery service for all LLM and tool work — never talks to Ollama directly. Combines interactive conversation with cron-scheduled background tasks. Self-contained: `oap-agent-api` serves both API and UI at `http://localhost:8303` — no Node runtime, no Vercel involvement.
+Manifest — chat + autonomous task execution. Thin orchestrator that calls `/v1/chat` on the discovery service for all LLM and tool work — never talks to Ollama directly. Combines interactive conversation with cron-scheduled background tasks. Self-contained: `oap-agent-api` serves both API and UI at `http://localhost:8303` — no Node runtime, no Vercel involvement.
 
 - Entry point: `oap-agent-api` (:8303) — serves both FastAPI backend and Vite SPA frontend
 - Config: `config.yaml` (host, port, SQLite path, discovery URL/model/timeout, debug flag, max_tasks)

@@ -26,7 +26,7 @@ export default function AgentSidebar() {
     <aside className="flex h-full w-64 flex-col bg-gray-900 text-white">
       <div className="flex h-16 items-center px-4 border-b border-gray-700">
         <Link to="/" className="text-lg font-bold text-white">
-          OAP Agent
+          Manifest
         </Link>
       </div>
 

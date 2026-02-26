@@ -107,7 +107,7 @@ export default function ChatView() {
       })
 
       if (!res.ok || !res.body) {
-        setError('Agent service unavailable')
+        setError('Service unavailable')
         setStreaming(false)
         return
       }

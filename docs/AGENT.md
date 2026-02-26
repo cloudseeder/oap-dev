@@ -1,4 +1,4 @@
-# OAP Agent — Chat + Autonomous Task Execution
+# Manifest — Chat + Autonomous Task Execution
 
 A web application that combines interactive chat with background autonomous task execution, powered by OAP manifest discovery. The first Ollama web UI that does both.
 
@@ -8,12 +8,12 @@ Every Ollama web UI — Open WebUI, Lobe Chat, LibreChat — is synchronous chat
 
 Meanwhile, autonomous agent frameworks (AutoGPT, CrewAI) are complex orchestration platforms designed for multi-step reasoning chains. They're powerful but heavy — not what you need when you want a simple cron job that asks an LLM to summarize today's logs every morning.
 
-OAP already solves the hard part: runtime capability discovery. The discovery service finds the right tool for any natural language task, executes it, and learns from the result. The agent app is a thin UI layer on top — a reference implementation demonstrating what OAP makes possible.
+OAP already solves the hard part: runtime capability discovery. The discovery service finds the right tool for any natural language task, executes it, and learns from the result. Manifest is a thin UI layer on top — a reference implementation demonstrating what OAP makes possible.
 
 The gap it fills:
 
-| Feature | Open WebUI | Lobe Chat | OAP Agent |
-|---------|-----------|-----------|-----------|
+| Feature | Open WebUI | Lobe Chat | Manifest |
+|---------|-----------|-----------|----------|
 | Interactive chat | Yes | Yes | Yes |
 | Tool calling | Yes (manual config) | Limited | Yes (auto-discovered) |
 | Background tasks | No | No | Yes (cron) |
@@ -38,13 +38,13 @@ Browser → http://localhost:8303
                        │  SSE event bus
 ```
 
-Self-contained: one `oap-agent-api` command serves both the FastAPI API and the Vite SPA at `http://localhost:8303`. No Node runtime, no Vercel involvement, no proxy layer. The agent backend is a thin orchestrator — it calls `/v1/chat` on the discovery service for all LLM and tool work. It never talks to Ollama directly.
+Self-contained: one `oap-agent-api` command serves both the FastAPI API and the Vite SPA at `http://localhost:8303`. No Node runtime, no Vercel involvement, no proxy layer. Manifest's backend is a thin orchestrator — it calls `/v1/chat` on the discovery service for all LLM and tool work. It never talks to Ollama directly.
 
 ### Why a Separate Service?
 
 The discovery service (`oap_discovery`, :8300) handles tool finding, execution, and procedural memory. It's stateless per request — no conversations, no persistence, no scheduling.
 
-The agent service adds the stateful layer: conversation history, task definitions, cron scheduling, and real-time event notifications. Keeping it separate means the discovery service stays focused and the agent is optional — you can use OAP discovery via CLI (`ollama run`), MCP (Claude Desktop), OpenAPI (Open WebUI), or the agent app.
+The agent service adds the stateful layer: conversation history, task definitions, cron scheduling, and real-time event notifications. Keeping it separate means the discovery service stays focused and the agent is optional — you can use OAP discovery via CLI (`ollama run`), MCP (Claude Desktop), OpenAPI (Open WebUI), or Manifest.
 
 ## Backend: `reference/oap_agent/`
 
@@ -61,7 +61,7 @@ IDs are prefixed short UUIDs: `conv_`, `msg_`, `task_`, `run_`.
 
 ### API Endpoints
 
-All local-only on `:8303`. No authentication — the agent is a local tool, not exposed publicly.
+All local-only on `:8303`. No authentication — Manifest is a local tool, not exposed publicly.
 
 **Chat:**
 - `POST /v1/agent/chat` — send message, returns SSE stream (message_saved → tool_call* → assistant_message → done)
@@ -185,7 +185,7 @@ npm run build  # Output to ../oap_agent/static/
 
 ### Layout
 
-The agent UI is a standalone app layout — full-height sidebar:
+Manifest's UI is a standalone app layout — full-height sidebar:
 
 ```
 ┌──────────────┬──────────────────────────────────────────┐
@@ -206,7 +206,7 @@ The agent UI is a standalone app layout — full-height sidebar:
 
 ## Security
 
-The agent is designed for local use on the Mac Mini — no public exposure, no tunnel.
+Manifest is designed for local use on the Mac Mini — no public exposure, no tunnel.
 
 - **Input validation**: Pydantic models with `max_length` constraints (32K for messages/prompts, 200 for names, 64 for IDs). Model allowlist (`qwen3:8b`, `qwen3:4b`, `llama3.2:3b`, `mistral:7b`). Cron validation rejects schedules more frequent than every 5 minutes. Max 20 tasks.
 - **SQL safety**: parameterized queries throughout, WAL journal mode, `threading.Lock` on all writes.

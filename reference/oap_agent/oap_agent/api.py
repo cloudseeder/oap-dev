@@ -89,18 +89,18 @@ async def lifespan(app: FastAPI):
 
     conv_count = _db.list_conversations()["total"]
     task_count = len(_db.list_tasks())
-    log.info("Agent API started — %d conversations, %d tasks", conv_count, task_count)
+    log.info("Manifest started — %d conversations, %d tasks", conv_count, task_count)
 
     yield
 
     _event_bus.shutdown()
     _scheduler.stop()
     _db.close()
-    log.info("Agent API stopped")
+    log.info("Manifest stopped")
 
 
 app = FastAPI(
-    title="OAP Agent API",
+    title="Manifest API",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -240,7 +240,7 @@ async def chat(req: ChatRequest):
             )
         except Exception as exc:
             log.error("Chat execution failed: %s", exc, exc_info=True)
-            yield _sse_event("error", {"message": "Agent execution failed"})
+            yield _sse_event("error", {"message": "Execution failed"})
             yield _sse_event("done", {"conversation_id": conv_id})
             return
 
@@ -535,7 +535,7 @@ def main():
     """Entry point for oap-agent-api command."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="OAP Agent API")
+    parser = argparse.ArgumentParser(description="Manifest API")
     parser.add_argument("--config", default="config.yaml")
     args = parser.parse_args()
 

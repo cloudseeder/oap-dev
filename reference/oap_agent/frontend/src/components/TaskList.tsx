@@ -35,7 +35,7 @@ export default function TaskList() {
       const data = await res.json()
       setTasks(data.tasks || [])
     } catch {
-      setError('Agent service unavailable')
+      setError('Service unavailable')
     } finally {
       setLoading(false)
     }
