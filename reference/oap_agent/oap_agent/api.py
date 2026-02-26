@@ -93,6 +93,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    _event_bus.shutdown()
     _scheduler.stop()
     _db.close()
     log.info("Agent API stopped")
@@ -485,9 +486,11 @@ async def sse_events():
         try:
             # Send a keepalive comment immediately
             yield ": connected\n\n"
-            while True:
+            while not _event_bus.shutting_down:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    if event is None:
+                        break  # shutdown sentinel
                     yield _sse_event(event["event"], event["data"])
                 except asyncio.TimeoutError:
                     # Keepalive ping

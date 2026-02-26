@@ -12,6 +12,7 @@ MAX_SUBSCRIBERS = 50
 class EventBus:
     def __init__(self):
         self._subscribers: dict[str, asyncio.Queue] = {}
+        self._shutdown = asyncio.Event()
 
     def subscribe(self) -> tuple[str, asyncio.Queue]:
         """Register a new subscriber. Returns (subscriber_id, queue).
@@ -35,5 +36,19 @@ class EventBus:
         for queue in list(self._subscribers.values()):
             try:
                 queue.put_nowait(event)
+            except asyncio.QueueFull:
+                pass
+
+    @property
+    def shutting_down(self) -> bool:
+        return self._shutdown.is_set()
+
+    def shutdown(self) -> None:
+        """Signal all SSE streams to stop."""
+        self._shutdown.set()
+        # Push a sentinel so streams blocked on queue.get() wake up
+        for queue in list(self._subscribers.values()):
+            try:
+                queue.put_nowait(None)
             except asyncio.QueueFull:
                 pass
