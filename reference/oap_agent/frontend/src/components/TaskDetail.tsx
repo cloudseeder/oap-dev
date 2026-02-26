@@ -227,8 +227,8 @@ export default function TaskDetail() {
             <p className="text-sm text-gray-400">No runs yet.</p>
           ) : (
             <div className="space-y-2">
-              {runs.map((run) => (
-                <TaskRunDetail key={run.id} run={run} />
+              {runs.map((run, i) => (
+                <TaskRunDetail key={run.id} run={run} defaultExpanded={i === 0} />
               ))}
             </div>
           )}

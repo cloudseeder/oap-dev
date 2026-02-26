@@ -244,7 +244,17 @@ class AgentDB:
 
     def list_tasks(self) -> list[dict]:
         rows = self.conn.execute(
-            "SELECT * FROM tasks ORDER BY created_at DESC"
+            """SELECT t.*,
+                      lr.status      AS last_run_status,
+                      lr.finished_at AS last_run_at,
+                      lr.error       AS last_run_error
+               FROM tasks t
+               LEFT JOIN (
+                   SELECT task_id, status, finished_at, error,
+                          ROW_NUMBER() OVER (PARTITION BY task_id ORDER BY started_at DESC) AS rn
+                   FROM task_runs
+               ) lr ON lr.task_id = t.id AND lr.rn = 1
+               ORDER BY t.created_at DESC"""
         ).fetchall()
         result = []
         for r in rows:

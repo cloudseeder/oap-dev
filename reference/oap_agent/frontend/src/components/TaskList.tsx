@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { AgentTask } from '@/lib/types'
+import { useAgentEvents } from './AgentEventProvider'
 import TaskForm from './TaskForm'
 
 export default function TaskList() {
   const navigate = useNavigate()
+  const { lastEvent } = useAgentEvents()
   const [tasks, setTasks] = useState<AgentTask[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -13,6 +15,13 @@ export default function TaskList() {
   useEffect(() => {
     fetchTasks()
   }, [])
+
+  // Auto-refresh when any task run finishes
+  useEffect(() => {
+    if (lastEvent?.type === 'task_run_finished') {
+      fetchTasks()
+    }
+  }, [lastEvent])
 
   async function fetchTasks() {
     setLoading(true)
@@ -115,7 +124,7 @@ export default function TaskList() {
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Name</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Schedule</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Model</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Last Run</th>
                   <th className="px-4 py-3 text-center font-medium text-gray-600">Enabled</th>
                 </tr>
               </thead>
@@ -129,10 +138,12 @@ export default function TaskList() {
                     }`}
                   >
                     <td className="px-4 py-3 font-medium text-gray-900">{task.name}</td>
-                    <td className="px-4 py-3 font-mono text-gray-500">
+                    <td className="px-4 py-3 font-mono text-sm text-gray-500">
                       {task.schedule || <span className="text-gray-300">&mdash;</span>}
                     </td>
-                    <td className="px-4 py-3 font-mono text-gray-500">{task.model}</td>
+                    <td className="px-4 py-3">
+                      <LastRunBadge task={task} />
+                    </td>
                     <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => handleToggle(task)}
@@ -154,6 +165,41 @@ export default function TaskList() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function LastRunBadge({ task }: { task: AgentTask }) {
+  if (!task.last_run_status) {
+    return <span className="text-sm text-gray-300">&mdash;</span>
+  }
+
+  const colors = {
+    success: 'text-green-700 bg-green-50 border-green-200',
+    error: 'text-red-700 bg-red-50 border-red-200',
+    running: 'text-blue-700 bg-blue-50 border-blue-200',
+  }
+  const color = colors[task.last_run_status] || colors.running
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${color}`}>
+        {task.last_run_status}
+      </span>
+      {task.last_run_at && (
+        <span className="text-xs text-gray-400">{timeAgo(task.last_run_at)}</span>
+      )}
     </div>
   )
 }

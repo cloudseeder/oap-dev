@@ -33,6 +33,9 @@ export interface AgentTask {
   enabled: boolean
   created_at: string
   updated_at: string
+  last_run_status?: 'running' | 'success' | 'error' | null
+  last_run_at?: string | null
+  last_run_error?: string | null
 }
 
 export interface TaskRun {

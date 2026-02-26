@@ -4,10 +4,11 @@ import ToolCallCard from './ToolCallCard'
 
 interface TaskRunDetailProps {
   run: TaskRun
+  defaultExpanded?: boolean
 }
 
-export default function TaskRunDetail({ run }: TaskRunDetailProps) {
-  const [expanded, setExpanded] = useState(false)
+export default function TaskRunDetail({ run, defaultExpanded = false }: TaskRunDetailProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
 
   const statusColors = {
     success: 'text-green-700 bg-green-50 border-green-200',
