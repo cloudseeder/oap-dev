@@ -14,12 +14,13 @@ from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from starlette.background import BackgroundTask
 from starlette.responses import Response, StreamingResponse
 
-from .config import Config, load_config
+from .config import Config, load_config, load_credentials
 from .crawler import Crawler
 from .db import ManifestStore
 from .discovery import DiscoveryEngine
 from .fts_store import FTSStore
 from . import experience_api
+from . import openapi_server
 from . import tool_api
 from .experience_engine import ExperienceEngine
 from .experience_store import ExperienceStore
@@ -157,6 +158,11 @@ async def lifespan(app: FastAPI):
         tool_api._ollama_cfg = _cfg.ollama
         tool_api._tool_bridge_cfg = _cfg.tool_bridge
         tool_api._ollama = _ollama
+        # OpenAPI tool server — shares tool bridge state
+        openapi_server._store = _store
+        openapi_server._ollama = _ollama
+        openapi_server._tool_bridge_cfg = _cfg.tool_bridge
+        openapi_server._credentials = load_credentials(_cfg.tool_bridge.credentials_file)
         log.info("Tool bridge enabled — /v1/tools and /v1/chat active")
 
     # Procedural memory (experimental)
@@ -205,6 +211,8 @@ async def log_requests(request: Request, call_next):
 
 # Tool bridge routes — no auth (local-only, secured by Cloudflare Tunnel path filtering)
 app.include_router(tool_api.router)
+# OpenAPI tool server — no auth (local-only, same as tool bridge)
+app.include_router(openapi_server.router)
 # Experience routes — auth required
 app.include_router(experience_api.router, dependencies=[Depends(verify_backend_token)])
 
