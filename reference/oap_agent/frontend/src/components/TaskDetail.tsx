@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import type { AgentTask, TaskRun } from '@/lib/types'
+import { useAgentEvents } from './AgentEventProvider'
 import TaskForm from './TaskForm'
 import TaskRunDetail from './TaskRunDetail'
 
 export default function TaskDetail() {
   const navigate = useNavigate()
   const { id: taskId } = useParams<{ id: string }>()
+  const { lastEvent } = useAgentEvents()
   const [task, setTask] = useState<AgentTask | null>(null)
   const [runs, setRuns] = useState<TaskRun[]>([])
   const [loading, setLoading] = useState(true)
@@ -18,6 +20,17 @@ export default function TaskDetail() {
   useEffect(() => {
     if (taskId) fetchTask()
   }, [taskId])
+
+  // Auto-refresh when SSE reports a run finished for this task
+  useEffect(() => {
+    if (
+      lastEvent?.type === 'task_run_finished' &&
+      lastEvent.data?.task_id === taskId
+    ) {
+      setRunning(false)
+      fetchTask()
+    }
+  }, [lastEvent])
 
   async function fetchTask() {
     setLoading(true)
@@ -52,12 +65,12 @@ export default function TaskDetail() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setRunError(data.error || 'Failed to trigger run')
+        setRunning(false)
         return
       }
-      setTimeout(fetchTask, 1000)
+      // running stays true until SSE task_run_finished arrives
     } catch {
       setRunError('Failed to trigger run')
-    } finally {
       setRunning(false)
     }
   }

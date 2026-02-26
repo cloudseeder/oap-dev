@@ -438,14 +438,16 @@ async def _run_task_background(task: dict, run_id: str) -> None:
                 "run_id": run_id,
                 "status": "success",
                 "duration_ms": duration_ms,
+                "task_name": task["name"],
             })
     except Exception as exc:
         duration_ms = int((time.monotonic() - started) * 1000)
         log.error("Background task run %s failed: %s", run_id, exc, exc_info=True)
+        error_msg = f"Task execution failed: {exc}"
         _db.finish_run(
             run_id=run_id,
             status="error",
-            error="Task execution failed",
+            error=error_msg,
             duration_ms=duration_ms,
         )
         if _event_bus:
@@ -453,7 +455,8 @@ async def _run_task_background(task: dict, run_id: str) -> None:
                 "task_id": task_id,
                 "run_id": run_id,
                 "status": "error",
-                "error": "Task execution failed",
+                "error": error_msg,
+                "task_name": task["name"],
             })
 
 

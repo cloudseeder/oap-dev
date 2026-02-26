@@ -129,10 +129,11 @@ class TaskScheduler:
         except Exception as exc:
             duration_ms = int((time.monotonic() - started) * 1000)
             log.error("Task run %s failed: %s", run_id, exc, exc_info=True)
+            error_msg = f"Task execution failed: {exc}"
             self._db.finish_run(
                 run_id=run_id,
                 status="error",
-                error="Task execution failed",
+                error=error_msg,
                 duration_ms=duration_ms,
             )
 
@@ -141,5 +142,6 @@ class TaskScheduler:
                     "task_id": task_id,
                     "run_id": run_id,
                     "status": "error",
-                    "error": "Task execution failed",
+                    "error": error_msg,
+                    "task_name": task["name"],
                 })
