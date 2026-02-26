@@ -30,6 +30,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/OPENCLAW.md` — OpenClaw integration: workspace skill for runtime capability discovery
 - `docs/THE-MODEL-THAT-KNEW-TOMORROW.md` — The Model That Knew Tomorrow: how a frozen 8B-parameter LLM answered questions about today's Portland news via runtime manifest discovery
 - `docs/OLLAMA.md` — OAP + Ollama: manifest discovery as native Ollama tool calling via the tool bridge
+- `docs/OPENAPI-TOOL-SERVER.md` — OpenAPI tool server: exposing manifests as a standard OpenAPI 3.1 spec for Open WebUI, LangChain, etc.
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
 
 ### Next.js Application (oap.dev)
@@ -38,7 +39,7 @@ The site serves as a developer tool: manifest playground, hosted discovery/trust
 
 #### Routes
 
-- `app/(marketing)/` — Landing page, spec, doc pages (quickstart, architecture, trust, a2a, ollama, robotics, procedural-memory, path-to-23-tokens, manifesto)
+- `app/(marketing)/` — Landing page, spec, doc pages (quickstart, architecture, trust, a2a, ollama, openapi-tool-server, robotics, procedural-memory, path-to-23-tokens, manifesto)
 - `app/playground/` — Manifest playground: validate JSON or fetch+validate from URL
 - `app/discover/` — Discovery reference UI: natural language task-to-manifest matching
 - `app/trust/` — Trust reference UI: attestation flow + lookup
