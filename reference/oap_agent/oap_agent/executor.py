@@ -60,6 +60,15 @@ async def execute_chat(
                 })
         experience_cache = dbg.get("experience_cache")
 
+    # When the LLM spent all rounds on tool calls with no text summary,
+    # use the last tool result as the response content
+    if not content.strip() and tool_calls:
+        for tc in reversed(tool_calls):
+            result = tc.get("result", "")
+            if result and not result.startswith("Error"):
+                content = result
+                break
+
     return {
         "content": content,
         "tool_calls": tool_calls,
@@ -73,7 +82,7 @@ async def execute_task(
     prompt: str,
     model: str = "qwen3:8b",
     timeout: int = 120,
-    debug: bool = False,
+    debug: bool = True,
 ) -> dict[str, Any]:
     """Wrap a single prompt as a user message and execute via chat."""
     messages = [{"role": "user", "content": prompt}]
