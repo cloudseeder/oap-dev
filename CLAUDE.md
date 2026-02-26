@@ -32,6 +32,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/OLLAMA.md` — OAP + Ollama: manifest discovery as native Ollama tool calling via the tool bridge
 - `docs/OPENAPI-TOOL-SERVER.md` — OpenAPI tool server: exposing manifests as a standard OpenAPI 3.1 spec for Open WebUI, LangChain, etc.
 - `docs/MCP.md` — MCP server: exposing manifests as MCP tools for Claude Desktop and MCP clients
+- `docs/AGENT.md` — Agent app: chat + autonomous task execution architecture and rationale
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
 
 ### Next.js Application (oap.dev)
@@ -52,12 +53,28 @@ The site serves as a developer tool: manifest playground, hosted discovery/trust
 - `app/api/trust/[...path]/` — Catch-all proxy to trust service (:8301)
 - `app/api/dashboard/stats/` — GET proxy for dashboard statistics (:8302)
 - `app/api/dashboard/manifests/` — GET proxy for dashboard manifest list (:8302)
+- `app/agent/` — Agent app: chat UI + task management (standalone layout, no Header/Footer)
+- `app/agent/chat/` — Chat: new conversation
+- `app/agent/chat/[id]/` — Chat: existing conversation
+- `app/agent/tasks/` — Task list + create
+- `app/agent/tasks/[id]/` — Task detail + run history
+- `app/api/agent/chat/` — POST: SSE streaming proxy to agent service (:8303)
+- `app/api/agent/conversations/` — GET (paginated) + POST: conversation CRUD
+- `app/api/agent/conversations/[id]/` — GET + PATCH + DELETE: single conversation
+- `app/api/agent/tasks/` — GET + POST: task CRUD
+- `app/api/agent/tasks/[id]/` — GET + PATCH + DELETE: single task
+- `app/api/agent/tasks/[id]/run/` — POST: trigger immediate task execution
+- `app/api/agent/tasks/[id]/runs/` — GET: paginated run history
+- `app/api/agent/events/` — GET: SSE proxy for background task notifications
+- `app/api/agent/health/` — GET: agent service health check
 
 #### Key Libraries
 
 - `lib/manifest-v1.ts` — v1.0 manifest validation (ported from Python reference)
 - `lib/types-v1.ts` — v1.0 TypeScript types (ported from Python reference)
-- `lib/proxy.ts` — Reusable proxy helper for backend services (via `BACKEND_URL`, `TRUST_URL`, `DASHBOARD_URL` env vars)
+- `lib/proxy.ts` — Reusable proxy helper for backend services (via `BACKEND_URL`, `TRUST_URL`, `DASHBOARD_URL`, `AGENT_URL` env vars)
+- `lib/agent.ts` — Agent TypeScript types (Conversation, Message, ToolCall, AgentTask, TaskRun) + `parseSSE()` utility
+- `lib/agentAuth.ts` — Agent API auth gate: checks `AGENT_SECRET` env var, pass-through when unset (local dev)
 - `lib/markdown.ts` — Markdown rendering with unified/remark/rehype pipeline + auto-generated TOC
 - `lib/dns.ts` — Manifest fetching (`fetchManifest`, `fetchManifestForDomain`) + DNS verification
 - `lib/security.ts` — SSRF protection (private IP blocking, DNS resolution) + rate limiting
@@ -76,10 +93,22 @@ The site serves as a developer tool: manifest playground, hosted discovery/trust
 - `components/CodeBlock.tsx` — Syntax-highlighted code display
 - `components/Footer.tsx` — Site footer with navigation links
 - `components/TrustBadges.tsx` — Trust level badge display
+- `components/agent/AgentSidebar.tsx` — Dark sidebar: conversation list, new chat button, tasks link
+- `components/agent/AgentEventProvider.tsx` — React context wrapping EventSource for background task notifications
+- `components/agent/ChatView.tsx` — Message list + input + SSE stream handling + auto-scroll
+- `components/agent/ChatMessage.tsx` — Message bubble with tool calls and experience badge
+- `components/agent/ChatInput.tsx` — Textarea + send + model selector
+- `components/agent/ToolCallCard.tsx` — Expandable tool call: name, args, result, duration
+- `components/agent/ExperienceBadge.tsx` — Cache hit/miss/degraded badge
+- `components/agent/TaskList.tsx` — Task table with enable/disable toggles + create form
+- `components/agent/TaskForm.tsx` — Create/edit: name, prompt, cron schedule, model
+- `components/agent/TaskDetail.tsx` — Task info + run now button + run history
+- `components/agent/TaskRunDetail.tsx` — Expandable run detail with status badge
+- `components/agent/CronInput.tsx` — Cron expression input with presets and description
 
 ### Python Reference Services
 
-All three services live under `reference/` and install as editable Python packages with entry-point commands.
+All four services live under `reference/` and install as editable Python packages with entry-point commands.
 
 #### Discovery (`reference/oap_discovery/`)
 
@@ -133,9 +162,10 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
 │  ├─ Marketing pages │  Cloudflare   │  Discovery API (:8300)       │
 │  ├─ Spec docs       │◄── Tunnel ──► │  Trust API (:8301)           │
 │  ├─ /playground     │               │  Dashboard API (:8302)       │
-│  ├─ /discover       │               │  Crawler (cron)              │
-│  ├─ /trust          │               │  ChromaDB (local dir)        │
-│  ├─ /dashboard      │               │  SQLite (dashboard.db)       │
+│  ├─ /discover       │               │  Agent API (:8303)           │
+│  ├─ /trust          │               │  Crawler (cron)              │
+│  ├─ /dashboard      │               │  ChromaDB (local dir)        │
+│  ├─ /agent          │               │  SQLite (*.db)               │
 │  └─ /api/* (proxy)  │               └──────────────────────────────┘
 └─────────────────────┘
 ```
@@ -143,7 +173,8 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
 - **Vercel**: Next.js frontend + API route handlers that proxy to the Mac Mini
 - **Mac Mini**: All Python services, Ollama, ChromaDB, SQLite
 - **Cloudflare Tunnel**: Three hostnames (`api.oap.dev`, `trust.oap.dev`, `dashboard.oap.dev`) routing to local services. Discovery tunnel should only expose `/v1/discover`, `/v1/manifests`, `/health` — tool bridge routes (`/v1/chat`, `/v1/tools`, `/api/chat`), OpenAPI tool server routes (`/v1/openapi.json`, `/v1/tools/call/*`), Ollama pass-through routes (`/api/tags`, `/api/show`, `/api/ps`, `/api/generate`, `/api/embed`), and experience routes (`/v1/experience`) stay local-only on `:8300`
-- **Env vars**: `BACKEND_URL` (discovery), `TRUST_URL`, `DASHBOARD_URL` — Cloudflare Tunnel hostnames for proxy routes; `BACKEND_SECRET` / `OAP_BACKEND_SECRET` — shared auth token
+- **Agent service** (`:8303`): local-only, not tunnel-exposed. Next.js `/api/agent/*` routes proxy to it. Auth gate via `AGENT_SECRET` env var at the Next.js layer (opt-in, pass-through when unset)
+- **Env vars**: `BACKEND_URL` (discovery), `TRUST_URL`, `DASHBOARD_URL`, `AGENT_URL` — Cloudflare Tunnel hostnames for proxy routes; `BACKEND_SECRET` / `OAP_BACKEND_SECRET` — shared auth token; `AGENT_SECRET` — optional auth for agent API routes
 - **Auth model**: Backend token auth (`X-Backend-Token` / `OAP_BACKEND_SECRET`) is per-route, not global. Protected routes: `/v1/discover`, `/v1/manifests`, `/v1/manifests/{domain}`, `/health`, `/v1/experience/*`. Unprotected routes: `/v1/chat`, `/v1/tools`, `/api/chat`, `/v1/openapi.json`, `/v1/tools/call/*`, `/api/tags`, `/api/show`, `/api/ps`, `/api/generate`, `/api/embed`, `/api/embeddings` (local-only, secured by tunnel path filtering)
 - **Ollama tuning**: `ollama.num_ctx: 4096` caps the context window to keep VRAM usage bounded on <24GB machines (Mac Mini M4 has 16GB unified memory). `ollama.timeout: 120` is the base httpx client timeout. `OllamaClient.generate()` accepts per-call `timeout` (default 60s) and `think` (bool, optional) kwargs; `OllamaClient.chat()` also accepts `think`, `temperature`, and `format`. Summarization uses `generate()` with 120s timeout; fingerprinting uses `chat(think=False, temperature=0, format="json")` with 120s timeout; chat tool rounds use `think=False` in the Ollama payload. `num_ctx` is passed via the `options` field to both `/api/generate` and `/api/chat`. Override with `OAP_OLLAMA_NUM_CTX` env var. `ollama.keep_alive: "-1m"` (default) keeps models loaded in memory permanently, preventing cold-start timeouts between requests. Passed to `/api/generate` and `/api/chat` (not `/api/embed` — unsupported). Override in `config.yaml` (e.g. `"30m"`) or set `"0"` to unload immediately after each response. **Model warmup**: during API startup, `lifespan()` sends a throwaway `generate("hello")` call (300s timeout) to force-load the generation model into Ollama memory before any real requests arrive. Logs `Warming up <model>...` / `Model <model> loaded and ready`. If warmup fails, startup continues with a warning. **Model choice — qwen3:8b**: switched from `qwen3t:4b` (patched 4b) to `qwen3:8b` because qwen3:4b's `think=false` is broken at the weight level — the model dumps verbose reasoning (~300-400 tokens, ~10s) into the response content regardless of template or parameter settings. The patched `qwen3t:4b` template suppressed the structured `<think>` block but the model still produced reasoning in the content field. `format="json"` constrains thinking at the grammar level but can't be used for chat rounds (output must be natural language + tool calls). qwen3:8b properly respects `think=false`: 12 tokens, 560ms. Memory: qwen3:8b at 4k context uses ~5.9GB VRAM on M4 unified memory, fitting alongside nomic-embed-text with ~300-500MB free. macOS kernel manages buffer cache aggressively and reclaims as needed. Config uses `generate_model: "qwen3:8b"`. **qwen3t:4b template fix** (historical): `qwen3t:4b` is still available as a patched copy of qwen3:4b created via `ollama create qwen3t:4b` — the template's final block changed from unconditional `<think>` to `{{ if or (not $.IsThinkSet) $.Think }}<think>{{ end }}`. No longer used in production.
 - **Setup script**: `scripts/setup-mac-mini.sh` — generates backend secret, creates launchd plists, loads services, runs health checks
@@ -152,6 +183,19 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
   - **ManPageAdapter** (default, `--source manpage`): discovers section-1 tools via `apropos`, filters by path allowlist (matches `invoker.py`) + blocklist (dangerous/interactive/privileged tools) + prefix blocklist (perl*, git*, x86_64*, snmp*), reads man pages via `man <tool> | col -b` (truncated to 5000 chars for 8192 context window), uses grep/wc/date few-shot examples, forces `invoke.method = "stdio"`. On macOS (Mac Mini M4, 16GB unified memory): ~1124 commands discovered, ~539 after filtering, ~5s per tool at 8k context, ~45 min full run. Memory: qwen3:4b at 8k context uses ~3.5GB VRAM, leaves ~300MB free physical — stable with no swapping observed. At 4k context: ~3s per tool, more headroom. At 256k (Ollama default): not recommended on 16GB, causes heavy swapping. 8k is the sweet spot — richer descriptions (more flags, specific use cases, better discovery matching) without memory pressure.
   - **HelpAdapter** (`--source help`): scans allowed PATH dirs for executables, reads `<tool> --help 2>&1` output, same blocklist/allowlist and stdio prompt as ManPage. Use case: Go/Rust CLIs in `/usr/local/bin` that have `--help` but no man page.
   - **OpenAPIAdapter** (`--source openapi --spec <path-or-url>`): parses OpenAPI 3.x / Swagger 2.x JSON specs, extracts endpoints by `operationId` or `method + path`, skips deprecated endpoints, generates HTTP manifests with correct `invoke.method` (GET/POST/etc) and `invoke.url` (base + path). Prompt includes HTTP-specific examples. Requires `--spec` argument (local path or URL).
+
+#### Agent (`reference/oap_agent/`)
+
+Chat + autonomous task execution web app. Thin orchestrator that calls `/v1/chat` on the discovery service for all LLM and tool work — never talks to Ollama directly. Combines interactive conversation with cron-scheduled background tasks.
+
+- Entry point: `oap-agent-api` (:8303)
+- Config: `config.yaml` (host, port, SQLite path, discovery URL/model/timeout, debug flag, max_tasks)
+- Key files: `config.py` (AgentConfig dataclass + YAML loader + URL validation), `db.py` (SQLite schema + CRUD: conversations, messages, tasks, task_runs — WAL mode, foreign keys, thread-safe writes via `threading.Lock`), `executor.py` (HTTP executor calling `/v1/chat` on discovery service), `scheduler.py` (APScheduler 3.x `AsyncIOScheduler` with `CronTrigger`, dynamic job management), `events.py` (in-memory EventBus: `asyncio.Queue` per SSE subscriber, 50 subscriber cap), `api.py` (FastAPI app: all routes, Pydantic request models with `max_length` + model allowlist + cron validation, SSE streaming, lifespan)
+- Chat flow: `POST /v1/agent/chat` → save user message → build history → `POST :8300/v1/chat` (non-streaming) → parse debug trace for tool calls → save assistant message → SSE events (message_saved, tool_call*, assistant_message, done)
+- Task scheduling: APScheduler in-process, loads enabled tasks from DB on startup, cron validation via `croniter` rejects intervals < 5 minutes, max 20 tasks, task execution follows same path as chat but without conversation context
+- SSE event bus: `task_run_started`/`task_run_finished` events broadcast to connected clients, missed events acceptable (user sees results via run history on next visit)
+- Input validation: model allowlist (`qwen3:8b`, `qwen3:4b`, `llama3.2:3b`, `mistral:7b`), `max_length` on all string fields, `conversation_id` capped at 64 chars, cron frequency minimum 5 minutes
+- See `docs/AGENT.md` for full architecture rationale and design decisions
 
 ### OpenClaw Skill (`skills/oap-discover/`)
 
@@ -195,6 +239,7 @@ pip install -e reference/oap_discovery
 pip install -e reference/oap_trust
 pip install -e reference/oap_dashboard
 pip install -e reference/oap_mcp
+pip install -e reference/oap_agent
 ```
 
 ## Key Design Principles
@@ -226,8 +271,9 @@ Only four fields are required: `oap`, `name`, `description`, `invoke`. The `desc
 
 - **Next.js 16 App Router** with TypeScript and Tailwind CSS 4
 - **Markdown rendering** uses unified/remark/rehype pipeline with rehype-slug for heading IDs, rehype-sanitize for XSS protection, and auto-generated TOC extracted from rendered HTML
-- **API proxy pattern**: Next.js API routes proxy to Python backend services. `lib/proxy.ts` routes via per-service URL env vars (`BACKEND_URL`, `TRUST_URL`, `DASHBOARD_URL`) in tunnel mode, falls back to port-swapping for local dev
-- **Client components** (`'use client'`): PlaygroundEditor, DiscoverSearch, TrustFlow, TrustLookup, DashboardStats, DashboardManifestList, Header (dropdown state)
+- **API proxy pattern**: Next.js API routes proxy to Python backend services. `lib/proxy.ts` routes via per-service URL env vars (`BACKEND_URL`, `TRUST_URL`, `DASHBOARD_URL`, `AGENT_URL`) in tunnel mode, falls back to port-swapping for local dev
+- **Agent layout**: `app/agent/layout.tsx` — standalone full-height layout with sidebar, no Header/Footer (distinct from marketing layout). SSE event notifications via `AgentEventProvider` React context
+- **Client components** (`'use client'`): PlaygroundEditor, DiscoverSearch, TrustFlow, TrustLookup, DashboardStats, DashboardManifestList, Header (dropdown state), all `components/agent/*.tsx`
 - **SSRF protection**: All URL fetching goes through `lib/security.ts` (private IP blocking, DNS resolution checks)
 - **Rate limiting**: In-memory per-IP rate limiters on all API routes
 - **No test framework** for the Next.js frontend. Python reference services use pytest.
