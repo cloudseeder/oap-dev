@@ -136,9 +136,14 @@ export class RateLimiter {
 export const playgroundLimiter = new RateLimiter(20, 60 * 1000) // 20 per min
 
 export function getClientIP(request: NextRequest): string {
+  // Prefer x-real-ip (set by Vercel edge, not client-overrideable)
+  const realIp = request.headers.get('x-real-ip')
+  if (realIp) return realIp
+  // Fall back to last entry in x-forwarded-for (proxy-set, not client-set)
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) {
-    return forwarded.split(',')[0].trim()
+    const parts = forwarded.split(',')
+    return parts[parts.length - 1].trim()
   }
   return '127.0.0.1'
 }

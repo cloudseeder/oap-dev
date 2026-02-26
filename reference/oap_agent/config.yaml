@@ -1,0 +1,11 @@
+api:
+  host: "127.0.0.1"
+  port: 8303
+
+database:
+  path: "oap_agent.db"
+
+discovery:
+  url: "http://localhost:8300"
+  model: "qwen3:8b"
+  timeout: 120

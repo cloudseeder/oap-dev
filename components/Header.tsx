@@ -42,6 +42,9 @@ export default function Header() {
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
               Dashboard
             </Link>
+            <Link href="/agent" className="text-gray-600 hover:text-gray-900">
+              Agent
+            </Link>
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDocsOpen(!docsOpen)}
