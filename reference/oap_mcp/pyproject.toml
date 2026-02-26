@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oap-mcp"
+version = "0.1.0"
+description = "OAP MCP server — expose manifest discovery to Claude Desktop and MCP clients"
+license = "CC0-1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+oap-mcp = "oap_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

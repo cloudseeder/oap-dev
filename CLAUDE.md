@@ -31,6 +31,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/THE-MODEL-THAT-KNEW-TOMORROW.md` — The Model That Knew Tomorrow: how a frozen 8B-parameter LLM answered questions about today's Portland news via runtime manifest discovery
 - `docs/OLLAMA.md` — OAP + Ollama: manifest discovery as native Ollama tool calling via the tool bridge
 - `docs/OPENAPI-TOOL-SERVER.md` — OpenAPI tool server: exposing manifests as a standard OpenAPI 3.1 spec for Open WebUI, LangChain, etc.
+- `docs/MCP.md` — MCP server: exposing manifests as MCP tools for Claude Desktop and MCP clients
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
 
 ### Next.js Application (oap.dev)
@@ -162,6 +163,17 @@ Workspace skill for [OpenClaw](https://openclaw.ai) that lets the agent discover
 - Flow: query `/v1/discover` → evaluate match → invoke via manifest's `invoke` spec → present result
 - Handles all auth types (api_key, bearer, oauth2) and invoke methods (GET, POST, stdio)
 
+### MCP Server (`reference/oap_mcp/`)
+
+MCP server exposing OAP manifest discovery to Claude Desktop and MCP clients. Thin HTTP client that connects to a running OAP discovery service — three tools, no heavy dependencies.
+
+- Entry point: `oap-mcp` (stdio transport)
+- Config: `OAP_URL` (default `http://localhost:8300`), `OAP_TOKEN`, `OAP_TIMEOUT` (default `120`). CLI args `--url`, `--token`, `--timeout` override env vars.
+- Key files: `client.py` (async httpx wrapper for `/v1/discover`, `/v1/tools/call/*`, `/v1/manifests`, `/health`), `server.py` (FastMCP server with 3 tools + `_format_discover_result()` + `main()` entry point)
+- Tools: `oap_discover(task, top_k)` — natural language → best matching manifests via `POST /v1/discover`; `oap_call(tool_name, arguments)` — execute any tool by name via `POST /v1/tools/call/{tool_name}`; `oap_exec(command, stdin)` — direct CLI execution via `POST /v1/tools/call/oap_exec`
+- Auth: token sent only on protected routes (`/v1/discover`, `/v1/manifests`, `/health`). Tool execution routes (`/v1/tools/call/*`) are unprotected (local-only).
+- Claude Desktop config: `{"mcpServers": {"oap": {"command": "oap-mcp", "env": {"OAP_URL": "http://localhost:8300", "OAP_TOKEN": "your-token"}}}}`
+
 ### Legacy Registry
 
 The full registry implementation (Firestore-backed) is preserved on the **`registry-v1`** branch.
@@ -182,6 +194,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e reference/oap_discovery
 pip install -e reference/oap_trust
 pip install -e reference/oap_dashboard
+pip install -e reference/oap_mcp
 ```
 
 ## Key Design Principles
