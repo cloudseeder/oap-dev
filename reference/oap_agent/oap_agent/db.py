@@ -63,7 +63,7 @@ def _new_id(prefix: str) -> str:
 
 
 def _now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.utcnow().isoformat() + "Z"
 
 
 class AgentDB:
