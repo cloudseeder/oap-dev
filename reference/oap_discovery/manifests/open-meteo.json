@@ -1,0 +1,27 @@
+{
+  "oap": "1.0",
+  "name": "open-meteo",
+  "description": "Get current weather conditions and forecasts for any location on Earth. Returns temperature, wind speed, humidity, precipitation, UV index, and more. Accepts latitude and longitude coordinates. Use for questions like 'what's the weather in Tokyo', 'will it rain tomorrow in Portland', 'current temperature in New York'. Supports hourly and daily forecasts up to 16 days ahead.",
+  "input": {
+    "format": "application/json",
+    "description": "Query parameters as JSON. Required: 'latitude' (number), 'longitude' (number). Optional: 'current' (comma-separated variables like 'temperature_2m,wind_speed_10m,relative_humidity_2m,precipitation,weather_code'), 'daily' (e.g. 'temperature_2m_max,temperature_2m_min,precipitation_sum'), 'hourly' (e.g. 'temperature_2m,precipitation_probability'), 'temperature_unit' ('celsius' or 'fahrenheit', default celsius), 'wind_speed_unit' ('kmh','ms','mph','kn'), 'forecast_days' (1-16), 'timezone' (e.g. 'America/Los_Angeles').",
+    "parameters": {
+      "latitude": {"type": "number", "description": "Latitude of the location (-90 to 90)", "required": true},
+      "longitude": {"type": "number", "description": "Longitude of the location (-180 to 180)", "required": true},
+      "current": {"type": "string", "description": "Comma-separated current weather variables: temperature_2m, relative_humidity_2m, apparent_temperature, precipitation, rain, weather_code, wind_speed_10m, wind_direction_10m, uv_index", "required": false},
+      "daily": {"type": "string", "description": "Comma-separated daily forecast variables: temperature_2m_max, temperature_2m_min, precipitation_sum, precipitation_probability_max, sunrise, sunset, uv_index_max, wind_speed_10m_max", "required": false},
+      "temperature_unit": {"type": "string", "enum": ["celsius", "fahrenheit"], "description": "Temperature unit", "required": false},
+      "timezone": {"type": "string", "description": "Timezone for daily/hourly data (e.g. 'America/Los_Angeles', 'auto')", "required": false},
+      "forecast_days": {"type": "integer", "description": "Number of forecast days (1-16)", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "JSON with latitude, longitude, elevation, timezone, and requested weather data in 'current', 'daily', or 'hourly' objects with corresponding unit objects."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "https://api.open-meteo.com/v1/forecast"
+  },
+  "tags": ["weather", "forecast", "temperature", "climate"]
+}

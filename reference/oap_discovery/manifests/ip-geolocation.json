@@ -1,0 +1,18 @@
+{
+  "oap": "1.0",
+  "name": "ip-geolocation",
+  "description": "Look up the geographic location of any IP address. Returns city, region, country, coordinates, ISP, and timezone. Use for questions like 'where is IP 8.8.8.8', 'geolocate this IP address', 'what ISP owns 1.1.1.1'. Use without an IP to get the caller's own location.",
+  "input": {
+    "format": "text/plain",
+    "description": "The IP address to look up, appended as a URL path segment followed by '/json' (e.g. '8.8.8.8/json'). Omit the IP for the caller's own location ('/json')."
+  },
+  "output": {
+    "format": "application/json",
+    "description": "JSON with 'ip', 'hostname', 'city', 'region', 'country', 'loc' (lat,lon), 'org' (ISP/organization), 'postal', and 'timezone'."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "https://ipinfo.io/"
+  },
+  "tags": ["ip", "geolocation", "network", "location", "isp"]
+}

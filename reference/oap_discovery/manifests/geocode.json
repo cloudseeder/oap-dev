@@ -1,0 +1,26 @@
+{
+  "oap": "1.0",
+  "name": "geocode",
+  "description": "Convert addresses to coordinates (geocoding) or coordinates to addresses (reverse geocoding) using OpenStreetMap data. Use for questions like 'coordinates of the White House', 'what is at latitude 45.52 longitude -122.68', 'geocode 1600 Pennsylvania Ave Washington DC'. Worldwide coverage.",
+  "input": {
+    "format": "application/json",
+    "description": "Query parameters as JSON. For forward geocoding: 'q' (address string). For reverse geocoding: 'lat' and 'lon'. Always include 'format' as 'json'. Optional: 'limit' (max results), 'addressdetails' (1 for structured address).",
+    "parameters": {
+      "q": {"type": "string", "description": "Address or place name to geocode (e.g. '1600 Pennsylvania Ave Washington DC')", "required": false},
+      "lat": {"type": "number", "description": "Latitude for reverse geocoding", "required": false},
+      "lon": {"type": "number", "description": "Longitude for reverse geocoding", "required": false},
+      "format": {"type": "string", "description": "Response format, use 'json'", "required": true, "default": "json"},
+      "limit": {"type": "integer", "description": "Maximum results (default 1)", "required": false},
+      "addressdetails": {"type": "integer", "description": "Include structured address breakdown (1=yes)", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "JSON array of results. Each has 'lat', 'lon', 'display_name' (full address), 'type', and optional 'address' object with street, city, state, country breakdown."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "https://nominatim.openstreetmap.org/search"
+  },
+  "tags": ["geocoding", "address", "coordinates", "maps", "location", "openstreetmap"]
+}

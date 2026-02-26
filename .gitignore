@@ -32,6 +32,20 @@ reference/oap_discovery/manifests/*
 !reference/oap_discovery/manifests/tr.json
 !reference/oap_discovery/manifests/paste.json
 !reference/oap_discovery/manifests/column.json
+# HTTP API manifests (curated, not factory-generated)
+!reference/oap_discovery/manifests/open-meteo.json
+!reference/oap_discovery/manifests/wikipedia.json
+!reference/oap_discovery/manifests/exchange-rate.json
+!reference/oap_discovery/manifests/coingecko.json
+!reference/oap_discovery/manifests/dictionary.json
+!reference/oap_discovery/manifests/earthquake.json
+!reference/oap_discovery/manifests/country-info.json
+!reference/oap_discovery/manifests/open-library.json
+!reference/oap_discovery/manifests/ip-geolocation.json
+!reference/oap_discovery/manifests/sunrise-sunset.json
+!reference/oap_discovery/manifests/geocode.json
+!reference/oap_discovery/manifests/zip-lookup.json
+!reference/oap_discovery/manifests/alpha-vantage.json
 
 # claude code
 .claude/

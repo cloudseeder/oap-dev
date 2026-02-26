@@ -1,0 +1,24 @@
+{
+  "oap": "1.0",
+  "name": "coingecko",
+  "description": "Get current cryptocurrency prices. Returns real-time prices for Bitcoin, Ethereum, and thousands of other cryptocurrencies in any fiat currency. Use for questions like 'what is Bitcoin worth', 'Ethereum price in USD', 'crypto prices today'.",
+  "input": {
+    "format": "application/json",
+    "description": "Query parameters as JSON. Required: 'ids' (comma-separated coin IDs like 'bitcoin,ethereum,solana,dogecoin'), 'vs_currencies' (comma-separated fiat codes like 'usd,eur,gbp'). Optional: 'include_24hr_change' (boolean), 'include_market_cap' (boolean).",
+    "parameters": {
+      "ids": {"type": "string", "description": "Comma-separated cryptocurrency IDs (e.g. 'bitcoin', 'ethereum', 'solana', 'dogecoin', 'cardano')", "required": true},
+      "vs_currencies": {"type": "string", "description": "Comma-separated fiat currency codes (e.g. 'usd', 'eur', 'gbp')", "required": true},
+      "include_24hr_change": {"type": "string", "description": "Include 24-hour price change percentage ('true' or 'false')", "required": false},
+      "include_market_cap": {"type": "string", "description": "Include market capitalization ('true' or 'false')", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "JSON object mapping coin IDs to objects with price in each requested currency (e.g. {\"bitcoin\": {\"usd\": 66911}})."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "https://api.coingecko.com/api/v3/simple/price"
+  },
+  "tags": ["crypto", "cryptocurrency", "bitcoin", "ethereum", "prices", "finance"]
+}

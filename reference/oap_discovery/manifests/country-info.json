@@ -1,0 +1,18 @@
+{
+  "oap": "1.0",
+  "name": "country-info",
+  "description": "Look up detailed information about any country — capital, population, currencies, languages, region, area, timezones, and borders. Use for questions like 'what is the capital of Japan', 'population of Brazil', 'what currency does Thailand use', 'what languages are spoken in Switzerland'. The country name is appended to the URL path.",
+  "input": {
+    "format": "text/plain",
+    "description": "The country name as a URL path segment (e.g. 'japan', 'brazil', 'switzerland'). Partial matches work. Optional query parameter 'fields' to limit response (e.g. '?fields=name,capital,population,currencies,languages')."
+  },
+  "output": {
+    "format": "application/json",
+    "description": "JSON array of matching countries. Each has name (common/official), capital, population, currencies, languages, region, subregion, area (km²), timezones, borders, flags, and more."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "https://restcountries.com/v3.1/name/"
+  },
+  "tags": ["country", "geography", "population", "capital", "currency", "language"]
+}
