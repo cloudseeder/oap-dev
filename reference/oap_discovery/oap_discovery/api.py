@@ -15,6 +15,7 @@ from starlette.background import BackgroundTask
 from starlette.responses import Response, StreamingResponse
 
 from .config import Config, load_config
+from .crawler import Crawler
 from .db import ManifestStore
 from .discovery import DiscoveryEngine
 from .fts_store import FTSStore
@@ -97,6 +98,23 @@ async def _index_local_manifests() -> None:
         log.info("Indexed %d local manifest(s)", count)
 
 
+async def _crawl_seed_domains() -> None:
+    """Crawl remote seed domains from seeds.txt on startup.
+
+    Indexes manifests from live domains (e.g. mynewscast.org) so they're
+    discoverable alongside local CLI tool manifests.  Uses the same Crawler
+    class as oap-crawl; errors are logged but don't block startup.
+    """
+    base_dir = Path(__file__).parent.parent
+    crawler = Crawler(_cfg, _store, _ollama, fts_store=_fts_store)
+    try:
+        count = await crawler.crawl_once(base_dir)
+        if count:
+            log.info("Crawled %d seed domain(s)", count)
+    except Exception:
+        log.warning("Seed domain crawl failed — remote manifests unavailable", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _store, _ollama, _engine, _cfg, _fts_store, _experience_store
@@ -116,6 +134,9 @@ async def lifespan(app: FastAPI):
 
     # Index local manifests (e.g. Unix tools in manifests/)
     await _index_local_manifests()
+
+    # Crawl remote seed domains (e.g. mynewscast.org)
+    await _crawl_seed_domains()
 
     # Warm up the generation model so the first request doesn't hit a cold start
     try:
