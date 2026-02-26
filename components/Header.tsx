@@ -83,6 +83,9 @@ export default function Header() {
                   <Link href="/docs/path-to-23-tokens" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Path to 23 Tokens
                   </Link>
+                  <Link href="/docs/the-model-that-knew-tomorrow" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    The Model That Knew Tomorrow
+                  </Link>
                 </div>
               )}
             </div>

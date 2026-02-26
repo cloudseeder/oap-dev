@@ -28,6 +28,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/OAP-PROCEDURAL-MEMORY-PAPER.md` — Procedural memory paper: OAP manifests as learning substrate for small LLMs
 - `docs/PATH-TO-23-TOKENS.md` — Path to 23 Tokens: debugging qwen3:4b intent fingerprinting from 3674 tokens/112s to 23 tokens/1.7s
 - `docs/OPENCLAW.md` — OpenClaw integration: workspace skill for runtime capability discovery
+- `docs/THE-MODEL-THAT-KNEW-TOMORROW.md` — The Model That Knew Tomorrow: how a frozen 8B-parameter LLM answered questions about today's Portland news via runtime manifest discovery
 - `docs/OLLAMA.md` — OAP + Ollama: manifest discovery as native Ollama tool calling via the tool bridge
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
 
