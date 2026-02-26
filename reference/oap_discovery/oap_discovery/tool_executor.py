@@ -123,9 +123,12 @@ def _inject_credentials(
         # Fall back to the invoke URL hostname (e.g. "www.alphavantage.co")
         # so credentials.yaml can use real domain names for local/* manifests.
         url_host = urlparse(invoke_spec.url).hostname
+        log.info("Credential lookup: domain=%s miss, trying hostname=%s (keys: %s)",
+                 domain, url_host, list(credentials.keys()))
         if url_host:
             cred = credentials.get(url_host)
     if cred is None:
+        log.info("No credentials found for domain=%s", domain)
         return invoke_spec
 
     key = cred.get("key")
@@ -134,6 +137,7 @@ def _inject_credentials(
 
     auth_type = (invoke_spec.auth or "").lower()
     auth_in = (invoke_spec.auth_in or "header").lower()
+    log.info("Injecting credentials for %s: auth=%s, auth_in=%s", domain, auth_type, auth_in)
 
     if auth_type == "api_key":
         param_name = invoke_spec.auth_name or "apikey"
