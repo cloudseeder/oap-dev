@@ -50,6 +50,7 @@ class ExperienceConfig:
     max_records: int = 10000
     invoke_timeout: int = 30
     stdio_timeout: int = 10
+    blacklist_threshold: int = 2
 
 
 @dataclass

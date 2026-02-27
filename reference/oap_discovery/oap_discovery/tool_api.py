@@ -153,22 +153,37 @@ async def _discover_tools(
     store: ManifestStore,
     task: str,
     top_k: int,
-) -> tuple[list[Tool], dict[str, ToolRegistryEntry]]:
+    fingerprint: str | None = None,
+) -> tuple[list[Tool], dict[str, ToolRegistryEntry], set[str]]:
     """Run discovery and convert the top matches to Ollama tools.
 
     Injects up to MAX_INJECTED_TOOLS from the LLM's top pick plus
     highest-scoring candidates.  This gives the chat model options
     when vector search ranks the wrong manifest first (e.g. "email"
     pulling spfquery above grep).
+
+    Returns (tools, registry, blacklisted) where blacklisted is the set
+    of tool domains excluded due to repeated failures.
     """
     result = await engine.discover(task, top_k=top_k)
+
+    # Build blacklist from repeated failures
+    blacklisted: set[str] = set()
+    if fingerprint and _experience_store and _experience_cfg:
+        failure_counts = _experience_store.count_failures_by_tool(fingerprint)
+        threshold = _experience_cfg.blacklist_threshold
+        blacklisted = {domain for domain, count in failure_counts.items()
+                       if count >= threshold}
+        if blacklisted:
+            log.info("Blacklisted tools for fingerprint=%s: %s",
+                     fingerprint, blacklisted)
 
     tools: list[Tool] = []
     registry: dict[str, ToolRegistryEntry] = {}
     seen_domains: set[str] = set()
 
-    # Start with the LLM's top pick
-    if result.match:
+    # Start with the LLM's top pick (skip if blacklisted)
+    if result.match and result.match.domain not in blacklisted:
         seen_domains.add(result.match.domain)
         manifest = store.get_manifest(result.match.domain)
         if manifest is not None:
@@ -176,11 +191,11 @@ async def _discover_tools(
             tools.append(entry.tool)
             registry[entry.tool.function.name] = entry
 
-    # Fill remaining slots from candidates (by vector score order)
+    # Fill remaining slots from candidates (skip blacklisted)
     for candidate in result.candidates:
         if len(tools) >= MAX_INJECTED_TOOLS:
             break
-        if candidate.domain in seen_domains:
+        if candidate.domain in seen_domains or candidate.domain in blacklisted:
             continue
         seen_domains.add(candidate.domain)
         manifest = store.get_manifest(candidate.domain)
@@ -189,7 +204,7 @@ async def _discover_tools(
             tools.append(entry.tool)
             registry[entry.tool.function.name] = entry
 
-    return tools, registry
+    return tools, registry, blacklisted
 
 
 async def _check_experience_cache(
@@ -454,6 +469,14 @@ def _build_experience_hints(fingerprint: str) -> tuple[str, list[str]]:
             seen_failures.add(key)
             lines.append(f"- {c.attempted} → {c.error} — instead try: {c.fix}")
 
+    # Mention blacklisted tools so the LLM knows they're excluded
+    if _experience_store and _experience_cfg:
+        failure_counts = _experience_store.count_failures_by_tool(fingerprint)
+        threshold = _experience_cfg.blacklist_threshold
+        for domain, count in failure_counts.items():
+            if count >= threshold:
+                lines.append(f"- {domain} is EXCLUDED (failed {count} times for this task type)")
+
     success_tools: list[str] = []
     if successes:
         for s in successes:
@@ -469,7 +492,7 @@ def _build_experience_hints(fingerprint: str) -> tuple[str, list[str]]:
 async def discover_tools(req: ToolsRequest) -> ToolsResponse:
     """Discover manifests for a task and return as Ollama tool definitions."""
     engine, store, _, _ = _require_enabled()
-    tools, registry = await _discover_tools(engine, store, req.task, req.top_k)
+    tools, registry, _ = await _discover_tools(engine, store, req.task, req.top_k)
     return ToolsResponse(tools=tools, registry=registry)
 
 
@@ -542,6 +565,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
     successful_calls: list[dict[str, Any]] = []
     exp_cache_status: str | None = None  # "hit", "miss", "degraded", or None
     similar_experience_tool_names: list[str] = []
+    blacklisted_tools: set[str] = set()
     discovered_usage: list[str] = []
 
     # Extract last user message (used for discovery and summarization)
@@ -577,8 +601,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     if entry.manifest.get("usage")
                 ]
         if not exp_cache_hit:
-            tools, registry = await _discover_tools(
+            tools, registry, blacklisted_tools = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
+                fingerprint=exp_fingerprint,
             )
             # Inject tools from similar experiences (partial fingerprint match)
             if exp_fingerprint and exp_intent_domain:
@@ -905,8 +930,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
             successful_calls = []
             debug_rounds = []
             messages = [messages[0], *original_messages]  # preserve system prompt
-            tools, registry = await _discover_tools(
+            tools, registry, blacklisted_tools = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
+                fingerprint=exp_fingerprint,
             )
             # Collect usage from retry tools before stdio suppression
             discovered_usage = [
@@ -975,8 +1001,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
             successful_calls = []
             debug_rounds = []
             messages = [messages[0], *original_messages]  # preserve system prompt
-            tools, registry = await _discover_tools(
+            tools, registry, blacklisted_tools = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
+                fingerprint=exp_fingerprint,
             )
             # Collect usage from retry tools (before any filtering)
             discovered_usage = [
@@ -1028,6 +1055,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
     if debug:
         ollama_resp["oap_debug"] = {
             "tools_discovered": list(registry.keys()),
+            "blacklisted_tools": sorted(blacklisted_tools) or None,
             "similar_experience_tools": similar_experience_tool_names or None,
             "experience_cache": cache_label or "disabled",
             "experience_fingerprint": exp_fingerprint,

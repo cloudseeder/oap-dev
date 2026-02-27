@@ -249,6 +249,34 @@ class ExperienceStore:
         row = self._db.execute("SELECT COUNT(*) FROM experiences").fetchone()
         return row[0]
 
+    def count_failures_by_tool(self, fingerprint: str) -> dict[str, int]:
+        """Count failure records per tool domain for a fingerprint."""
+        rows = self._db.execute(
+            "SELECT manifest_matched, COUNT(*) as cnt "
+            "FROM experiences "
+            "WHERE intent_fingerprint = ? AND outcome_status = 'failure' "
+            "GROUP BY manifest_matched",
+            (fingerprint,),
+        ).fetchall()
+        return {row["manifest_matched"]: row["cnt"] for row in rows}
+
+    def delete_failures(self, fingerprint: str, tool_domain: str | None = None) -> int:
+        """Delete failure records for a fingerprint, optionally filtered by tool."""
+        if tool_domain:
+            cursor = self._db.execute(
+                "DELETE FROM experiences WHERE intent_fingerprint = ? "
+                "AND outcome_status = 'failure' AND manifest_matched = ?",
+                (fingerprint, tool_domain),
+            )
+        else:
+            cursor = self._db.execute(
+                "DELETE FROM experiences WHERE intent_fingerprint = ? "
+                "AND outcome_status = 'failure'",
+                (fingerprint,),
+            )
+        self._db.commit()
+        return cursor.rowcount
+
     def stats(self) -> dict[str, Any]:
         """Summary statistics for the experience store."""
         total = self.count()

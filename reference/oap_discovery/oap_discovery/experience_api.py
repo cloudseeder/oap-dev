@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from .experience_engine import ExperienceEngine
 from .experience_models import (
@@ -68,6 +68,17 @@ async def delete_record(experience_id: str) -> dict:
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Record not found: {experience_id}")
     return {"deleted": experience_id}
+
+
+@router.delete("/failures")
+async def clear_failures(
+    fingerprint: str = Query(...),
+    tool: str | None = Query(None),
+) -> dict:
+    """Delete failure records for a fingerprint, optionally filtered by tool domain."""
+    _, store = _require_enabled()
+    deleted = store.delete_failures(fingerprint, tool)
+    return {"deleted": deleted, "fingerprint": fingerprint, "tool": tool}
 
 
 @router.get("/stats")
