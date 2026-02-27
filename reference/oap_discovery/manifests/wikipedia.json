@@ -1,7 +1,7 @@
 {
   "oap": "1.0",
   "name": "wikipedia",
-  "description": "Look up encyclopedic information about any topic from Wikipedia. Returns a concise summary, description, and thumbnail image for any article. Use for questions like 'tell me about Mars', 'who was Ada Lovelace', 'what is quantum computing', 'history of Portland Oregon'. The article title is appended to the URL path — use underscores for spaces.",
+  "description": "Look up encyclopedic information about any topic from Wikipedia. Returns a concise summary, description, and thumbnail image for any article. Use for factual questions about places, people, history, science, geography, states, cities, and countries — e.g. 'what is the capital of Oregon', 'tell me about Mars', 'who was Ada Lovelace', 'what is quantum computing', 'history of Portland Oregon'. The article title is appended to the URL path — use underscores for spaces.",
   "input": {
     "format": "text/plain",
     "description": "The Wikipedia article title as a URL path segment. Use underscores for spaces (e.g. 'Portland,_Oregon', 'Ada_Lovelace', 'Quantum_computing'). Appended directly to the invoke URL."

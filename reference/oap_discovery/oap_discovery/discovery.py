@@ -218,6 +218,9 @@ class DiscoveryEngine:
             )
             parsed = _extract_json(raw)
 
+            if not parsed:
+                log.warning("LLM returned unparseable response: %r", raw[:200])
+
             if parsed and parsed.get("pick"):
                 pick_domain = parsed["pick"]
                 reason = parsed.get("reason", "")
@@ -229,6 +232,9 @@ class DiscoveryEngine:
                         match = c
                         match.reason = reason
                         break
+
+                if not match:
+                    log.warning("LLM picked %r but it's not in candidates", pick_domain)
 
                 if match:
                     total_ms = (time.monotonic() - t0) * 1000
