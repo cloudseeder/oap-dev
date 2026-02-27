@@ -650,6 +650,8 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "You are a tool-calling assistant. Be brief. "
         "Use function calls to invoke tools — never write JSON in your response. "
         "IMPORTANT: NEVER answer without calling a tool. "
+        "Tools are listed in relevance order — prefer the first tool unless "
+        "another is clearly more appropriate for the specific query. "
         "For factual, biographical, or encyclopedic questions, always call a reference "
         "tool (e.g. wikipedia) — your training data may be outdated. "
         "For API/web data (news, weather, stocks, web services), use the discovered API "
