@@ -136,7 +136,7 @@ async def _invoke_http(
     try:
         headers = dict(invoke_spec.headers or {})
         if "User-Agent" not in headers:
-            headers["User-Agent"] = "oap-discovery/1.0"
+            headers["User-Agent"] = "oap-discovery/1.0 (https://oap.dev; bot)"
         url = invoke_spec.url
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             for _ in range(max_redirects + 1):
