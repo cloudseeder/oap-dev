@@ -154,6 +154,7 @@ async def _discover_tools(
     task: str,
     top_k: int,
     fingerprint: str | None = None,
+    extra_blacklist: set[str] | None = None,
 ) -> tuple[list[Tool], dict[str, ToolRegistryEntry], set[str]]:
     """Run discovery and convert the top matches to Ollama tools.
 
@@ -177,6 +178,8 @@ async def _discover_tools(
         if blacklisted:
             log.info("Blacklisted tools for fingerprint=%s: %s",
                      fingerprint, blacklisted)
+    if extra_blacklist:
+        blacklisted |= extra_blacklist
 
     tools: list[Tool] = []
     registry: dict[str, ToolRegistryEntry] = {}
@@ -571,6 +574,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
     exp_cache_status: str | None = None  # "hit", "miss", "degraded", or None
     similar_experience_tool_names: list[str] = []
     blacklisted_tools: set[str] = set()
+    session_blacklist: set[str] = set()
     discovered_usage: list[str] = []
 
     # Extract last user message (used for discovery and summarization)
@@ -722,7 +726,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
         *original_messages,
     ]
 
-    for _attempt in range(2):
+    for _attempt in range(3):
         for round_num in range(max_rounds):
             ollama_payload: dict[str, Any] = {
                 "model": req.model,
@@ -938,6 +942,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             tools, registry, blacklisted_tools = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
                 fingerprint=exp_fingerprint,
+                extra_blacklist=session_blacklist,
             )
             # Collect usage from retry tools before stdio suppression
             discovered_usage = [
@@ -1009,6 +1014,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             tools, registry, blacklisted_tools = await _discover_tools(
                 engine, store, last_user_msg, req.oap_top_k,
                 fingerprint=exp_fingerprint,
+                extra_blacklist=session_blacklist,
             )
             # Collect usage from retry tools (before any filtering)
             discovered_usage = [
@@ -1048,8 +1054,98 @@ async def chat_proxy(req: ChatRequest) -> Any:
             ]
             continue  # retry the outer loop
 
+        # Tool failure retry: blacklist the failed tool and re-discover
+        if tools_had_errors and not tools_had_output and _attempt < 2:
+            # Add failed tools' domains to session blacklist
+            for fc in failed_calls:
+                entry = registry.get(fc["tool"])
+                if entry and entry.domain != "builtin/exec":
+                    session_blacklist.add(entry.domain)
+            log.warning(
+                "Tool(s) failed — blacklisting %s, retrying with discovery (attempt %d)",
+                session_blacklist, _attempt + 1,
+            )
+            # Save failures to experience store for persistent blacklist
+            if exp_fingerprint and exp_intent_domain:
+                await _save_failure_experience(
+                    exp_fingerprint, exp_intent_domain, last_user_msg,
+                    registry, failed_calls, successful_calls,
+                )
+            exp_cache_status = "tool_retry"
+            # Reset state for retry
+            tools_had_errors = False
+            tools_had_output = False
+            tools_executed = False
+            tools_called = set()
+            failed_calls = []
+            successful_calls = []
+            debug_rounds = []
+            messages = [messages[0], *original_messages]
+            tools, registry, blacklisted_tools = await _discover_tools(
+                engine, store, last_user_msg, req.oap_top_k,
+                fingerprint=exp_fingerprint,
+                extra_blacklist=session_blacklist,
+            )
+            # Collect usage from retry tools before stdio suppression
+            discovered_usage = [
+                entry.manifest.get("usage")
+                for entry in registry.values()
+                if entry.manifest.get("usage")
+            ]
+            # Suppress discovered stdio tools — oap_exec handles CLI better
+            stdio_names = [
+                name for name, entry in registry.items()
+                if entry.manifest.get("invoke", {}).get("method", "").upper() == "STDIO"
+            ]
+            if stdio_names:
+                for name in stdio_names:
+                    del registry[name]
+                tools = [t for t in tools if t.function.name not in stdio_names]
+                log.info("Suppressed stdio tools on tool-retry in favor of oap_exec: %s", stdio_names)
+            # Inject similar experience tools on retry
+            similar_experience_tool_names = []
+            if exp_fingerprint and exp_intent_domain:
+                sim_tools, sim_registry = await _get_similar_experience_tools(
+                    exp_fingerprint, exp_intent_domain, store,
+                )
+                for st in sim_tools:
+                    name = st.function.name
+                    if name not in registry and len(tools) < MAX_INJECTED_TOOLS:
+                        sim_manifest = sim_registry[name].manifest
+                        if sim_manifest.get("invoke", {}).get("method", "").upper() == "STDIO":
+                            continue
+                        tools.append(st)
+                        registry[name] = sim_registry[name]
+                        similar_experience_tool_names.append(name)
+            if client_tools:
+                tools.extend(client_tools)
+            # Re-inject oap_exec as first tool
+            if EXEC_TOOL.function.name not in registry:
+                tools.insert(0, EXEC_TOOL)
+                registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
+            # Rebuild system prompt with retry usage hints
+            usage_hint = ""
+            if discovered_usage:
+                usage_hint = (
+                    "\n\nRelevant commands for this task:\n"
+                    + "\n".join(f"  {u}" for u in discovered_usage)
+                )
+            messages = [
+                {"role": "system", "content": system_content + usage_hint},
+                *original_messages,
+            ]
+            continue  # retry the outer loop
+
         # No retry needed — break out
         break
+
+    # Graceful failure: all retry attempts exhausted with no useful output
+    if tools_had_errors and not tools_had_output and not exp_cache_hit:
+        ollama_resp["message"] = {
+            "role": "assistant",
+            "content": "I wasn't able to find a working tool for that request. "
+                       "The tools I tried didn't return useful results.",
+        }
 
     # Max rounds exceeded — return last response
     ollama_resp["oap_tools_injected"] = len(registry)
@@ -1061,6 +1157,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
         ollama_resp["oap_debug"] = {
             "tools_discovered": list(registry.keys()),
             "blacklisted_tools": sorted(blacklisted_tools) or None,
+            "session_blacklist": sorted(session_blacklist) or None,
             "similar_experience_tools": similar_experience_tool_names or None,
             "experience_cache": cache_label or "disabled",
             "experience_fingerprint": exp_fingerprint,
