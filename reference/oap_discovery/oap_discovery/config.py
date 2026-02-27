@@ -71,6 +71,7 @@ class ToolBridgeConfig:
     max_tool_result: int = 8000
     summarize_threshold: int = 8000
     chunk_size: int = 4000
+    think_prefixes: list[str] = field(default_factory=list)
 
 
 @dataclass

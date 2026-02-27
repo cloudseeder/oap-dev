@@ -589,6 +589,12 @@ async def chat_proxy(req: ChatRequest) -> Any:
     if _experience_engine and last_user_msg:
         exp_fingerprint, exp_intent_domain = await _experience_engine.fingerprint_intent(last_user_msg)
 
+    # Enable thinking for fingerprint prefixes that benefit from verification
+    allow_think = False
+    if exp_fingerprint and bridge_cfg.think_prefixes:
+        fp_verb = exp_fingerprint.split(".")[0]
+        allow_think = fp_verb in bridge_cfg.think_prefixes
+
     # When the task mentions file paths, only offer oap_exec — small LLMs
     # ignore system prompt instructions and pick the "named" tool (oap_grep),
     # then pass the file path as literal stdin text instead of a CLI argument.
@@ -732,7 +738,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 "model": req.model,
                 "messages": messages,
                 "stream": False,
-                "think": False,
+                "think": allow_think,
                 "options": {"num_ctx": ollama_cfg.num_ctx},
                 "keep_alive": ollama_cfg.keep_alive,
             }
@@ -792,6 +798,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         "experience_cache": cache_label or "disabled",
                         "experience_fingerprint": exp_fingerprint,
                         "experience_hints": failure_hints or None,
+                        "thinking_enabled": allow_think,
                         "rounds": debug_rounds,
                     }
                 # Cache experience on successful tool execution
@@ -1162,6 +1169,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             "experience_cache": cache_label or "disabled",
             "experience_fingerprint": exp_fingerprint,
             "experience_hints": failure_hints or None,
+            "thinking_enabled": allow_think,
             "rounds": debug_rounds,
         }
     # Cache experience on successful tool execution
