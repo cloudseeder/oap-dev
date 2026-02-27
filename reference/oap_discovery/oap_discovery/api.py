@@ -158,6 +158,7 @@ async def lifespan(app: FastAPI):
         tool_api._ollama_cfg = _cfg.ollama
         tool_api._tool_bridge_cfg = _cfg.tool_bridge
         tool_api._ollama = _ollama
+        tool_api._escalation_cfg = _cfg.escalation
         # OpenAPI tool server — shares tool bridge state
         openapi_server._store = _store
         openapi_server._ollama = _ollama

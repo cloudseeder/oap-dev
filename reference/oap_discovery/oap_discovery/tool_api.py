@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from starlette.responses import StreamingResponse
 
-from .config import ExperienceConfig, OllamaConfig, ToolBridgeConfig, load_credentials
+from .config import EscalationConfig, ExperienceConfig, OllamaConfig, ToolBridgeConfig, load_credentials
 from .discovery import DiscoveryEngine
 from .db import ManifestStore
 from .experience_engine import ExperienceEngine, _make_experience_id
@@ -55,6 +55,9 @@ _ollama: OllamaClient | None = None
 _experience_engine: ExperienceEngine | None = None
 _experience_store: ExperienceStore | None = None
 _experience_cfg: ExperienceConfig | None = None
+
+# Escalation config — set by api.py during lifespan
+_escalation_cfg: EscalationConfig | None = None
 
 
 def _require_enabled() -> tuple[DiscoveryEngine, ManifestStore, OllamaConfig, ToolBridgeConfig]:
@@ -595,6 +598,15 @@ async def chat_proxy(req: ChatRequest) -> Any:
         fp_verb = exp_fingerprint.split(".")[0]
         allow_think = fp_verb in bridge_cfg.think_prefixes
 
+    # Escalate final reasoning to big LLM for matching prefixes
+    should_escalate = False
+    if exp_fingerprint and bridge_cfg.escalate_prefixes and _escalation_cfg and _escalation_cfg.enabled:
+        fp_verb = exp_fingerprint.split(".")[0]
+        should_escalate = fp_verb in bridge_cfg.escalate_prefixes
+
+    # Tool execution results — always collected for escalation
+    tool_exec_results: list[dict[str, Any]] = []
+
     # When the task mentions file paths, only offer oap_exec — small LLMs
     # ignore system prompt instructions and pick the "named" tool (oap_grep),
     # then pass the file path as literal stdin text instead of a CLI argument.
@@ -786,6 +798,14 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 cache_label = exp_cache_status or ("hit" if exp_cache_hit else "miss" if exp_fingerprint else None)
                 if cache_label:
                     ollama_resp["oap_experience_cache"] = cache_label
+                # Escalate final reasoning to big LLM if configured
+                if should_escalate and tools_executed and tools_had_output:
+                    from .escalation import escalate as _escalate
+                    escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg)
+                    if escalated_text:
+                        ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
+                        ollama_resp["oap_escalated"] = True
+                        log.info("Escalated final reasoning to %s/%s", _escalation_cfg.provider, _escalation_cfg.model)
                 if debug:
                     debug_rounds.append({
                         "round": round_num + 1,
@@ -799,6 +819,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         "experience_fingerprint": exp_fingerprint,
                         "experience_hints": failure_hints or None,
                         "thinking_enabled": allow_think,
+                        "escalated": should_escalate,
                         "rounds": debug_rounds,
                     }
                 # Cache experience on successful tool execution
@@ -900,6 +921,13 @@ async def chat_proxy(req: ChatRequest) -> Any:
                             "arguments": tool_args,
                             "result": result_str[:200],
                         })
+
+                # Always collect for escalation
+                tool_exec_results.append({
+                    "tool": tool_name,
+                    "arguments": tool_args,
+                    "result": result_str,
+                })
 
                 if debug:
                     debug_executions.append({
@@ -1154,6 +1182,15 @@ async def chat_proxy(req: ChatRequest) -> Any:
                        "The tools I tried didn't return useful results.",
         }
 
+    # Escalate final reasoning to big LLM if configured
+    if should_escalate and tools_executed and tools_had_output:
+        from .escalation import escalate as _escalate
+        escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg)
+        if escalated_text:
+            ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
+            ollama_resp["oap_escalated"] = True
+            log.info("Escalated final reasoning to %s/%s", _escalation_cfg.provider, _escalation_cfg.model)
+
     # Max rounds exceeded — return last response
     ollama_resp["oap_tools_injected"] = len(registry)
     ollama_resp["oap_round"] = max_rounds
@@ -1170,6 +1207,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             "experience_fingerprint": exp_fingerprint,
             "experience_hints": failure_hints or None,
             "thinking_enabled": allow_think,
+            "escalated": should_escalate,
             "rounds": debug_rounds,
         }
     # Cache experience on successful tool execution

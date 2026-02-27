@@ -72,6 +72,17 @@ class ToolBridgeConfig:
     summarize_threshold: int = 8000
     chunk_size: int = 4000
     think_prefixes: list[str] = field(default_factory=list)
+    escalate_prefixes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class EscalationConfig:
+    enabled: bool = False
+    provider: str = "openai"  # "openai" or "anthropic"
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""  # or OAP_ESCALATION_API_KEY env var
+    timeout: int = 60
 
 
 @dataclass
@@ -83,6 +94,7 @@ class Config:
     experience: ExperienceConfig = field(default_factory=ExperienceConfig)
     tool_bridge: ToolBridgeConfig = field(default_factory=ToolBridgeConfig)
     fts: FTSConfig = field(default_factory=FTSConfig)
+    escalation: EscalationConfig = field(default_factory=EscalationConfig)
 
 
 def load_credentials(path: str | Path) -> dict[str, dict]:
@@ -108,6 +120,7 @@ def _apply_env_overrides(cfg: Config) -> None:
         "experience": cfg.experience,
         "tool_bridge": cfg.tool_bridge,
         "fts": cfg.fts,
+        "escalation": cfg.escalation,
     }
     for section_name, section_obj in section_map.items():
         for f in fields(section_obj):
@@ -150,6 +163,8 @@ def load_config(path: str | Path | None = None) -> Config:
                 cfg.tool_bridge = _build_section(ToolBridgeConfig, raw["tool_bridge"])
             if "fts" in raw:
                 cfg.fts = _build_section(FTSConfig, raw["fts"])
+            if "escalation" in raw:
+                cfg.escalation = _build_section(EscalationConfig, raw["escalation"])
 
     _apply_env_overrides(cfg)
     return cfg
