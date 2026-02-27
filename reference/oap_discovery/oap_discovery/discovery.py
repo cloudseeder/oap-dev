@@ -22,6 +22,11 @@ pick the single best capability manifest that matches a user's task.
 You will be given a task and a numbered list of candidate manifests. Each candidate \
 has a domain, name, and description.
 
+Consider whether each candidate's scope actually covers the task. A country API \
+cannot answer questions about states or cities. A weather API cannot answer history \
+questions. Prefer general-purpose reference tools (e.g. wikipedia) when no \
+specialized candidate fits.
+
 Respond with ONLY a JSON object (no markdown, no extra text):
 {"pick": "<domain>", "reason": "<one sentence explaining why this is the best match>"}
 
