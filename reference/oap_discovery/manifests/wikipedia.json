@@ -14,5 +14,6 @@
     "method": "GET",
     "url": "https://en.wikipedia.org/api/rest_v1/page/summary/"
   },
-  "tags": ["encyclopedia", "knowledge", "reference", "wiki", "facts"]
+  "tags": ["encyclopedia", "knowledge", "reference", "wiki", "facts"],
+  "usage": "wikipedia Oregon → summary with capital, geography, population; wikipedia Ada_Lovelace → biography summary. Always use the article title, never a question."
 }

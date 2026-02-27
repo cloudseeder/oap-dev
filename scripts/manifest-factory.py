@@ -476,7 +476,8 @@ Example — a simple GET endpoint:
   "invoke": {{
     "method": "GET",
     "url": "{self._base_url}/users"
-  }}
+  }},
+  "usage": "GET /users?limit=10&offset=0 → paginated user list"
 }}
 
 Example — a POST endpoint with JSON body:
@@ -495,7 +496,8 @@ Example — a POST endpoint with JSON body:
   "invoke": {{
     "method": "POST",
     "url": "{self._base_url}/users"
-  }}
+  }},
+  "usage": "POST /users {{name, email}} → created user object with id"
 }}"""
 
     def fixup(self, name: str, manifest: dict) -> dict:
