@@ -259,11 +259,15 @@ async def execute_tool_call(
         else:
             # Text input: use 'input' argument as stdin/body
             input_text = arguments.get("input", str(arguments))
-            text_params = {"input": input_text, **extra_query_params} if extra_query_params else {"input": input_text}
+            if method == "GET" and invoke_spec.url.endswith("/"):
+                # REST path pattern: append input to URL path
+                invoke_spec = invoke_spec.model_copy(update={"url": invoke_spec.url + input_text})
+                text_params = extra_query_params if extra_query_params else None
+            else:
+                text_params = {"input": input_text, **extra_query_params} if extra_query_params else {"input": input_text}
             result = await invoke_manifest(
                 invoke_spec,
                 params=text_params,
-                stdin_text=input_text,
                 http_timeout=http_timeout,
             )
 

@@ -225,10 +225,11 @@ class DiscoveryEngine:
                 pick_domain = parsed["pick"]
                 reason = parsed.get("reason", "")
 
-                # Find the picked candidate
+                # Find the picked candidate (also match by name for
+                # local/* domains where LLM returns just the name)
                 match = None
                 for c in candidates:
-                    if c.domain == pick_domain:
+                    if c.domain == pick_domain or c.name == pick_domain:
                         match = c
                         match.reason = reason
                         break
