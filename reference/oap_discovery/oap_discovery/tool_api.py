@@ -401,7 +401,12 @@ async def _save_failure_experience(
     invoke_data = entry.manifest.get("invoke", {}) if entry else {}
 
     now = datetime.now(timezone.utc)
-    exp_id = f"fail_{_make_experience_id(fingerprint, manifest_domain)}"
+    # Each failure needs a unique ID so they accumulate (for blacklist counting).
+    # The base ID is deterministic (fingerprint + domain + date), so append the
+    # current failure count to make each save distinct instead of overwriting.
+    existing_failures = _experience_store.count_failures_by_tool(fingerprint)
+    seq = existing_failures.get(manifest_domain, 0)
+    exp_id = f"fail_{_make_experience_id(fingerprint, manifest_domain)}_{seq}"
 
     record = ExperienceRecord(
         id=exp_id,
