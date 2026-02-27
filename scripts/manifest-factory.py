@@ -576,6 +576,10 @@ def main():
         "--ollama-url", default=DEFAULT_OLLAMA_URL,
         help=f"Ollama API URL (default: {DEFAULT_OLLAMA_URL})",
     )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Regenerate existing manifests (overwrite)",
+    )
 
     # Let all adapters add their args before parsing
     for adapter_cls in ADAPTERS.values():
@@ -618,8 +622,20 @@ def main():
     # Filter
     filtered = []
     skipped = {"disallowed": 0, "existing": 0}
+    # Load exclude list for --force (hand-coded manifests that should never be overwritten)
+    exclude_file = MANIFESTS_DIR / ".factory-exclude"
+    force_exclude: set[str] = set()
+    if exclude_file.exists():
+        force_exclude = {
+            line.strip() for line in exclude_file.read_text().splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+
     for name in names:
-        if name in existing:
+        if name in existing and not args.force:
+            skipped["existing"] += 1
+            continue
+        if args.force and name in force_exclude:
             skipped["existing"] += 1
             continue
         if not adapter.is_allowed(name):

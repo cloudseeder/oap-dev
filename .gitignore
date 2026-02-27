@@ -19,6 +19,7 @@ firebase_svc.json
 
 # generated manifests (keep hand-coded starter set)
 reference/oap_discovery/manifests/*
+!reference/oap_discovery/manifests/.factory-exclude
 !reference/oap_discovery/manifests/grep.json
 !reference/oap_discovery/manifests/wc.json
 !reference/oap_discovery/manifests/jq.json
