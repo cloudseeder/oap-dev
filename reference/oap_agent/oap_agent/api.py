@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
     _max_tasks = cfg.max_tasks
 
     _scheduler = TaskScheduler()
-    _scheduler.start(_db, _event_bus, _discovery_url, debug=_debug_mode)
+    _scheduler.start(_db, _event_bus, _discovery_url, debug=_debug_mode, max_concurrent=cfg.max_concurrent_tasks)
 
     conv_count = _db.list_conversations()["total"]
     task_count = len(_db.list_tasks())
@@ -406,58 +406,69 @@ async def trigger_task(task_id: str):
 
 
 async def _run_task_background(task: dict, run_id: str) -> None:
-    started = time.monotonic()
     task_id = task["id"]
+    semaphore = _scheduler.semaphore if _scheduler else None
 
-    if _event_bus:
-        await _event_bus.publish("task_run_started", {
-            "task_id": task_id,
-            "run_id": run_id,
-            "task_name": task["name"],
-        })
+    if semaphore:
+        log.info("Task %s (%s) run=%s queued (waiting for slot)", task_id, task["name"], run_id)
+        await semaphore.acquire()
 
     try:
-        result = await execute_task(
-            discovery_url=_discovery_url,
-            prompt=task["prompt"],
-            model=task.get("model", _discovery_model),
-            timeout=_discovery_timeout,
-            debug=True,
-        )
-        duration_ms = int((time.monotonic() - started) * 1000)
-        _db.finish_run(
-            run_id=run_id,
-            status="success",
-            response=result["content"],
-            tool_calls=result["tool_calls"] or None,
-            duration_ms=duration_ms,
-        )
+        started = time.monotonic()
+        log.info("Running task %s (%s) run=%s", task_id, task["name"], run_id)
+
         if _event_bus:
-            await _event_bus.publish("task_run_finished", {
+            await _event_bus.publish("task_run_started", {
                 "task_id": task_id,
                 "run_id": run_id,
-                "status": "success",
-                "duration_ms": duration_ms,
                 "task_name": task["name"],
             })
-    except Exception as exc:
-        duration_ms = int((time.monotonic() - started) * 1000)
-        log.error("Background task run %s failed: %s", run_id, exc, exc_info=True)
-        error_msg = f"Task execution failed: {exc}"
-        _db.finish_run(
-            run_id=run_id,
-            status="error",
-            error=error_msg,
-            duration_ms=duration_ms,
-        )
-        if _event_bus:
-            await _event_bus.publish("task_run_finished", {
-                "task_id": task_id,
-                "run_id": run_id,
-                "status": "error",
-                "error": error_msg,
-                "task_name": task["name"],
-            })
+
+        try:
+            result = await execute_task(
+                discovery_url=_discovery_url,
+                prompt=task["prompt"],
+                model=task.get("model", _discovery_model),
+                timeout=_discovery_timeout,
+                debug=True,
+            )
+            duration_ms = int((time.monotonic() - started) * 1000)
+            _db.finish_run(
+                run_id=run_id,
+                status="success",
+                response=result["content"],
+                tool_calls=result["tool_calls"] or None,
+                duration_ms=duration_ms,
+            )
+            if _event_bus:
+                await _event_bus.publish("task_run_finished", {
+                    "task_id": task_id,
+                    "run_id": run_id,
+                    "status": "success",
+                    "duration_ms": duration_ms,
+                    "task_name": task["name"],
+                })
+        except Exception as exc:
+            duration_ms = int((time.monotonic() - started) * 1000)
+            log.error("Background task run %s failed: %s", run_id, exc, exc_info=True)
+            error_msg = f"Task execution failed: {exc}"
+            _db.finish_run(
+                run_id=run_id,
+                status="error",
+                error=error_msg,
+                duration_ms=duration_ms,
+            )
+            if _event_bus:
+                await _event_bus.publish("task_run_finished", {
+                    "task_id": task_id,
+                    "run_id": run_id,
+                    "status": "error",
+                    "error": error_msg,
+                    "task_name": task["name"],
+                })
+    finally:
+        if semaphore:
+            semaphore.release()
 
 
 @app.get("/v1/agent/tasks/{task_id}/runs")

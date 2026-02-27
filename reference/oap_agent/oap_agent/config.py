@@ -34,6 +34,7 @@ class AgentConfig:
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     debug: bool = False
     max_tasks: int = 20
+    max_concurrent_tasks: int = 1
 
 
 def _validate_url(url: str) -> str:
@@ -72,5 +73,6 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
 
     cfg.debug = raw.get("debug", cfg.debug)
     cfg.max_tasks = raw.get("max_tasks", cfg.max_tasks)
+    cfg.max_concurrent_tasks = raw.get("max_concurrent_tasks", cfg.max_concurrent_tasks)
 
     return cfg

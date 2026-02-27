@@ -27,13 +27,19 @@ class TaskScheduler:
         self._event_bus: EventBus | None = None
         self._discovery_url: str = "http://localhost:8300"
         self._debug: bool = False
+        self._semaphore: asyncio.Semaphore | None = None
 
-    def start(self, db: AgentDB, event_bus: EventBus, discovery_url: str, debug: bool = False) -> None:
+    @property
+    def semaphore(self) -> asyncio.Semaphore | None:
+        return self._semaphore
+
+    def start(self, db: AgentDB, event_bus: EventBus, discovery_url: str, debug: bool = False, max_concurrent: int = 1) -> None:
         """Load all enabled tasks from DB and start the scheduler."""
         self._db = db
         self._event_bus = event_bus
         self._discovery_url = discovery_url
         self._debug = debug
+        self._semaphore = asyncio.Semaphore(max_concurrent)
 
         tasks = db.list_tasks()
         scheduled = 0
@@ -89,59 +95,67 @@ class TaskScheduler:
 
         run = self._db.create_run(task_id, task["prompt"])
         run_id = run["id"]
-        started = time.monotonic()
 
-        log.info("Running task %s (%s) run=%s", task_id, task["name"], run_id)
-
-        if self._event_bus:
-            await self._event_bus.publish("task_run_started", {
-                "task_id": task_id,
-                "run_id": run_id,
-                "task_name": task["name"],
-            })
+        if self._semaphore:
+            log.info("Task %s (%s) run=%s queued (waiting for slot)", task_id, task["name"], run_id)
+            await self._semaphore.acquire()
 
         try:
-            result = await execute_task(
-                discovery_url=self._discovery_url,
-                prompt=task["prompt"],
-                model=task.get("model", "qwen3:8b"),
-                timeout=120,
-                debug=True,
-            )
-            duration_ms = int((time.monotonic() - started) * 1000)
-            finished = self._db.finish_run(
-                run_id=run_id,
-                status="success",
-                response=result["content"],
-                tool_calls=result["tool_calls"] or None,
-                duration_ms=duration_ms,
-            )
-            log.info("Task run %s completed in %dms", run_id, duration_ms)
+            started = time.monotonic()
+            log.info("Running task %s (%s) run=%s", task_id, task["name"], run_id)
 
             if self._event_bus:
-                await self._event_bus.publish("task_run_finished", {
+                await self._event_bus.publish("task_run_started", {
                     "task_id": task_id,
                     "run_id": run_id,
-                    "status": "success",
-                    "duration_ms": duration_ms,
-                })
-
-        except Exception as exc:
-            duration_ms = int((time.monotonic() - started) * 1000)
-            log.error("Task run %s failed: %s", run_id, exc, exc_info=True)
-            error_msg = f"Task execution failed: {exc}"
-            self._db.finish_run(
-                run_id=run_id,
-                status="error",
-                error=error_msg,
-                duration_ms=duration_ms,
-            )
-
-            if self._event_bus:
-                await self._event_bus.publish("task_run_finished", {
-                    "task_id": task_id,
-                    "run_id": run_id,
-                    "status": "error",
-                    "error": error_msg,
                     "task_name": task["name"],
                 })
+
+            try:
+                result = await execute_task(
+                    discovery_url=self._discovery_url,
+                    prompt=task["prompt"],
+                    model=task.get("model", "qwen3:8b"),
+                    timeout=120,
+                    debug=True,
+                )
+                duration_ms = int((time.monotonic() - started) * 1000)
+                self._db.finish_run(
+                    run_id=run_id,
+                    status="success",
+                    response=result["content"],
+                    tool_calls=result["tool_calls"] or None,
+                    duration_ms=duration_ms,
+                )
+                log.info("Task run %s completed in %dms", run_id, duration_ms)
+
+                if self._event_bus:
+                    await self._event_bus.publish("task_run_finished", {
+                        "task_id": task_id,
+                        "run_id": run_id,
+                        "status": "success",
+                        "duration_ms": duration_ms,
+                    })
+
+            except Exception as exc:
+                duration_ms = int((time.monotonic() - started) * 1000)
+                log.error("Task run %s failed: %s", run_id, exc, exc_info=True)
+                error_msg = f"Task execution failed: {exc}"
+                self._db.finish_run(
+                    run_id=run_id,
+                    status="error",
+                    error=error_msg,
+                    duration_ms=duration_ms,
+                )
+
+                if self._event_bus:
+                    await self._event_bus.publish("task_run_finished", {
+                        "task_id": task_id,
+                        "run_id": run_id,
+                        "status": "error",
+                        "error": error_msg,
+                        "task_name": task["name"],
+                    })
+        finally:
+            if self._semaphore:
+                self._semaphore.release()
