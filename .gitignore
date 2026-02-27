@@ -46,6 +46,8 @@ reference/oap_discovery/manifests/*
 !reference/oap_discovery/manifests/geocode.json
 !reference/oap_discovery/manifests/zip-lookup.json
 !reference/oap_discovery/manifests/alpha-vantage.json
+!reference/oap_discovery/manifests/newsapi-top-headlines.json
+!reference/oap_discovery/manifests/newsapi-everything.json
 
 # claude code
 .claude/

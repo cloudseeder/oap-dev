@@ -1,0 +1,28 @@
+{
+  "oap": "1.0",
+  "name": "newsapi-top-headlines",
+  "description": "Get live top news headlines by country, category, or source. Returns the latest breaking news articles from over 150,000 worldwide sources. Use for questions like 'top US news', 'latest technology headlines', 'breaking business news', 'sports headlines today'. Complements mynewscast (Portland local news) with national and international coverage.",
+  "input": {
+    "format": "application/json",
+    "description": "Query parameters as JSON. At least one of 'country', 'category', or 'sources' is required. For US headlines use country='us'. Categories: business, entertainment, general, health, science, sports, technology.",
+    "parameters": {
+      "country": {"type": "string", "description": "2-letter ISO 3166-1 country code (e.g. 'us', 'gb', 'de'). Cannot combine with 'sources'.", "required": false},
+      "category": {"type": "string", "description": "Category: business, entertainment, general, health, science, sports, technology. Cannot combine with 'sources'.", "required": false},
+      "sources": {"type": "string", "description": "Comma-separated source IDs (e.g. 'bbc-news,cnn'). Cannot combine with 'country' or 'category'.", "required": false},
+      "q": {"type": "string", "description": "Keywords or phrase to filter headlines", "required": false},
+      "pageSize": {"type": "integer", "description": "Results per page (default 20, max 100)", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "JSON with 'status', 'totalResults', and 'articles' array. Each article has 'source' (id, name), 'author', 'title', 'description', 'url', 'urlToImage', 'publishedAt', 'content'."
+  },
+  "invoke": {
+    "method": "GET",
+    "url": "https://newsapi.org/v2/top-headlines",
+    "auth": "api_key",
+    "auth_in": "query",
+    "auth_name": "apiKey"
+  },
+  "tags": ["news", "headlines", "breaking", "current events", "journalism"]
+}
