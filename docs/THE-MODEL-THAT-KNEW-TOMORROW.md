@@ -476,6 +476,42 @@ The conditional thinking path adds ~2 seconds of overhead for the thinking pass 
 
 The mechanism is simple: fingerprint prefixes gate thinking. The `compute` prefix catches arithmetic, unit conversion, and calculation tasks. The model gets a thinking budget exactly where it needs one — verifying numerical results — and stays fast everywhere else.
 
+### Where Conditional Thinking Doesn't Help — The Stellar Luminosity Problem
+
+Emboldened by the plasmid fix, we tried a harder problem:
+
+```
+>>> A star has surface temperature 5778 K and radius 6.96 × 10⁸ m.
+    It radiates as a blackbody. Using the Stefan-Boltzmann law
+    (σ = 5.67 × 10⁻⁸ W/m²K⁴), calculate the luminosity in watts.
+    Then: if this star converts mass to energy via E = mc² at 0.7%
+    efficiency (pp-chain), how many kilograms of hydrogen does it
+    consume per second?
+```
+
+The fingerprint landed as `compute.physics.luminosity_mass_consumption` — thinking was enabled. The model used two rounds of `oap_exec` tool calls, delegating sub-calculations to the command line. But:
+
+```
+The luminosity of the star is approximately 4.4 × 10²⁶ watts.
+The star consumes approximately 3.42 × 10²⁶ kilograms of
+hydrogen per second.
+```
+
+Both wrong. The luminosity should be ~3.85 × 10²⁶ W (L = 4πR²σT⁴). The hydrogen consumption should be ~6.1 × 10¹¹ kg/s (ṁ = L / 0.007c²). The second answer is off by **15 orders of magnitude** — 3.42 × 10²⁶ kg/s would be more than an Earth-mass every second.
+
+The correct answers:
+
+| | Tool bridge (conditional thinking) | Correct |
+|---|---|---|
+| **Luminosity** | 4.4 × 10²⁶ W | 3.85 × 10²⁶ W |
+| **H consumption** | 3.42 × 10²⁶ kg/s | 6.1 × 10¹¹ kg/s |
+
+The failure mode is different from the plasmid question. There, the model did simple addition wrong in its summarization step — thinking let it check its own arithmetic. Here, the model constructed bad expressions to pass to `oap_exec` — mangled scientific notation, wrong formula rearrangement — and the thinking pass couldn't catch it because the intermediate values are beyond intuitive verification. The model can sanity-check `1.2 + 0.8 + 2.7 = 4.7` in its head. It cannot sanity-check `4π × (6.96 × 10⁸)² × 5.67 × 10⁻⁸ × 5778⁴`.
+
+This draws a clear boundary around conditional thinking: **it helps when the model can verify results intuitively (simple arithmetic, unit checks). It does not help when the model constructs wrong expressions for the tool to evaluate.** For scientific computation, the bottleneck is expression construction, not result verification. An 8B model doesn't have the parametric knowledge to correctly rearrange `L = 4πR²σT⁴` into a shell expression with scientific notation — and no amount of post-hoc thinking fixes an upstream error.
+
+The honest summary: conditional thinking moved the boundary from "can't verify sums" to "can't verify multi-step scientific notation." A real improvement, but not a general solution. Multi-step computation with large exponents remains beyond what small models can reliably delegate to tools.
+
 ---
 
 ## What We're Not Claiming
