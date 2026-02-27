@@ -37,7 +37,7 @@ additional equity analysis before the vote.
 
 This is real news. Current. Specific. Sourced from actual government meeting transcripts.
 
-The model that produced it — qwen3:8b — stopped learning in 2023. It has 8 billion parameters. It runs on a $599 Mac Mini with 16GB of memory. It has never heard of this news. It has never seen the API that produced it. It doesn't know what year it is.
+The model that produced it — qwen3:8b — stopped learning in 2023. It has 8 billion parameters. It runs on a $549 Mac Mini with 16GB of memory. It has never heard of this news. It has never seen the API that produced it. It doesn't know what year it is.
 
 And yet it answered correctly.
 
@@ -285,7 +285,7 @@ None of this requires exotic hardware or proprietary APIs.
 
 | Component | What | Cost |
 |-----------|------|------|
-| **Hardware** | Mac Mini M4, 16GB unified memory | $599 |
+| **Hardware** | Mac Mini M4, 16GB unified memory | $549 |
 | **Model** | qwen3:8b via Ollama — 8B params, ~5.9GB VRAM | Free, open weights |
 | **Embeddings** | nomic-embed-text via Ollama | Free, open weights |
 | **Vector DB** | ChromaDB (local directory) | Free, open source |
@@ -296,7 +296,7 @@ None of this requires exotic hardware or proprietary APIs.
 
 The user doesn't need to know OAP exists. The tool bridge intercepts `/api/chat`, discovers capabilities, executes tool calls, and returns the result in the format the Ollama CLI expects. From the user's perspective, they're talking to a local model that happens to know what day it is and what's happening in Portland.
 
-The entire system — model, embeddings, vector DB, keyword index, experience cache, tool bridge, and API server — runs on a single $599 computer with memory to spare.
+The entire system — model, embeddings, vector DB, keyword index, experience cache, tool bridge, and API server — runs on a single $549 computer with memory to spare.
 
 ---
 
@@ -325,6 +325,113 @@ A small model with good discovery can outperform a large model with no tools.
 The model runs locally. The user's query never leaves the Mac Mini (unless a discovered tool is a remote API). Privacy is preserved by default — the system only reaches out when a manifest's invoke URL points to the internet, and only for the specific capability the model chose.
 
 When the model answered "what day is it?" — entirely local. The `date` command ran on the same machine. When it answered about Portland news — one HTTP POST to mynewscast.org, carrying only the intent and location. The original question stayed local.
+
+---
+
+## The PhD and the Calculator
+
+Two days after the Portland moment, we pushed harder. Not news lookups or date checks — graduate-level biology.
+
+### Molecular Biology
+
+```
+>>> What is the role of the mediator complex in RNA polymerase II
+    transcription initiation in eukaryotes?
+```
+
+The fingerprint came back: `query.biological.transcription_mechanism`. The system had never seen anything like it. Cache miss. Full discovery. Wikipedia won the ranking.
+
+```
+The mediator complex plays a crucial role in the transcription
+initiation process by RNA polymerase II in eukaryotes. It
+functions as a bridging factor between transcription factors and
+the RNA polymerase II holoenzyme, facilitating the assembly of
+the transcription initiation complex at gene promoters. The
+mediator complex helps in the recruitment of RNA polymerase II
+to the promoter region, enhances the efficiency of transcription
+initiation, and modulates the activity of RNA polymerase II by
+interacting with general transcription factors such as TFIID.
+Additionally, it contributes to the regulation of gene
+expression by integrating signals from various transcriptional
+regulatory pathways.
+```
+
+Bridging factor. PIC assembly. Pol II recruitment. TFIID interaction. Signal integration. Every key point a graduate student would need to hit. The model didn't know any of this — it found Wikipedia, asked the right question, and summarized the answer.
+
+### Biochemistry Reasoning
+
+```
+>>> If a protein has 3 disulfide bonds, how many cysteine residues
+    must it contain at minimum?
+```
+
+Fingerprint: `compute.biochemistry.disulfide_bond`. This isn't a lookup — it requires reasoning. Each disulfide bond forms between two cysteine residues, so 3 × 2 = 6.
+
+```
+Each disulfide bond forms between two cysteine residues.
+Therefore, a protein with 3 disulfide bonds must contain at
+least 6 cysteine residues.
+```
+
+Correct. Clear. No hedging.
+
+### The Plasmid Question — Where Honest Gets Interesting
+
+```
+>>> A circular plasmid is 4.7 kb. After digestion with EcoRI you get
+    fragments of 1.2 kb, 0.8 kb, and 2.7 kb. How many EcoRI cut sites
+    are there and do the fragments account for the full plasmid?
+```
+
+The log shows the experience cache at work:
+
+```
+[tool_api] Experience cache hit: compute.math.calculation → builtin/exec
+[tool_api]   confidence: 0.90, used 37 times
+```
+
+Thirty-seven previous math queries had trained the cache. Fingerprint `compute.math.calculation` was a well-worn path to `oap_exec` with `bc`. No discovery needed — straight to the calculator.
+
+Here's what the tool bridge returned:
+
+```
+The total length of the fragments is 1.2 + 0.8 + 2.7 = 4.5 kb,
+which is less than the total plasmid length of 4.7 kb. This
+suggests that there might be an error in the fragment
+measurements or that some fragments are not fully accounted for.
+If the fragments do account for the full plasmid, then there are
+3 EcoRI cut sites, as each cut site creates a new fragment.
+However, the discrepancy in length suggests a possible issue
+with the measurements.
+```
+
+We thought this was brilliant. Three cut sites — correct. A 0.2 kb discrepancy — caught. The model didn't fall for the trap.
+
+Except there was no trap. **1.2 + 0.8 + 2.7 = 4.7, not 4.5.** The tool bridge got the arithmetic wrong and "caught" a discrepancy that doesn't exist. And we bought it, because it sounded like careful reasoning.
+
+We ran the same question through qwen3:8b directly with thinking enabled. It burned through hundreds of tokens reasoning from first principles — going in circles about whether circular DNA digestion gives n or n+1 fragments, second-guessing itself repeatedly. But it got the arithmetic right:
+
+```
+1.2 + 0.8 + 2.7 = 4.7 kb
+```
+
+This exactly matches the original plasmid size. Three EcoRI cut sites. The fragments account for the full plasmid.
+
+The scorecard:
+
+| | Tool bridge (OAP) | Thinking model (raw qwen3:8b) |
+|---|---|---|
+| **Cut sites** | 3 (correct) | 3 (correct) |
+| **Arithmetic** | 4.5 (wrong) | 4.7 (correct) |
+| **Conclusion** | "Discrepancy detected" (false) | "Fragments match" (correct) |
+| **Tokens** | ~20 | ~2,000+ |
+| **Time** | ~3 seconds | ~60+ seconds |
+
+The thinking model was slow, verbose, and agonized over basic molecular biology — but it got the math right. The tool bridge was fast, confident, and wrong.
+
+This is worth documenting because it reveals a real failure mode: **tool-assisted doesn't mean infallible.** When the tool produces a wrong result, the model has no way to check it. It trusts the calculator. And a confidently wrong answer that sounds like careful analysis is more dangerous than a slow correct one.
+
+The tool bridge is better for most tasks — lookups, API calls, data retrieval, simple calculations. But when the calculation itself goes wrong, there's no safety net. The model doesn't verify tool output. It summarizes it.
 
 ---
 
