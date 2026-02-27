@@ -619,9 +619,6 @@ def main():
         names = adapter.discover()
         print(f"Found {len(names)} capabilities")
 
-    # Filter
-    filtered = []
-    skipped = {"disallowed": 0, "existing": 0}
     # Load exclude list for --force (hand-coded manifests that should never be overwritten)
     exclude_file = MANIFESTS_DIR / ".factory-exclude"
     force_exclude: set[str] = set()
@@ -631,11 +628,14 @@ def main():
             if line.strip() and not line.startswith("#")
         }
 
+    # Filter
+    filtered = []
+    skipped = {"disallowed": 0, "existing": 0, "excluded": 0}
     for name in names:
-        if name in existing and not args.force:
-            skipped["existing"] += 1
+        if name in force_exclude:
+            skipped["excluded"] += 1
             continue
-        if args.force and name in force_exclude:
+        if name in existing and not args.force:
             skipped["existing"] += 1
             continue
         if not adapter.is_allowed(name):
@@ -645,7 +645,8 @@ def main():
 
     print(f"After filtering: {len(filtered)} to process")
     print(f"  Skipped: {skipped['disallowed']} disallowed, "
-          f"{skipped['existing']} existing")
+          f"{skipped['existing']} existing, "
+          f"{skipped['excluded']} excluded")
 
     if not filtered:
         print("Nothing to do.")
