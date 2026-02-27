@@ -24,5 +24,6 @@
     "auth_name": "apikey"
   },
   "tags": ["stock", "market", "finance", "investing", "quote", "price", "trading"],
-  "registration_url": "https://www.alphavantage.co/support/#api-key"
+  "registration_url": "https://www.alphavantage.co/support/#api-key",
+  "usage": "GET /query?function=GLOBAL_QUOTE&symbol=AAPL → current stock price, change, volume"
 }

@@ -25,5 +25,6 @@
     "method": "GET",
     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query"
   },
-  "tags": ["earthquake", "seismic", "geology", "disaster", "usgs", "real-time"]
+  "tags": ["earthquake", "seismic", "geology", "disaster", "usgs", "real-time"],
+  "usage": "GET /query?format=geojson&minmagnitude=4.5&limit=10 → recent significant earthquakes worldwide"
 }

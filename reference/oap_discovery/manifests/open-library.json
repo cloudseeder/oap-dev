@@ -21,5 +21,6 @@
     "method": "GET",
     "url": "https://openlibrary.org/search.json"
   },
-  "tags": ["books", "library", "reading", "author", "literature", "search"]
+  "tags": ["books", "library", "reading", "author", "literature", "search"],
+  "usage": "GET /search.json?author=ursula+le+guin&limit=5 → books by that author with titles, dates, page counts"
 }

@@ -14,5 +14,6 @@
     "method": "GET",
     "url": "https://api.dictionaryapi.dev/api/v2/entries/en/"
   },
-  "tags": ["dictionary", "definition", "vocabulary", "language", "english", "synonym"]
+  "tags": ["dictionary", "definition", "vocabulary", "language", "english", "synonym"],
+  "usage": "dictionary ephemeral → definitions, pronunciation, synonyms, usage examples"
 }

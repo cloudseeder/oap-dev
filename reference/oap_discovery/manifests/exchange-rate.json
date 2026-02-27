@@ -14,5 +14,6 @@
     "method": "GET",
     "url": "https://open.er-api.com/v6/latest/"
   },
-  "tags": ["currency", "exchange", "finance", "conversion", "money"]
+  "tags": ["currency", "exchange", "finance", "conversion", "money"],
+  "usage": "exchange-rate USD → rates for EUR, GBP, JPY, etc. relative to USD"
 }

@@ -20,5 +20,6 @@
     "method": "GET",
     "url": "https://api.sunrise-sunset.org/json"
   },
-  "tags": ["sun", "sunrise", "sunset", "daylight", "astronomy", "solar"]
+  "tags": ["sun", "sunrise", "sunset", "daylight", "astronomy", "solar"],
+  "usage": "GET /json?lat=45.52&lng=-122.68&formatted=0 → sunrise, sunset, day length in UTC"
 }

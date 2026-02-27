@@ -20,5 +20,6 @@
     "method": "GET",
     "url": "https://api.coingecko.com/api/v3/simple/price"
   },
-  "tags": ["crypto", "cryptocurrency", "bitcoin", "ethereum", "prices", "finance"]
+  "tags": ["crypto", "cryptocurrency", "bitcoin", "ethereum", "prices", "finance"],
+  "usage": "GET /simple/price?ids=bitcoin,ethereum&vs_currencies=usd → {\"bitcoin\":{\"usd\":66911}}"
 }

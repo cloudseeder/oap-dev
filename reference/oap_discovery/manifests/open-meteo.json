@@ -23,5 +23,6 @@
     "method": "GET",
     "url": "https://api.open-meteo.com/v1/forecast"
   },
-  "tags": ["weather", "forecast", "temperature", "climate"]
+  "tags": ["weather", "forecast", "temperature", "climate"],
+  "usage": "GET /v1/forecast?latitude=45.52&longitude=-122.68&current=temperature_2m,wind_speed_10m&temperature_unit=fahrenheit → current Portland weather"
 }

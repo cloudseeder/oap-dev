@@ -24,5 +24,6 @@
     "auth_in": "query",
     "auth_name": "apiKey"
   },
-  "tags": ["news", "headlines", "breaking", "current events", "journalism"]
+  "tags": ["news", "headlines", "breaking", "current events", "journalism"],
+  "usage": "GET /v2/top-headlines?country=us&category=technology → latest US tech headlines"
 }

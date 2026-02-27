@@ -22,5 +22,6 @@
     "method": "GET",
     "url": "https://nominatim.openstreetmap.org/search"
   },
-  "tags": ["geocoding", "address", "coordinates", "maps", "location", "openstreetmap"]
+  "tags": ["geocoding", "address", "coordinates", "maps", "location", "openstreetmap"],
+  "usage": "GET /search?q=1600+Pennsylvania+Ave+Washington+DC&format=json → lat, lon, display_name"
 }

@@ -14,5 +14,6 @@
     "method": "GET",
     "url": "https://restcountries.com/v3.1/name/"
   },
-  "tags": ["country", "geography", "population", "capital", "currency", "language"]
+  "tags": ["country", "geography", "population", "capital", "currency", "language"],
+  "usage": "country-info japan → capital, population, currencies, languages. Countries only, NOT states or cities."
 }

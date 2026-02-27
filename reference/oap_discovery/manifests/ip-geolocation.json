@@ -14,5 +14,6 @@
     "method": "GET",
     "url": "https://ipinfo.io/"
   },
-  "tags": ["ip", "geolocation", "network", "location", "isp"]
+  "tags": ["ip", "geolocation", "network", "location", "isp"],
+  "usage": "ip-geolocation 8.8.8.8/json → city, region, country, coordinates, ISP for that IP"
 }

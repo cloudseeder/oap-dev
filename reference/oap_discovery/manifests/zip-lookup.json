@@ -14,5 +14,6 @@
     "method": "GET",
     "url": "https://api.zippopotam.us/"
   },
-  "tags": ["zip", "postal", "address", "location", "geography"]
+  "tags": ["zip", "postal", "address", "location", "geography"],
+  "usage": "zip-lookup us/97201 → Portland, Oregon with coordinates"
 }
