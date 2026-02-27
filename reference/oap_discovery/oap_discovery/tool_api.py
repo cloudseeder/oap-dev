@@ -799,7 +799,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 if cache_label:
                     ollama_resp["oap_experience_cache"] = cache_label
                 # Escalate final reasoning to big LLM if configured
-                if should_escalate and tools_executed and tools_had_output:
+                if should_escalate:
                     from .escalation import escalate as _escalate
                     escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg)
                     if escalated_text:
@@ -1183,7 +1183,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
         }
 
     # Escalate final reasoning to big LLM if configured
-    if should_escalate and tools_executed and tools_had_output:
+    if should_escalate:
         from .escalation import escalate as _escalate
         escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg)
         if escalated_text:
