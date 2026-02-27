@@ -433,6 +433,49 @@ This is worth documenting because it reveals a real failure mode: **tool-assiste
 
 The tool bridge is better for most tasks — lookups, API calls, data retrieval, simple calculations. But when the calculation itself goes wrong, there's no safety net. The model doesn't verify tool output. It summarizes it.
 
+### The Fix — Conditional Thinking
+
+The failure above has a precise cause: `think: false` is hardcoded on all Ollama chat calls to keep latency low (~12 tokens per round). The model can't verify tool output because we told it not to think. But thinking is only needed for tasks where the model must sanity-check a result — arithmetic, not lookups.
+
+The fix is conditional: the tool bridge now checks the fingerprint prefix against a configurable list (`tool_bridge.think_prefixes`). When a task fingerprints as `compute.*`, the Ollama payload sends `think: true`. Everything else stays `think: false`.
+
+We reran the exact same plasmid question:
+
+```
+>>> A circular plasmid is 4.7 kb. After digestion with EcoRI you get
+    fragments of 1.2 kb, 0.8 kb, and 2.7 kb. How many EcoRI cut sites
+    are there and do the fragments account for the full plasmid?
+```
+
+The log still shows the cache hit:
+
+```
+[tool_api] Experience cache hit: compute.math.calculation → builtin/exec
+[tool_api]   confidence: 0.90, used 39 times
+```
+
+But now `think: true` is in the Ollama payload. The model calls `oap_exec` as before, gets the tool result, then *thinks about it* before responding:
+
+```
+The fragments account for the full plasmid, and there are three
+EcoRI cut sites.
+```
+
+Correct. 1.2 + 0.8 + 2.7 = 4.7. No phantom discrepancy.
+
+The updated scorecard:
+
+| | Tool bridge (no thinking) | Tool bridge (conditional thinking) | Raw thinking model |
+|---|---|---|---|
+| **Cut sites** | 3 (correct) | 3 (correct) | 3 (correct) |
+| **Arithmetic** | 4.5 (wrong) | 4.7 (correct) | 4.7 (correct) |
+| **Conclusion** | "Discrepancy" (false) | "Fragments match" (correct) | "Fragments match" (correct) |
+| **Time** | ~3 seconds | ~5 seconds | ~60+ seconds |
+
+The conditional thinking path adds ~2 seconds of overhead for the thinking pass — a 12× speedup over raw thinking, with the same correctness. Non-compute queries (lookups, API calls, text processing) still get the fast `think: false` path with no latency penalty.
+
+The mechanism is simple: fingerprint prefixes gate thinking. The `compute` prefix catches arithmetic, unit conversion, and calculation tasks. The model gets a thinking budget exactly where it needs one — verifying numerical results — and stays fast everywhere else.
+
 ---
 
 ## What We're Not Claiming
