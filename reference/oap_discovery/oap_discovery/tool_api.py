@@ -881,6 +881,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         escalation_available=bool(
                             _escalation_cfg and _escalation_cfg.enabled
                         ),
+                        blocked_commands=bridge_cfg.blocked_commands,
                     )
                     # Safety net: detect missing stdin when task has inline text
                     if (

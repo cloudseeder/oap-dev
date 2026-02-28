@@ -429,6 +429,7 @@ async def execute_exec_call(
     summarize_threshold: int = 16000,
     chunk_size: int = 6000,
     escalation_available: bool = False,
+    blocked_commands: list[str] | None = None,
 ) -> str:
     """Execute a raw CLI command string with the same security as stdio tools.
 
@@ -454,6 +455,14 @@ async def execute_exec_call(
 
     if not stages:
         return "Error: empty command"
+
+    # Check for blocked commands
+    if blocked_commands:
+        blocked_set = set(blocked_commands)
+        for stage in stages:
+            bare_name = os.path.basename(stage[0])
+            if bare_name in blocked_set:
+                return f"Error: command '{bare_name}' is blocked by configuration"
 
     # Validate and resolve every command in the pipeline
     try:

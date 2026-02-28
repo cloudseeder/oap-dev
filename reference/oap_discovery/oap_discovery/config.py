@@ -73,6 +73,9 @@ class ToolBridgeConfig:
     chunk_size: int = 6000
     think_prefixes: list[str] = field(default_factory=list)
     escalate_prefixes: list[str] = field(default_factory=list)
+    blocked_commands: list[str] = field(default_factory=lambda: [
+        "rm", "rmdir", "dd", "mkfs", "shutdown", "reboot",
+    ])
 
 
 @dataclass
