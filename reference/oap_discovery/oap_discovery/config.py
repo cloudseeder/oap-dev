@@ -68,9 +68,9 @@ class ToolBridgeConfig:
     http_timeout: int = 30
     stdio_timeout: int = 10
     credentials_file: str = "credentials.yaml"
-    max_tool_result: int = 8000
-    summarize_threshold: int = 8000
-    chunk_size: int = 4000
+    max_tool_result: int = 16000
+    summarize_threshold: int = 16000
+    chunk_size: int = 6000
     think_prefixes: list[str] = field(default_factory=list)
     escalate_prefixes: list[str] = field(default_factory=list)
 

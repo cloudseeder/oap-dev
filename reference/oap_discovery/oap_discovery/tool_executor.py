@@ -17,10 +17,11 @@ from .tool_models import ToolRegistryEntry
 log = logging.getLogger("oap.tool_executor")
 
 _SUMMARIZE_SYSTEM = (
-    "Condense this data to the essential facts only. "
-    "For lists: keep item names, drop descriptions. "
-    "For text: keep key facts, names, numbers. Drop boilerplate. "
-    "Maximum 5 lines. No preamble, no commentary."
+    "Condense this data while preserving its meaning and structure. "
+    "For structured data (JSON, tables): keep item names and key values, drop boilerplate. "
+    "For prose or markdown: keep all headings, key facts, names, and numbers. "
+    "Preserve the document's logical structure. "
+    "Maximum 15 lines. No preamble, no commentary."
 )
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -170,9 +171,9 @@ async def execute_tool_call(
     stdio_timeout: int = 10,
     credentials: dict[str, dict] | None = None,
     ollama: OllamaClient | None = None,
-    summarize_threshold: int = 4000,
-    chunk_size: int = 4000,
-    max_output: int = 8000,
+    summarize_threshold: int = 16000,
+    chunk_size: int = 6000,
+    max_output: int = 16000,
 ) -> str:
     """Execute a tool call by looking up its manifest and invoking it.
 
@@ -425,8 +426,8 @@ async def execute_exec_call(
     max_output: int = 102400,
     ollama: OllamaClient | None = None,
     task: str = "",
-    summarize_threshold: int = 4000,
-    chunk_size: int = 4000,
+    summarize_threshold: int = 16000,
+    chunk_size: int = 6000,
 ) -> str:
     """Execute a raw CLI command string with the same security as stdio tools.
 

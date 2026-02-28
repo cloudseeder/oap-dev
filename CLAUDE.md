@@ -113,7 +113,7 @@ Crawls domains for manifests, embeds descriptions into ChromaDB via Ollama (nomi
 - **Experience hints**: `_build_experience_hints(fingerprint)` injects past failure/success hints into system prompt. Only exact-match failures (prefix matching was too aggressive). Prefix successes suggest what works for similar tasks.
 - Local manifests (`reference/oap_discovery/manifests/`): JSON files auto-indexed on startup under `local/<tool-name>` pseudo-domains. Starter set: `apropos.json`, `man.json`, `grep.json`, `jq.json`, `wc.json`, `date.json`, `bc.json` (stdio), plus HTTP API manifests: `alpha-vantage.json`, `newsapi-top-headlines.json`, `newsapi-everything.json`, `open-meteo.json`, `wikipedia.json`, etc.
 - **Seed domain crawling on startup**: `api.py` lifespan crawls remote domains from `seeds.txt` after indexing local manifests. Seeds file: `reference/oap_discovery/seeds.txt`.
-- **Map-reduce summarization**: when tool results exceed `summarize_threshold` (default 8000 chars), chunks are summarized sequentially via `ollama.generate()`. Configured via `ToolBridgeConfig` fields: `summarize_threshold`, `chunk_size`, `max_tool_result`.
+- **Map-reduce summarization**: when tool results exceed `summarize_threshold` (default 16000 chars), chunks are summarized sequentially via `ollama.generate()`. Configured via `ToolBridgeConfig` fields: `summarize_threshold`, `chunk_size`, `max_tool_result`.
 - **Debug mode**: `POST /v1/chat` accepts `oap_debug: true` for full execution trace including tools discovered, experience cache status, fingerprint, hints, and per-round tool executions with timing.
 
 #### Trust (`reference/oap_trust/`)

@@ -167,9 +167,9 @@ async def call_tool(tool_name: str, arguments: dict[str, Any]) -> ToolCallResult
             stdin_text=arguments.get("stdin"),
             stdio_timeout=cfg.stdio_timeout if cfg else 10,
             ollama=_ollama,
-            summarize_threshold=cfg.summarize_threshold if cfg else 8000,
-            chunk_size=cfg.chunk_size if cfg else 4000,
-            max_output=cfg.max_tool_result if cfg else 8000,
+            summarize_threshold=cfg.summarize_threshold if cfg else 16000,
+            chunk_size=cfg.chunk_size if cfg else 6000,
+            max_output=cfg.max_tool_result if cfg else 16000,
         )
     else:
         result = await execute_tool_call(
@@ -180,9 +180,9 @@ async def call_tool(tool_name: str, arguments: dict[str, Any]) -> ToolCallResult
             stdio_timeout=cfg.stdio_timeout if cfg else 10,
             credentials=_credentials,
             ollama=_ollama,
-            summarize_threshold=cfg.summarize_threshold if cfg else 8000,
-            chunk_size=cfg.chunk_size if cfg else 4000,
-            max_output=cfg.max_tool_result if cfg else 8000,
+            summarize_threshold=cfg.summarize_threshold if cfg else 16000,
+            chunk_size=cfg.chunk_size if cfg else 6000,
+            max_output=cfg.max_tool_result if cfg else 16000,
         )
 
     if result.startswith("Error"):
