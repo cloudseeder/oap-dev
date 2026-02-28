@@ -33,6 +33,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/OPENAPI-TOOL-SERVER.md` — OpenAPI tool server: exposing manifests as a standard OpenAPI 3.1 spec for Open WebUI, LangChain, etc.
 - `docs/MCP.md` — MCP server: exposing manifests as MCP tools for Claude Desktop and MCP clients
 - `docs/AGENT.md` — Manifest: chat + autonomous task execution architecture and rationale
+- `docs/SECURITY.md` — Security model: defense-in-depth from network isolation to OS sandbox
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
 
 ### Next.js Application (oap.dev)
