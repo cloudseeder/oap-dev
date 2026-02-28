@@ -499,9 +499,10 @@ async def execute_exec_call(
     # Large output handling: prefer big LLM escalation over lossy map-reduce
     if len(body) > summarize_threshold:
         if escalation_available:
-            # Skip summarization — big LLM will process the raw output
+            # Skip summarization — big LLM will process the raw output.
+            # Don't truncate to max_output here; the big LLM has a large
+            # context window.  _MAX_EXEC_OUTPUT (100KB) already caps it.
             log.info("Large output (%d chars) — deferring to big LLM escalation", len(body))
-            body = body[:max_output]
         elif ollama is not None and task:
             body = await summarize_result(body, task, ollama, chunk_size, max_output)
 
