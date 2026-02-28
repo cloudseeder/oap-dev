@@ -698,9 +698,10 @@ async def chat_proxy(req: ChatRequest) -> Any:
 
     # Build Ollama request — prepend a system message to keep qwen3 concise
     original_messages = [m.model_dump(exclude_none=True) for m in req.messages]
+
     system_content = (
         "You are a tool-calling assistant. Be brief. "
-        "Use function calls to invoke tools — never write JSON in your response. "
+        + "Use function calls to invoke tools — never write JSON in your response. "
         "IMPORTANT: NEVER answer without calling a tool. "
         "Tools are listed in relevance order — prefer the first tool unless "
         "another is clearly more appropriate for the specific query. "
@@ -727,6 +728,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "When querying weather for US locations, use temperature_unit=fahrenheit and wind_speed_unit=mph. "
         "After a tool result, reply in 1-2 sentences."
     )
+
     if failure_hints:
         system_content += (
             f"\n\nNote — previous attempts at this exact task type:\n"

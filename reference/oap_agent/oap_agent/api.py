@@ -168,6 +168,12 @@ class CreateTaskRequest(BaseModel):
         return v
 
 
+class UpdateSettingsRequest(BaseModel):
+    persona_name: str | None = Field(None, max_length=100)
+    persona_description: str | None = Field(None, max_length=500)
+    memory_enabled: bool | None = None
+
+
 class UpdateTaskRequest(BaseModel):
     name: str | None = Field(None, max_length=200)
     prompt: str | None = Field(None, max_length=32_000)
@@ -222,6 +228,26 @@ async def chat(req: ChatRequest):
         if m["role"] in ("user", "assistant")
     ]
 
+    # Prepend persona + user facts as a system message
+    settings = _db.get_settings()
+    persona_parts: list[str] = []
+    if settings.get("persona_name"):
+        intro = f"You are {settings['persona_name']}"
+        if settings.get("persona_description"):
+            intro += f", {settings['persona_description']}"
+        intro += "."
+        persona_parts.append(intro)
+
+    if settings.get("memory_enabled") == "true":
+        facts = _db.get_all_facts()
+        if facts:
+            _db.touch_facts([f["id"] for f in facts])
+            fact_lines = "\n".join(f"- {f['fact']}" for f in facts)
+            persona_parts.append(f"About the user:\n{fact_lines}")
+
+    if persona_parts:
+        llm_messages.insert(0, {"role": "system", "content": "\n\n".join(persona_parts)})
+
     async def stream_response():
         # Emit user message saved event
         yield _sse_event("message_saved", {
@@ -260,6 +286,13 @@ async def chat(req: ChatRequest):
             tool_calls=result["tool_calls"] or None,
             metadata=metadata or None,
         )
+
+        # Fire-and-forget: extract user memory from this turn
+        if settings.get("memory_enabled") == "true" and result["content"]:
+            from .memory import extract_and_store_facts
+            asyncio.create_task(
+                extract_and_store_facts(_db, _discovery_url, req.message, result["content"])
+            )
 
         yield _sse_event("assistant_message", {
             "conversation_id": conv_id,
@@ -524,6 +557,46 @@ async def health():
     conversations = _db.list_conversations()["total"]
     tasks = len(_db.list_tasks())
     return {"status": "ok", "conversations": conversations, "tasks": tasks}
+
+
+# ---------------------------------------------------------------------------
+# Settings + Memory routes
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/agent/settings")
+async def get_settings():
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    return _db.get_settings()
+
+
+@app.patch("/v1/agent/settings")
+async def update_settings(req: UpdateSettingsRequest):
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if req.persona_name is not None:
+        _db.set_setting("persona_name", req.persona_name)
+    if req.persona_description is not None:
+        _db.set_setting("persona_description", req.persona_description)
+    if req.memory_enabled is not None:
+        _db.set_setting("memory_enabled", "true" if req.memory_enabled else "false")
+    return _db.get_settings()
+
+
+@app.get("/v1/agent/memory")
+async def list_memory():
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    facts = _db.get_all_facts()
+    return {"facts": facts, "total": len(facts)}
+
+
+@app.delete("/v1/agent/memory/{fact_id}", status_code=204)
+async def delete_memory(fact_id: str):
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if not _db.delete_fact(fact_id):
+        raise HTTPException(status_code=404, detail="Fact not found")
 
 
 # ---------------------------------------------------------------------------

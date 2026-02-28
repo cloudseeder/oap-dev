@@ -55,6 +55,20 @@ CREATE TABLE IF NOT EXISTS task_runs (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs(task_id);
+
+CREATE TABLE IF NOT EXISTS agent_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_facts (
+    id              TEXT PRIMARY KEY,
+    fact            TEXT NOT NULL UNIQUE,
+    source_message  TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    last_referenced TEXT NOT NULL,
+    reference_count INTEGER NOT NULL DEFAULT 1
+);
 """
 
 
@@ -75,6 +89,23 @@ class AgentDB:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        self._seed_defaults()
+
+    def _seed_defaults(self):
+        """Insert default settings if the agent_settings table is empty."""
+        count = self.conn.execute("SELECT COUNT(*) FROM agent_settings").fetchone()[0]
+        if count == 0:
+            defaults = {
+                "persona_name": "",
+                "persona_description": "",
+                "memory_enabled": "false",
+            }
+            for key, value in defaults.items():
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO agent_settings (key, value) VALUES (?, ?)",
+                    (key, value),
+                )
+            self.conn.commit()
 
     def close(self):
         self.conn.close()
@@ -381,3 +412,87 @@ class AgentDB:
         if row.get("tool_calls"):
             row["tool_calls"] = json.loads(row["tool_calls"])
         return row
+
+    # --- Settings ---
+
+    def get_settings(self) -> dict:
+        """Return all agent settings as a key-value dict."""
+        rows = self.conn.execute("SELECT key, value FROM agent_settings").fetchall()
+        return {row["key"]: row["value"] for row in rows}
+
+    def set_setting(self, key: str, value: str) -> None:
+        """Upsert a single agent setting."""
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO agent_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            self.conn.commit()
+
+    # --- User Facts ---
+
+    def get_all_facts(self) -> list[dict]:
+        """Return all user facts ordered by reference_count DESC."""
+        rows = self.conn.execute(
+            "SELECT * FROM user_facts ORDER BY reference_count DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_facts(self, facts: list[str], source_message: str, max_facts: int = 50) -> int:
+        """Insert new facts with UNIQUE dedup, evict excess. Returns count added."""
+        import sqlite3 as _sqlite3
+        now = _now()
+        added = 0
+        with self._lock:
+            for fact in facts:
+                fact = fact.strip()
+                if not fact:
+                    continue
+                try:
+                    self.conn.execute(
+                        "INSERT INTO user_facts (id, fact, source_message, created_at, "
+                        "last_referenced, reference_count) VALUES (?, ?, ?, ?, ?, 1)",
+                        (_new_id("fact_"), fact, source_message[:500], now, now),
+                    )
+                    added += 1
+                except _sqlite3.IntegrityError:
+                    pass  # duplicate fact
+            if added:
+                self.conn.commit()
+                total = self.count_facts()
+                if total > max_facts:
+                    excess = total - max_facts
+                    self.conn.execute(
+                        "DELETE FROM user_facts WHERE id IN ("
+                        "  SELECT id FROM user_facts "
+                        "  ORDER BY reference_count ASC, last_referenced ASC "
+                        "  LIMIT ?"
+                        ")",
+                        (excess,),
+                    )
+                    self.conn.commit()
+        return added
+
+    def delete_fact(self, fact_id: str) -> bool:
+        """Delete a user fact by ID. Returns True if deleted."""
+        with self._lock:
+            cur = self.conn.execute("DELETE FROM user_facts WHERE id = ?", (fact_id,))
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def touch_facts(self, fact_ids: list[str]) -> None:
+        """Bump reference_count and last_referenced for the given fact IDs."""
+        now = _now()
+        with self._lock:
+            for fid in fact_ids:
+                self.conn.execute(
+                    "UPDATE user_facts SET reference_count = reference_count + 1, "
+                    "last_referenced = ? WHERE id = ?",
+                    (now, fid),
+                )
+            self.conn.commit()
+
+    def count_facts(self) -> int:
+        """Total number of stored user facts."""
+        return self.conn.execute("SELECT COUNT(*) FROM user_facts").fetchone()[0]

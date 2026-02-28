@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type { Message, ToolCall } from '@/lib/types'
 import { parseSSE } from '@/lib/types'
 import ChatMessage from './ChatMessage'
@@ -8,7 +8,9 @@ import ChatInput from './ChatInput'
 export default function ChatView() {
   const navigate = useNavigate()
   const { id: initialConvId } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const [conversationId, setConversationId] = useState<string | undefined>(initialConvId)
+  const primerSent = useRef(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [streaming, setStreaming] = useState(false)
@@ -29,6 +31,17 @@ export default function ChatView() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Auto-send primer message when navigated with ?primer=true
+  useEffect(() => {
+    if (searchParams.get('primer') === 'true' && !primerSent.current && !initialConvId) {
+      primerSent.current = true
+      handleSend(
+        "Hey! I'd like you to get to know me. Ask me a few questions about myself — things like where I live, what I do for work, my hobbies and interests.",
+        'qwen3:8b',
+      )
+    }
+  }, [searchParams, initialConvId])
 
   async function fetchConversation(id: string) {
     setLoading(true)

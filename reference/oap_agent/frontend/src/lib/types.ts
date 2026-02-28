@@ -51,6 +51,21 @@ export interface TaskRun {
   duration_ms?: number
 }
 
+export interface AgentSettings {
+  persona_name: string
+  persona_description: string
+  memory_enabled: string
+}
+
+export interface UserFact {
+  id: string
+  fact: string
+  source_message: string
+  created_at: string
+  last_referenced: string
+  reference_count: number
+}
+
 export function parseSSE(text: string): Array<{ event: string; data: any }> {
   const results: Array<{ event: string; data: any }> = []
   const lines = text.split('\n')

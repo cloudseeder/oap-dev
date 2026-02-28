@@ -163,12 +163,13 @@ Manifest — chat + autonomous task execution. Thin orchestrator that calls `/v1
 
 - Entry point: `oap-agent-api` (:8303) — serves both FastAPI backend and Vite SPA frontend
 - Config: `config.yaml` (host, port, SQLite path, discovery URL/model/timeout, debug flag, max_tasks)
-- Key files: `config.py`, `db.py` (SQLite: conversations, messages, tasks, task_runs — WAL mode, foreign keys), `executor.py` (calls `/v1/chat` on discovery), `scheduler.py` (APScheduler 3.x), `events.py` (EventBus), `api.py` (FastAPI + SSE + StaticFiles mount)
+- Key files: `config.py`, `db.py` (SQLite: conversations, messages, tasks, task_runs, agent_settings, user_facts — WAL mode, foreign keys), `executor.py` (calls `/v1/chat` on discovery), `scheduler.py` (APScheduler 3.x), `events.py` (EventBus), `api.py` (FastAPI + SSE + StaticFiles mount), `memory.py` (user fact extraction via Ollama pass-through)
 - **Frontend** (`frontend/`): Vite 6 + React 19 + React Router 7 + Tailwind CSS 4 SPA. Built output committed to `oap_agent/static/`. Dev: `cd frontend && npm run dev`. Build: `npm run build` outputs to `../oap_agent/static/`.
-- SPA routes: `/` (redirect to `/chat`), `/chat`, `/chat/:id`, `/tasks`, `/tasks/:id`
-- API routes: `/v1/agent/chat` (POST SSE), `/v1/agent/conversations` (CRUD), `/v1/agent/tasks` (CRUD), `/v1/agent/tasks/:id/run` (POST), `/v1/agent/tasks/:id/runs` (GET), `/v1/agent/events` (SSE), `/v1/agent/health` (GET)
+- SPA routes: `/` (redirect to `/chat`), `/chat`, `/chat/:id`, `/tasks`, `/tasks/:id`, `/settings`
+- API routes: `/v1/agent/chat` (POST SSE), `/v1/agent/conversations` (CRUD), `/v1/agent/tasks` (CRUD), `/v1/agent/tasks/:id/run` (POST), `/v1/agent/tasks/:id/runs` (GET), `/v1/agent/settings` (GET/PATCH), `/v1/agent/memory` (GET), `/v1/agent/memory/:id` (DELETE), `/v1/agent/events` (SSE), `/v1/agent/health` (GET)
 - Task scheduling: APScheduler in-process, cron validation rejects intervals < 5 minutes, max 20 tasks
 - Input validation: model allowlist (`qwen3:8b`, `qwen3:4b`, `llama3.2:3b`, `mistral:7b`), `max_length` on all string fields
+- **Personality + user memory** (agent-owned, configured via Settings UI). Named persona is prepended as a system message to every `/v1/chat` call. User memory learns facts about the user from conversations via fire-and-forget LLM extraction (calls `/api/generate` on discovery's Ollama pass-through). Facts stored in `user_facts` table with UNIQUE dedup and LRU eviction. Settings stored in `agent_settings` table, seeded with defaults on first run. Key file: `memory.py`.
 - See `docs/AGENT.md` for full architecture rationale and design decisions
 
 ### OpenClaw Skill (`skills/oap-discover/`)
