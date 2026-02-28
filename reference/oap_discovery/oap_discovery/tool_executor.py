@@ -10,6 +10,7 @@ import shlex
 from typing import Any
 
 from .invoker import _validate_stdio_command, invoke_manifest
+from .sandbox import wrap_argv
 from .models import InvokeSpec
 from .ollama_client import OllamaClient
 from .tool_models import ToolRegistryEntry
@@ -354,7 +355,7 @@ async def _run_single(
 ) -> tuple[bytes, bytes, int]:
     """Run a single subprocess, return (stdout, stderr, returncode)."""
     proc = await asyncio.create_subprocess_exec(
-        *argv,
+        *wrap_argv(argv),
         stdin=asyncio.subprocess.PIPE if stdin_bytes is not None else None,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -381,7 +382,7 @@ async def _run_pipeline(
     for i, argv in enumerate(pipeline):
         is_last = i == len(pipeline) - 1
         proc = await asyncio.create_subprocess_exec(
-            *argv,
+            *wrap_argv(argv),
             stdin=asyncio.subprocess.PIPE if current_input is not None else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

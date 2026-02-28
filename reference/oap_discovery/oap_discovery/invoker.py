@@ -16,6 +16,7 @@ import httpx
 
 from .experience_models import InvocationResult
 from .models import InvokeSpec
+from .sandbox import wrap_argv
 
 log = logging.getLogger("oap.invoker")
 
@@ -207,7 +208,7 @@ async def _invoke_stdio(
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            *argv,
+            *wrap_argv(argv),
             stdin=asyncio.subprocess.PIPE if stdin_text else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

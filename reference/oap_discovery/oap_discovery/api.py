@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from starlette.background import BackgroundTask
 from starlette.responses import Response, StreamingResponse
 
+from . import sandbox
 from .config import Config, load_config, load_credentials
 from .crawler import Crawler
 from .db import ManifestStore
@@ -150,6 +151,12 @@ async def lifespan(app: FastAPI):
     log.info("API started — %d manifests indexed", _store.count())
     if _fts_store is not None:
         log.info("FTS5 index — %d manifests", _fts_store.count())
+
+    # Sandbox — wraps subprocess calls with macOS sandbox-exec
+    # Create sandbox dir even when disabled (system prompt references it)
+    os.makedirs(_cfg.tool_bridge.sandbox_dir, exist_ok=True)
+    if _cfg.tool_bridge.sandbox_enabled:
+        sandbox.init(_cfg.tool_bridge.sandbox_dir)
 
     # Ollama tool bridge
     if _cfg.tool_bridge.enabled:

@@ -76,6 +76,8 @@ class ToolBridgeConfig:
     blocked_commands: list[str] = field(default_factory=lambda: [
         "rm", "rmdir", "dd", "mkfs", "shutdown", "reboot",
     ])
+    sandbox_enabled: bool = True
+    sandbox_dir: str = "/tmp/oap-sandbox"
 
 
 @dataclass

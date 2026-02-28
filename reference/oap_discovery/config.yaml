@@ -45,3 +45,5 @@ tool_bridge:
   http_timeout: 30       # seconds for HTTP tool execution against manifest endpoints
   stdio_timeout: 10
   blocked_commands: [rm, rmdir, dd, mkfs, shutdown, reboot]
+  sandbox_enabled: true
+  sandbox_dir: "/tmp/oap-sandbox"

@@ -26,6 +26,7 @@ from .experience_models import (
 )
 from .experience_store import ExperienceStore
 from .ollama_client import OllamaClient
+from . import sandbox
 from .tool_converter import manifest_to_tool
 from .tool_executor import execute_exec_call, execute_tool_call
 from .tool_models import (
@@ -718,8 +719,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "For jq: oap_exec(command='jq \"[.[] | select(.field > 90)] | length\" /path/file'). "
         "For counting matches: oap_exec(command='grep -c pattern /path/file'). "
         "For extraction + uniqueness: oap_exec(command='grep -oE regex /path/file | sort -u'). "
-        "To write content to a file: oap_exec(command='tee /path/file', stdin='the content') — "
+        f"To write content to a file: oap_exec(command='tee {sandbox.get_sandbox_dir() or '/tmp/oap-sandbox'}/filename', stdin='the content') — "
         "shell redirections (> >>) do NOT work; always use tee with stdin. "
+        f"File writes are restricted to {sandbox.get_sandbox_dir() or '/tmp/oap-sandbox'}/ — write all output files there. "
         "For inline text: oap_exec(command='grep -E pattern', stdin='the text'). "
         "CRITICAL: Text-processing commands (grep, wc, sort, jq, sed, awk, etc.) "
         "need input — if there is no file path in the command, you MUST pass the "
