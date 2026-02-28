@@ -89,7 +89,7 @@ Crawls domains for manifests, embeds descriptions into ChromaDB via Ollama (nomi
 
 - Entry points: `oap-api` (:8300), `oap-crawl`, `oap`
 - CLI auth: `oap --token <secret>` or `OAP_BACKEND_TOKEN` env var. Required when `OAP_BACKEND_SECRET` is set on the server.
-- Config: `config.yaml` (Ollama URL, ChromaDB path, FTS path, crawler settings)
+- Config: `config.yaml` (Ollama URL, ChromaDB path, FTS path, crawler settings). Gitignored — track `config.yaml.example` instead. Copy to `config.yaml` on first deploy.
 - Key files: `models.py` (Pydantic types), `validate.py` (validation), `crawler.py`, `db.py` (ChromaDB), `fts_store.py` (SQLite FTS5), `discovery.py` (vector search + FTS5 + LLM + intent extraction), `api.py` (FastAPI), `ollama_client.py` (Ollama API client), `openapi_server.py` (OpenAPI 3.1 tool server), `config.py` (configuration), `cli.py` (CLI entry point)
 - **Intent extraction**: `discovery.py:_extract_search_query(task)` strips inline data and normalizes colloquial language before embedding. Drops data after `\n`, strips trailing prepositions, normalizes verbs (`pull out` → `filter`), appends domain hints. The cleaned query goes to vector search; the full task still goes to LLM ranking unchanged.
 - **FTS5 keyword search**: `fts_store.py` provides SQLite FTS5 with BM25 ranking as a complement to vector search. Config: `fts.enabled` (bool, default false), `fts.db_path`. Env overrides: `OAP_FTS_ENABLED`, `OAP_FTS_DB_PATH`. Deterministic keyword matching filling gaps where vector search drifts.
