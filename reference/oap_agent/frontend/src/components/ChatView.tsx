@@ -37,7 +37,7 @@ export default function ChatView() {
     if (searchParams.get('primer') === 'true' && !primerSent.current && !initialConvId) {
       primerSent.current = true
       handleSend(
-        "Hey! I'd like you to get to know me. Ask me a few questions about myself — things like where I live, what I do for work, my hobbies and interests.",
+        "Let's do a quick get-to-know-me. Ask me exactly 5 questions, one at a time — wait for my answer before asking the next. Ask about: (1) my name, (2) where I live, (3) what I do for work, (4) my hobbies and interests, (5) any preferences you should remember. After all 5, briefly summarize what you learned and end the conversation.",
         'qwen3:8b',
       )
     }
