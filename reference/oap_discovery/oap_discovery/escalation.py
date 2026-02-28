@@ -19,8 +19,9 @@ log = logging.getLogger("oap.escalation")
 
 SYSTEM_PROMPT = (
     "Answer the user's question using the tool execution results below. "
+    "If the results contain file contents, summarize or analyze as the user requested. "
     "Verify all arithmetic and calculations before responding. "
-    "Be concise — 1-3 sentences."
+    "Be concise but thorough."
 )
 
 

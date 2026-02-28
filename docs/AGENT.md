@@ -204,6 +204,15 @@ Manifest's UI is a standalone app layout — full-height sidebar:
 └──────────────┴──────────────────────────────────────────┘
 ```
 
+## Known Limitations
+
+The small LLM (qwen3:8b) runs with `num_ctx: 4096` (~12-16K chars) due to the Mac Mini's 16GB shared VRAM — qwen3:8b at 4K context uses ~5.9GB, leaving room for nomic-embed-text alongside it.
+
+- **Files under ~12K chars**: processed directly by the small LLM — no issues
+- **Files 12-16K chars**: tight but generally works within the 4096-token context window
+- **Files >16K chars**: exceed the small LLM's context window. When `escalation.enabled: true`, these are automatically escalated to the big LLM (Claude, GPT-4 — 200K/128K context) which processes the raw output. When escalation is not configured, falls back to map-reduce summarization via `ollama.generate()`, which is lossy — especially on prose and markdown
+- **VRAM constraint**: 16GB shared between CPU and GPU on M4. Increasing `num_ctx` would push VRAM usage beyond what's available
+
 ## Security
 
 Manifest is designed for local use on the Mac Mini — no public exposure, no tunnel.

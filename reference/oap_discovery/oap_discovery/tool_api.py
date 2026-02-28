@@ -878,6 +878,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         summarize_threshold=bridge_cfg.summarize_threshold,
                         chunk_size=bridge_cfg.chunk_size,
                         max_output=bridge_cfg.max_tool_result,
+                        escalation_available=bool(
+                            _escalation_cfg and _escalation_cfg.enabled
+                        ),
                     )
                     # Safety net: detect missing stdin when task has inline text
                     if (
@@ -930,6 +933,16 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     "arguments": tool_args,
                     "result": result_str,
                 })
+
+                # Force escalation when tool result is large and escalation
+                # is configured but wasn't triggered by fingerprint prefix
+                if (
+                    not should_escalate
+                    and _escalation_cfg and _escalation_cfg.enabled
+                    and len(result_str) > bridge_cfg.summarize_threshold
+                ):
+                    should_escalate = True
+                    log.info("Large tool result (%d chars) — escalating to big LLM", len(result_str))
 
                 if debug:
                     debug_executions.append({

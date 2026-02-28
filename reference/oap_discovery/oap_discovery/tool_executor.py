@@ -428,6 +428,7 @@ async def execute_exec_call(
     task: str = "",
     summarize_threshold: int = 16000,
     chunk_size: int = 6000,
+    escalation_available: bool = False,
 ) -> str:
     """Execute a raw CLI command string with the same security as stdio tools.
 
@@ -495,8 +496,13 @@ async def execute_exec_call(
 
     body = output or "Success (no output)"
 
-    # Summarize large output via map-reduce if Ollama is available
-    if len(body) > summarize_threshold and ollama is not None and task:
-        body = await summarize_result(body, task, ollama, chunk_size, max_output)
+    # Large output handling: prefer big LLM escalation over lossy map-reduce
+    if len(body) > summarize_threshold:
+        if escalation_available:
+            # Skip summarization — big LLM will process the raw output
+            log.info("Large output (%d chars) — deferring to big LLM escalation", len(body))
+            body = body[:max_output]
+        elif ollama is not None and task:
+            body = await summarize_result(body, task, ollama, chunk_size, max_output)
 
     return body
