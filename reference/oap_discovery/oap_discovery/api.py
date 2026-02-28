@@ -155,8 +155,10 @@ async def lifespan(app: FastAPI):
     # Sandbox — wraps subprocess calls with macOS sandbox-exec
     # Create sandbox dir even when disabled (system prompt references it)
     os.makedirs(_cfg.tool_bridge.sandbox_dir, exist_ok=True)
-    if _cfg.tool_bridge.sandbox_enabled:
+    if not _cfg.tool_bridge.danger_will_robinson:
         sandbox.init(_cfg.tool_bridge.sandbox_dir)
+    else:
+        log.warning("Sandbox DISABLED — danger_will_robinson is set")
 
     # Ollama tool bridge
     if _cfg.tool_bridge.enabled:

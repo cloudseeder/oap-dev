@@ -45,5 +45,5 @@ tool_bridge:
   http_timeout: 30       # seconds for HTTP tool execution against manifest endpoints
   stdio_timeout: 10
   blocked_commands: [rm, rmdir, dd, mkfs, shutdown, reboot]
-  sandbox_enabled: true
+  # danger_will_robinson: true   # uncomment to DISABLE sandbox — you've been warned
   sandbox_dir: "/tmp/oap-sandbox"

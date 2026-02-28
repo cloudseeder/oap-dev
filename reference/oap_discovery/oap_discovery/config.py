@@ -76,7 +76,7 @@ class ToolBridgeConfig:
     blocked_commands: list[str] = field(default_factory=lambda: [
         "rm", "rmdir", "dd", "mkfs", "shutdown", "reboot",
     ])
-    sandbox_enabled: bool = True
+    danger_will_robinson: bool = False  # set True to DISABLE sandbox — you've been warned
     sandbox_dir: str = "/tmp/oap-sandbox"
 
 

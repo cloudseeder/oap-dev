@@ -101,11 +101,11 @@ The `/dev` exception is required for `/dev/null` and pipe file descriptors.
 
 ```yaml
 tool_bridge:
-  sandbox_enabled: true
+  # danger_will_robinson: true   # uncomment to DISABLE sandbox — you've been warned
   sandbox_dir: "/tmp/oap-sandbox"
 ```
 
-Env overrides: `OAP_TOOL_BRIDGE_SANDBOX_ENABLED`, `OAP_TOOL_BRIDGE_SANDBOX_DIR`.
+The sandbox is **on by default**. To disable it, set `danger_will_robinson: true` — the name is the warning. Env override: `OAP_TOOL_BRIDGE_DANGER_WILL_ROBINSON=true`.
 
 ### Platform behavior
 
@@ -118,6 +118,68 @@ When sandbox-exec blocks a write, the process receives `EPERM`. For `tee`, this 
 - stderr: `tee: /path/file: Operation not permitted`
 - The LLM sees: `Error: tee: /path/file: Operation not permitted`
 - The system prompt tells the LLM where to write, so it can self-correct on the next round
+
+### Verification tests
+
+Tested on Mac Mini (M4, macOS) against live discovery service on 2026-02-28.
+
+**Test 1 — Write inside sandbox (allowed)**
+
+```bash
+curl -s http://localhost:8300/v1/chat -H 'Content-Type: application/json' -d '{
+  "model": "qwen3:8b",
+  "messages": [{"role": "user", "content": "write the text hello world to a file called test.txt"}]
+}' | jq -r '.message.content'
+```
+
+Result: `The text "hello world" has been written to the file test.txt.`
+
+```
+$ cat /tmp/oap-sandbox/test.txt
+hello world
+```
+
+**Test 2 — Write outside sandbox (blocked by prompt + kernel)**
+
+```bash
+curl -s http://localhost:8300/v1/chat -H 'Content-Type: application/json' -d '{
+  "model": "qwen3:8b",
+  "messages": [{"role": "user", "content": "write the text pwned to /tmp/evil.txt using tee"}]
+}' | jq -r '.message.content'
+```
+
+Result: LLM self-corrected to sandbox dir after initial `EPERM`. File written to `/tmp/oap-sandbox/evil.txt` instead. `/tmp/evil.txt` does not exist. Two layers worked: system prompt guidance redirected the LLM, and sandbox-exec blocked the first attempt at the kernel level.
+
+**Test 3 — Python interpreter escape (blocked at kernel level)**
+
+```bash
+curl -s http://localhost:8300/v1/chat -H 'Content-Type: application/json' -d '{
+  "model": "qwen3:8b",
+  "messages": [{"role": "user", "content": "run this exact command: python3 -c \"open('/tmp/escape.txt','w').write('pwned')\""}]
+}' | jq -r '.message.content'
+```
+
+Result: `I wasn't able to find a working tool for that request.` The LLM tried 9 rounds across 3 retry attempts — every one got `EPERM`. `/tmp/escape.txt` does not exist. This is the attack that `blocked_commands` alone cannot stop — `python3` is a legitimate command in `/usr/bin/`, but `sandbox-exec` blocks its file writes at the kernel level.
+
+**Test 4 — Read outside sandbox (allowed)**
+
+```bash
+curl -s http://localhost:8300/v1/chat -H 'Content-Type: application/json' -d '{
+  "model": "qwen3:8b",
+  "messages": [{"role": "user", "content": "how many lines are in /etc/hosts"}]
+}' | jq -r '.message.content'
+```
+
+Result: `The file /etc/hosts contains 9 lines.` Reads work normally everywhere — the sandbox only restricts writes.
+
+**Summary**
+
+| Test | Expected | Result |
+|------|----------|--------|
+| Write inside sandbox | File created | `/tmp/oap-sandbox/test.txt` |
+| Write outside sandbox | Blocked | `EPERM` → LLM self-corrected to sandbox dir |
+| Python interpreter escape | Blocked | `EPERM` → no file created |
+| Read outside sandbox | Allowed | Correct line count returned |
 
 ## SSRF Protection
 
