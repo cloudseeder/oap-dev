@@ -106,6 +106,7 @@ async def _call_openai(
                     {"role": "user", "content": user_content},
                 ],
                 "temperature": 0,
+                "max_tokens": config.max_tokens,
             },
         )
         resp.raise_for_status()
@@ -132,7 +133,7 @@ async def _call_anthropic(
             },
             json={
                 "model": config.model,
-                "max_tokens": 1024,
+                "max_tokens": config.max_tokens,
                 "system": SYSTEM_PROMPT,
                 "messages": [
                     {"role": "user", "content": user_content},

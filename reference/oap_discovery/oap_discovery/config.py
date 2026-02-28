@@ -83,6 +83,7 @@ class EscalationConfig:
     model: str = ""
     api_key: str = ""  # or OAP_ESCALATION_API_KEY env var
     timeout: int = 60
+    max_tokens: int = 4096
 
 
 @dataclass
