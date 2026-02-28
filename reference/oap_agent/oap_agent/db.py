@@ -474,6 +474,20 @@ class AgentDB:
                     self.conn.commit()
         return added
 
+    def update_fact(self, fact_id: str, new_text: str) -> bool:
+        """Update fact text by ID. Returns True if updated."""
+        new_text = new_text.strip()
+        if not new_text:
+            return False
+        now = _now()
+        with self._lock:
+            cur = self.conn.execute(
+                "UPDATE user_facts SET fact = ?, last_referenced = ? WHERE id = ?",
+                (new_text, now, fact_id),
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
+
     def delete_fact(self, fact_id: str) -> bool:
         """Delete a user fact by ID. Returns True if deleted."""
         with self._lock:

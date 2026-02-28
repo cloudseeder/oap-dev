@@ -60,6 +60,9 @@ export default function SettingsView() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [memoryEnabled, setMemoryEnabled] = useState(false)
+  const [newFact, setNewFact] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -168,6 +171,44 @@ export default function SettingsView() {
       } catch {}
     }
     navigate('/chat?primer=true')
+  }
+
+  async function handleAddFact() {
+    const text = newFact.trim()
+    if (!text) return
+    try {
+      const res = await fetch('/v1/agent/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fact: text }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setFacts(data.facts || [])
+        setNewFact('')
+      } else if (res.status === 409) {
+        setError('That fact already exists')
+        setTimeout(() => setError(null), 2000)
+      }
+    } catch {}
+  }
+
+  async function handleUpdateFact(factId: string) {
+    const text = editText.trim()
+    if (!text) return
+    try {
+      const res = await fetch(`/v1/agent/memory/${factId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fact: text }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setFacts(data.facts || [])
+        setEditingId(null)
+        setEditText('')
+      }
+    } catch {}
   }
 
   async function handleDeleteFact(factId: string) {
@@ -305,6 +346,26 @@ export default function SettingsView() {
 
           {memoryEnabled && (
             <div className="mt-4 border-t border-gray-100 pt-4">
+              {/* Add fact input */}
+              <div className="mb-4 flex gap-2">
+                <input
+                  type="text"
+                  value={newFact}
+                  onChange={(e) => setNewFact(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddFact()}
+                  placeholder="Add a fact, e.g. prefers dark mode"
+                  maxLength={200}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <button
+                  onClick={handleAddFact}
+                  disabled={!newFact.trim()}
+                  className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+
               {facts.length === 0 ? (
                 <p className="text-sm text-gray-400">
                   No facts learned yet. Chat with the assistant and it will remember things about you.
@@ -319,16 +380,67 @@ export default function SettingsView() {
                       key={fact.id}
                       className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2"
                     >
-                      <span className="text-sm text-gray-700">{fact.fact}</span>
-                      <button
-                        onClick={() => handleDeleteFact(fact.id)}
-                        className="ml-2 flex-shrink-0 text-gray-400 hover:text-red-500"
-                        title="Delete fact"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                      {editingId === fact.id ? (
+                        <input
+                          type="text"
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleUpdateFact(fact.id)
+                            if (e.key === 'Escape') { setEditingId(null); setEditText('') }
+                          }}
+                          autoFocus
+                          maxLength={200}
+                          className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      ) : (
+                        <span className="text-sm text-gray-700">{fact.fact}</span>
+                      )}
+                      <div className="ml-2 flex flex-shrink-0 gap-1">
+                        {editingId === fact.id ? (
+                          <>
+                            <button
+                              onClick={() => handleUpdateFact(fact.id)}
+                              className="text-gray-400 hover:text-green-600"
+                              title="Save"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => { setEditingId(null); setEditText('') }}
+                              className="text-gray-400 hover:text-gray-600"
+                              title="Cancel"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => { setEditingId(fact.id); setEditText(fact.fact) }}
+                              className="text-gray-400 hover:text-primary"
+                              title="Edit fact"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteFact(fact.id)}
+                              className="text-gray-400 hover:text-red-500"
+                              title="Delete fact"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

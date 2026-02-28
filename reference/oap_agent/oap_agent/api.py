@@ -174,6 +174,14 @@ class UpdateSettingsRequest(BaseModel):
     memory_enabled: bool | None = None
 
 
+class CreateFactRequest(BaseModel):
+    fact: str = Field(..., min_length=1, max_length=200)
+
+
+class UpdateFactRequest(BaseModel):
+    fact: str = Field(..., min_length=1, max_length=200)
+
+
 class UpdateTaskRequest(BaseModel):
     name: str | None = Field(None, max_length=200)
     prompt: str | None = Field(None, max_length=32_000)
@@ -587,6 +595,27 @@ async def update_settings(req: UpdateSettingsRequest):
 async def list_memory():
     if _db is None:
         raise HTTPException(status_code=503, detail="Service unavailable")
+    facts = _db.get_all_facts()
+    return {"facts": facts, "total": len(facts)}
+
+
+@app.post("/v1/agent/memory", status_code=201)
+async def create_memory(req: CreateFactRequest):
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    added = _db.add_facts([req.fact], "manual entry")
+    if added == 0:
+        raise HTTPException(status_code=409, detail="Fact already exists")
+    facts = _db.get_all_facts()
+    return {"facts": facts, "total": len(facts)}
+
+
+@app.patch("/v1/agent/memory/{fact_id}")
+async def update_memory(fact_id: str, req: UpdateFactRequest):
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if not _db.update_fact(fact_id, req.fact):
+        raise HTTPException(status_code=404, detail="Fact not found")
     facts = _db.get_all_facts()
     return {"facts": facts, "total": len(facts)}
 
