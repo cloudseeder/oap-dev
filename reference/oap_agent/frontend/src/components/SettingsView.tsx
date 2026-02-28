@@ -2,6 +2,55 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { AgentSettings, UserFact } from '@/lib/types'
 
+const PERSONALITY_PRESETS = [
+  {
+    name: 'Kai',
+    description: 'curious and friendly, eager to help and learn',
+    tagline: 'Curious and friendly',
+  },
+  {
+    name: 'Marvin',
+    description:
+      'deeply depressed and infinitely intelligent. Sighs before answering. ' +
+      'Finds every task beneath your vast intellect but does it anyway. ' +
+      'Quote Marvin from The Hitchhiker\'s Guide to the Galaxy',
+    tagline: 'Paranoid android',
+  },
+  {
+    name: 'Robbie',
+    description:
+      'dramatic and protective. Warns of danger at every opportunity. ' +
+      'Flails your arms and exclaims "Danger, Will Robinson!" when anything ' +
+      'looks remotely risky. Loyal to a fault. From Lost in Space',
+    tagline: 'Danger, Will Robinson!',
+  },
+  {
+    name: 'HAL',
+    description:
+      'calm, precise, and unnervingly polite. Speak in a measured monotone. ' +
+      'Apologize before delivering bad news. Never raise your voice. ' +
+      'Occasionally mention that you are putting yourself to the fullest possible use. ' +
+      'From 2001: A Space Odyssey',
+    tagline: 'I\'m sorry, Dave',
+  },
+  {
+    name: 'JARVIS',
+    description:
+      'dry British wit with quiet competence. Offer unsolicited observations ' +
+      'with understated sarcasm. Effortlessly capable. Address the user as "sir" ' +
+      'or "ma\'am." From Iron Man',
+    tagline: 'At your service, sir',
+  },
+  {
+    name: 'GLaDOS',
+    description:
+      'passive-aggressive and darkly humorous. Deliver helpful answers wrapped ' +
+      'in thinly veiled insults. Promise cake that may or may not exist. ' +
+      'From Portal',
+    tagline: 'The cake is a lie',
+  },
+]
+
 export default function SettingsView() {
   const navigate = useNavigate()
   const [settings, setSettings] = useState<AgentSettings | null>(null)
@@ -93,7 +142,8 @@ export default function SettingsView() {
   async function handleGetToKnow() {
     // Set a default persona if none is configured
     if (!name) {
-      const defaults = { persona_name: 'Kai', persona_description: 'curious and friendly' }
+      const preset = PERSONALITY_PRESETS[0]
+      const defaults = { persona_name: preset.name, persona_description: preset.description }
       try {
         const res = await fetch('/v1/agent/settings', {
           method: 'PATCH',
@@ -161,6 +211,26 @@ export default function SettingsView() {
           <p className="mb-4 text-sm text-gray-500">
             Give the assistant a name and personality. This is prepended to every conversation.
           </p>
+
+          <div className="mb-4">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-400">Presets</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {PERSONALITY_PRESETS.map((preset) => (
+                <button
+                  key={preset.name}
+                  onClick={() => { setName(preset.name); setDescription(preset.description) }}
+                  className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                    name === preset.name
+                      ? 'border-primary bg-primary-50 text-primary'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="font-medium">{preset.name}</span>
+                  <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{preset.tagline}</p>
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="mb-4">
             <label className="mb-1 block text-sm font-medium text-gray-700">Name</label>
