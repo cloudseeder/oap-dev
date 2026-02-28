@@ -718,6 +718,8 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "For jq: oap_exec(command='jq \"[.[] | select(.field > 90)] | length\" /path/file'). "
         "For counting matches: oap_exec(command='grep -c pattern /path/file'). "
         "For extraction + uniqueness: oap_exec(command='grep -oE regex /path/file | sort -u'). "
+        "To write content to a file: oap_exec(command='tee /path/file', stdin='the content') — "
+        "shell redirections (> >>) do NOT work; always use tee with stdin. "
         "For inline text: oap_exec(command='grep -E pattern', stdin='the text'). "
         "CRITICAL: Text-processing commands (grep, wc, sort, jq, sed, awk, etc.) "
         "need input — if there is no file path in the command, you MUST pass the "

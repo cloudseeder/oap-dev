@@ -44,3 +44,4 @@ tool_bridge:
   ollama_timeout: 120    # seconds for Ollama /api/chat calls (model inference)
   http_timeout: 30       # seconds for HTTP tool execution against manifest endpoints
   stdio_timeout: 10
+  blocked_commands: [rm, rmdir, dd, mkfs, shutdown, reboot]
