@@ -33,38 +33,53 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
 
     ctx.clearRect(0, 0, size, size)
 
-    // Outer glow — multiple layered passes for bright neon bloom
     const shapeR = baseR * frame.scale
-    const cr = parseInt(style.primary.slice(1, 3), 16)
-    const cg = parseInt(style.primary.slice(3, 5), 16)
-    const cb = parseInt(style.primary.slice(5, 7), 16)
-    const a = frame.glowAlpha
 
-    // Layer 1: tight bright halo right at shape edge
-    const g1R = shapeR + baseR * frame.glowRadius * 0.4
-    const g1 = ctx.createRadialGradient(cx, cy, shapeR * 0.9, cx, cy, g1R)
-    g1.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`)
-    g1.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
-    ctx.fillStyle = g1
-    ctx.fillRect(0, 0, size, size)
+    // Wobbly halo ring — stroked path with per-point sine wobble
+    const haloGap = baseR * 0.25 + baseR * frame.glowRadius * 0.5
+    const haloR = shapeR + haloGap
+    const wobbleAmt = baseR * frame.glowRadius * 0.15
+    const lineWidth = 1.5 + frame.glowAlpha * 3.5
+    const segments = 64
 
-    // Layer 2: medium spread
-    const g2R = shapeR + baseR * frame.glowRadius * 0.8
-    const g2 = ctx.createRadialGradient(cx, cy, shapeR * 0.7, cx, cy, g2R)
-    g2.addColorStop(0, `rgba(${cr},${cg},${cb},${a * 0.7})`)
-    g2.addColorStop(0.5, `rgba(${cr},${cg},${cb},${a * 0.3})`)
-    g2.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
-    ctx.fillStyle = g2
-    ctx.fillRect(0, 0, size, size)
+    ctx.strokeStyle = style.primary
+    ctx.globalAlpha = Math.min(1, 0.3 + frame.glowAlpha * 0.7)
+    ctx.lineWidth = lineWidth
+    ctx.beginPath()
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI * 2
+      const wobble = Math.sin(angle * 5 + frame.rotation * 3) * wobbleAmt
+        + Math.sin(angle * 3 - frame.rotation * 2) * wobbleAmt * 0.6
+      const r = haloR + wobble
+      const x = cx + Math.cos(angle) * r
+      const y = cy + Math.sin(angle) * r
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.closePath()
+    ctx.stroke()
 
-    // Layer 3: wide soft outer glow
-    const g3R = shapeR + baseR * frame.glowRadius * 1.3
-    const g3 = ctx.createRadialGradient(cx, cy, shapeR * 0.5, cx, cy, g3R)
-    g3.addColorStop(0, `rgba(${cr},${cg},${cb},${a * 0.4})`)
-    g3.addColorStop(0.4, `rgba(${cr},${cg},${cb},${a * 0.15})`)
-    g3.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
-    ctx.fillStyle = g3
-    ctx.fillRect(0, 0, size, size)
+    // Second halo ring when active — wider, fainter
+    if (frame.glowAlpha > 0.3) {
+      const outerR = haloR + baseR * 0.3
+      ctx.globalAlpha = Math.min(1, (frame.glowAlpha - 0.3) * 1.2)
+      ctx.lineWidth = lineWidth * 0.6
+      ctx.beginPath()
+      for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * Math.PI * 2
+        const wobble = Math.sin(angle * 4 - frame.rotation * 2.5) * wobbleAmt * 1.3
+          + Math.sin(angle * 7 + frame.rotation * 1.5) * wobbleAmt * 0.5
+        const r = outerR + wobble
+        const x = cx + Math.cos(angle) * r
+        const y = cy + Math.sin(angle) * r
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.closePath()
+      ctx.stroke()
+    }
+
+    ctx.globalAlpha = 1.0
 
     ctx.save()
     ctx.translate(cx, cy)
