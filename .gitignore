@@ -19,6 +19,7 @@ firebase_svc.json
 
 # local config (deploy-specific overrides — track config.yaml.example instead)
 reference/oap_discovery/config.yaml
+reference/oap_agent/config.yaml
 
 # generated manifests (keep hand-coded starter set)
 reference/oap_discovery/manifests/*
