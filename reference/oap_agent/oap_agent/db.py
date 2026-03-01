@@ -99,6 +99,9 @@ class AgentDB:
                 "persona_name": "",
                 "persona_description": "",
                 "memory_enabled": "false",
+                "voice_input_enabled": "true",
+                "voice_auto_send": "false",
+                "voice_auto_speak": "false",
             }
             for key, value in defaults.items():
                 self.conn.execute(

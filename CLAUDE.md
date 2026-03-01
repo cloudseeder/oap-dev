@@ -33,6 +33,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/OPENAPI-TOOL-SERVER.md` — OpenAPI tool server: exposing manifests as a standard OpenAPI 3.1 spec for Open WebUI, LangChain, etc.
 - `docs/MCP.md` — MCP server: exposing manifests as MCP tools for Claude Desktop and MCP clients
 - `docs/AGENT.md` — Manifest: chat + autonomous task execution architecture and rationale
+- `docs/MANIFEST_2_0.md` — Manifest 2.0 roadmap: OpenClaw comparison, voice, channels, monitoring
 - `docs/SECURITY.md` — Security model: defense-in-depth from network isolation to OS sandbox
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
 
@@ -172,6 +173,7 @@ Manifest — chat + autonomous task execution. Thin orchestrator that calls `/v1
 - Task scheduling: APScheduler in-process, cron validation rejects intervals < 5 minutes, max 20 tasks
 - Input validation: model allowlist (`qwen3:8b`, `qwen3:4b`, `llama3.2:3b`, `mistral:7b`), `max_length` on all string fields
 - **Personality + user memory** (agent-owned, configured via Settings UI). Named persona is prepended as a system message to every `/v1/chat` call. User memory learns facts about the user from conversations via fire-and-forget LLM extraction (calls `/api/generate` on discovery's Ollama pass-through). Facts stored in `user_facts` table with UNIQUE dedup and LRU eviction. Settings stored in `agent_settings` table, seeded with defaults on first run. Key file: `memory.py`.
+- **Voice** (STT + TTS): Local-first voice input/output. STT via `faster-whisper` (CTranslate2) on the backend — mic → MediaRecorder WebM → `POST /v1/agent/transcribe` → text in chat input. TTS via browser Web Speech API — zero backend cost. Config: `voice.enabled` (default true), `voice.whisper_model` (tiny/base/small, default base), `voice.device` (auto/cpu/cuda), `voice.compute_type` (auto/int8/float16/float32), `voice.language` (null = auto-detect). Settings: `voice_input_enabled`, `voice_auto_send`, `voice_auto_speak` (persisted in `agent_settings`). Key files: `transcribe.py`, `api.py` (transcribe endpoint), frontend hooks `useVoiceRecorder.ts` + `useTTS.ts`.
 - See `docs/AGENT.md` for full architecture rationale and design decisions
 
 ### OpenClaw Skill (`skills/oap-discover/`)

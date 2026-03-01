@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useCallback } from 'react'
+import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 
 const MODELS = ['qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
 
@@ -6,12 +7,33 @@ interface ChatInputProps {
   onSend: (message: string, model: string) => void
   disabled?: boolean
   defaultModel?: string
+  voiceEnabled?: boolean
+  autoSend?: boolean
 }
 
-export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b' }: ChatInputProps) {
+export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b', voiceEnabled = false, autoSend = false }: ChatInputProps) {
   const [value, setValue] = useState('')
   const [model, setModel] = useState(defaultModel)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const handleTranscription = useCallback((text: string) => {
+    if (autoSend) {
+      onSend(text, model)
+    } else {
+      setValue((prev) => (prev ? prev + ' ' + text : text))
+      // Trigger auto-height after value update
+      setTimeout(() => {
+        const ta = textareaRef.current
+        if (ta) {
+          ta.style.height = 'auto'
+          ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`
+          ta.focus()
+        }
+      }, 0)
+    }
+  }, [autoSend, onSend, model])
+
+  const { recording, transcribing, start, stop, supported: micSupported } = useVoiceRecorder(handleTranscription)
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -39,6 +61,16 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b' 
     }
   }
 
+  function handleMicClick() {
+    if (recording) {
+      stop()
+    } else {
+      start()
+    }
+  }
+
+  const showMic = voiceEnabled && micSupported
+
   return (
     <div className="border-t border-gray-200 bg-white px-4 py-3">
       <div className="mx-auto max-w-3xl">
@@ -48,9 +80,9 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b' 
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder="Send a message..."
+            placeholder={transcribing ? 'Transcribing...' : 'Send a message...'}
             rows={1}
-            disabled={disabled}
+            disabled={disabled || transcribing}
             className="flex-1 resize-none bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none disabled:opacity-50"
             style={{ minHeight: '24px', maxHeight: '200px' }}
           />
@@ -65,6 +97,31 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b' 
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
+            {showMic && (
+              <button
+                onClick={handleMicClick}
+                disabled={disabled || transcribing}
+                title={recording ? 'Stop recording' : 'Voice input'}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  recording
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                }`}
+              >
+                {transcribing ? (
+                  /* Spinner */
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  /* Microphone icon */
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 15a3 3 0 003-3V5a3 3 0 00-6 0v7a3 3 0 003 3z" />
+                  </svg>
+                )}
+              </button>
+            )}
             <button
               onClick={handleSend}
               disabled={disabled || !value.trim()}
@@ -77,7 +134,7 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b' 
           </div>
         </div>
         <p className="mt-1.5 text-center text-xs text-gray-400">
-          Enter to send, Shift+Enter for newline
+          Enter to send, Shift+Enter for newline{showMic && (recording ? ' — Recording...' : '')}
         </p>
       </div>
     </div>

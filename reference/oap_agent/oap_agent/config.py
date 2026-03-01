@@ -28,10 +28,20 @@ class DiscoveryConfig:
 
 
 @dataclass
+class VoiceConfig:
+    enabled: bool = True
+    whisper_model: str = "base"       # tiny, base, small
+    device: str = "auto"              # auto, cpu, cuda
+    compute_type: str = "auto"        # auto, int8, float16, float32
+    language: str | None = None       # None = auto-detect
+
+
+@dataclass
 class AgentConfig:
     api: ApiConfig = field(default_factory=ApiConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
+    voice: VoiceConfig = field(default_factory=VoiceConfig)
     debug: bool = False
     max_tasks: int = 20
     max_concurrent_tasks: int = 1
@@ -70,6 +80,14 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
         cfg.discovery.url = _validate_url(disc.get("url", cfg.discovery.url))
         cfg.discovery.model = disc.get("model", cfg.discovery.model)
         cfg.discovery.timeout = disc.get("timeout", cfg.discovery.timeout)
+
+    if "voice" in raw:
+        v = raw["voice"]
+        cfg.voice.enabled = v.get("enabled", cfg.voice.enabled)
+        cfg.voice.whisper_model = v.get("whisper_model", cfg.voice.whisper_model)
+        cfg.voice.device = v.get("device", cfg.voice.device)
+        cfg.voice.compute_type = v.get("compute_type", cfg.voice.compute_type)
+        cfg.voice.language = v.get("language", cfg.voice.language)
 
     cfg.debug = raw.get("debug", cfg.debug)
     cfg.max_tasks = raw.get("max_tasks", cfg.max_tasks)

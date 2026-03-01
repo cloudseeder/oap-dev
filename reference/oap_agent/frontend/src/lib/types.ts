@@ -55,6 +55,9 @@ export interface AgentSettings {
   persona_name: string
   persona_description: string
   memory_enabled: string
+  voice_input_enabled: string
+  voice_auto_send: string
+  voice_auto_speak: string
 }
 
 export interface UserFact {

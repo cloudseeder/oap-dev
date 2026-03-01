@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
-import type { Message, ToolCall } from '@/lib/types'
+import type { Message, ToolCall, AgentSettings } from '@/lib/types'
 import { parseSSE } from '@/lib/types'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
+import { useTTS } from '@/hooks/useTTS'
 
 export default function ChatView() {
   const navigate = useNavigate()
@@ -17,6 +18,21 @@ export default function ChatView() {
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Voice settings
+  const [settings, setSettings] = useState<AgentSettings | null>(null)
+  const autoSpeakTTS = useTTS()
+
+  useEffect(() => {
+    fetch('/v1/agent/settings')
+      .then((r) => r.ok ? r.json() : null)
+      .then((s) => { if (s) setSettings(s) })
+      .catch(() => {})
+  }, [])
+
+  const voiceEnabled = settings?.voice_input_enabled === 'true'
+  const autoSend = settings?.voice_auto_send === 'true'
+  const autoSpeak = settings?.voice_auto_speak === 'true'
 
   useEffect(() => {
     if (initialConvId) {
@@ -154,7 +170,10 @@ export default function ChatView() {
               } else if (ev.event === 'message_saved') {
                 // User message confirmed saved — update temp id if provided
               } else if (ev.event === 'done') {
-                // Stream complete
+                // Stream complete — auto-speak if enabled
+                if (autoSpeak && currentContent) {
+                  autoSpeakTTS.speak(currentContent)
+                }
               }
             }
             chunk = ''
@@ -186,7 +205,7 @@ export default function ChatView() {
     } finally {
       setStreaming(false)
     }
-  }, [conversationId, messages.length, navigate, streaming])
+  }, [conversationId, messages.length, navigate, streaming, autoSpeak, autoSpeakTTS])
 
   return (
     <div className="flex h-full flex-col">
@@ -210,7 +229,7 @@ export default function ChatView() {
           )}
 
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} />
+            <ChatMessage key={msg.id} message={msg} ttsEnabled={voiceEnabled} />
           ))}
 
           {streaming && (
@@ -240,6 +259,8 @@ export default function ChatView() {
         onSend={handleSend}
         disabled={streaming || loading}
         defaultModel="qwen3:8b"
+        voiceEnabled={voiceEnabled}
+        autoSend={autoSend}
       />
     </div>
   )

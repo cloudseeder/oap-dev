@@ -11,7 +11,7 @@ from typing import Any
 
 import uvicorn
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -32,6 +32,7 @@ _discovery_model: str = "qwen3:8b"
 _discovery_timeout: int = 120
 _debug_mode: bool = False
 _max_tasks: int = 20
+_voice_cfg = None  # VoiceConfig, set in lifespan
 
 ALLOWED_MODELS = {"qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"}
 
@@ -71,7 +72,7 @@ def _validate_cron(schedule: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _db, _event_bus, _scheduler, _discovery_url, _discovery_model, _discovery_timeout
-    global _debug_mode, _max_tasks
+    global _debug_mode, _max_tasks, _voice_cfg
 
     config_path = getattr(app, "_config_path", "config.yaml")
     cfg = load_config(config_path)
@@ -84,8 +85,21 @@ async def lifespan(app: FastAPI):
     _debug_mode = cfg.debug
     _max_tasks = cfg.max_tasks
 
+    _voice_cfg = cfg.voice
+
     _scheduler = TaskScheduler()
     _scheduler.start(_db, _event_bus, _discovery_url, debug=_debug_mode, max_concurrent=cfg.max_concurrent_tasks)
+
+    # Load Whisper model for voice input
+    if cfg.voice.enabled:
+        try:
+            from . import transcribe as _tx
+            _tx.init(cfg.voice.whisper_model, cfg.voice.device, cfg.voice.compute_type)
+            log.info("Whisper %s loaded — voice input ready", cfg.voice.whisper_model)
+        except Exception as exc:
+            log.warning("Whisper model failed to load — voice input disabled: %s", exc)
+            _voice_cfg = cfg.voice
+            _voice_cfg.enabled = False
 
     conv_count = _db.list_conversations()["total"]
     task_count = len(_db.list_tasks())
@@ -172,6 +186,9 @@ class UpdateSettingsRequest(BaseModel):
     persona_name: str | None = Field(None, max_length=100)
     persona_description: str | None = Field(None, max_length=500)
     memory_enabled: bool | None = None
+    voice_input_enabled: bool | None = None
+    voice_auto_send: bool | None = None
+    voice_auto_speak: bool | None = None
 
 
 class CreateFactRequest(BaseModel):
@@ -588,6 +605,12 @@ async def update_settings(req: UpdateSettingsRequest):
         _db.set_setting("persona_description", req.persona_description)
     if req.memory_enabled is not None:
         _db.set_setting("memory_enabled", "true" if req.memory_enabled else "false")
+    if req.voice_input_enabled is not None:
+        _db.set_setting("voice_input_enabled", "true" if req.voice_input_enabled else "false")
+    if req.voice_auto_send is not None:
+        _db.set_setting("voice_auto_send", "true" if req.voice_auto_send else "false")
+    if req.voice_auto_speak is not None:
+        _db.set_setting("voice_auto_speak", "true" if req.voice_auto_speak else "false")
     return _db.get_settings()
 
 
@@ -626,6 +649,42 @@ async def delete_memory(fact_id: str):
         raise HTTPException(status_code=503, detail="Service unavailable")
     if not _db.delete_fact(fact_id):
         raise HTTPException(status_code=404, detail="Fact not found")
+
+
+# ---------------------------------------------------------------------------
+# Voice routes
+# ---------------------------------------------------------------------------
+
+@app.post("/v1/agent/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """Transcribe audio to text via faster-whisper."""
+    if _voice_cfg is None or not _voice_cfg.enabled:
+        raise HTTPException(status_code=501, detail="Voice input not enabled")
+
+    import os
+    import tempfile
+    from . import transcribe as tx
+
+    data = await file.read()
+    if len(data) > 25 * 1024 * 1024:  # 25MB limit
+        raise HTTPException(status_code=413, detail="Audio file too large (max 25MB)")
+
+    suffix = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(data)
+        tmp_path = tmp.name
+    try:
+        text = tx.transcribe(tmp_path, language=_voice_cfg.language)
+        return {"text": text}
+    finally:
+        os.unlink(tmp_path)
+
+
+@app.get("/v1/agent/voice/status")
+async def voice_status():
+    """Check if voice input is available (Whisper model loaded)."""
+    enabled = _voice_cfg is not None and _voice_cfg.enabled
+    return {"enabled": enabled}
 
 
 # ---------------------------------------------------------------------------

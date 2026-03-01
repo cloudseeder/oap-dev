@@ -63,6 +63,9 @@ export default function SettingsView() {
   const [newFact, setNewFact] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [voiceInputEnabled, setVoiceInputEnabled] = useState(true)
+  const [voiceAutoSend, setVoiceAutoSend] = useState(false)
+  const [voiceAutoSpeak, setVoiceAutoSpeak] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -84,6 +87,9 @@ export default function SettingsView() {
         setName(s.persona_name || '')
         setDescription(s.persona_description || '')
         setMemoryEnabled(s.memory_enabled === 'true')
+        setVoiceInputEnabled(s.voice_input_enabled !== 'false')
+        setVoiceAutoSend(s.voice_auto_send === 'true')
+        setVoiceAutoSpeak(s.voice_auto_speak === 'true')
       }
       if (memoryRes.ok) {
         const m = await memoryRes.json()
@@ -139,6 +145,24 @@ export default function SettingsView() {
       }
     } catch {
       setMemoryEnabled(!newValue) // revert on error
+    }
+  }
+
+  async function handleToggleVoiceSetting(key: 'voice_input_enabled' | 'voice_auto_send' | 'voice_auto_speak', current: boolean, setter: (v: boolean) => void) {
+    const newValue = !current
+    setter(newValue)
+    try {
+      const res = await fetch('/v1/agent/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: newValue }),
+      })
+      if (res.ok) {
+        const s = await res.json()
+        setSettings(s)
+      }
+    } catch {
+      setter(current) // revert on error
     }
   }
 
@@ -304,6 +328,77 @@ export default function SettingsView() {
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
+        </div>
+
+        {/* Voice section */}
+        <div className="mb-8 rounded-xl border border-gray-200 bg-white p-6">
+          <h2 className="mb-4 text-lg font-medium text-gray-900">Voice</h2>
+          <p className="mb-4 text-sm text-gray-500">
+            Speech-to-text input via local Whisper model, text-to-speech output via browser.
+          </p>
+
+          <div className="space-y-4">
+            {/* Voice Input toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-700">Voice Input</p>
+                <p className="text-xs text-gray-400">Show mic button for speech-to-text</p>
+              </div>
+              <button
+                onClick={() => handleToggleVoiceSetting('voice_input_enabled', voiceInputEnabled, setVoiceInputEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  voiceInputEnabled ? 'bg-primary' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    voiceInputEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Auto-send toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-700">Auto-send</p>
+                <p className="text-xs text-gray-400">Send transcribed text immediately without review</p>
+              </div>
+              <button
+                onClick={() => handleToggleVoiceSetting('voice_auto_send', voiceAutoSend, setVoiceAutoSend)}
+                disabled={!voiceInputEnabled}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-40 ${
+                  voiceAutoSend ? 'bg-primary' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    voiceAutoSend ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Auto-speak toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-700">Auto-speak</p>
+                <p className="text-xs text-gray-400">Speak assistant replies aloud automatically</p>
+              </div>
+              <button
+                onClick={() => handleToggleVoiceSetting('voice_auto_speak', voiceAutoSpeak, setVoiceAutoSpeak)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  voiceAutoSpeak ? 'bg-primary' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    voiceAutoSpeak ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Memory section */}
