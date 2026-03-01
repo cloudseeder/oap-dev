@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import wave
 from pathlib import Path
 
@@ -24,13 +25,48 @@ def init(model_path: str) -> None:
     log.info("Piper voice loaded: %s", _voice_name)
 
 
+def _strip_markdown(text: str) -> str:
+    """Convert markdown to plain text for natural TTS output."""
+    # Code blocks → remove entirely (not speakable)
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    # Bold/italic
+    text = re.sub(r"\*\*\*(.+?)\*\*\*", r"\1", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
+    text = re.sub(r"___(.+?)___", r"\1", text)
+    text = re.sub(r"__(.+?)__", r"\1", text)
+    text = re.sub(r"_(.+?)_", r"\1", text)
+    # Strikethrough
+    text = re.sub(r"~~(.+?)~~", r"\1", text)
+    # Headings
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Links: [text](url) → text
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    # Images: ![alt](url) → remove
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", text)
+    # Unordered list markers
+    text = re.sub(r"^[\s]*[-*+]\s+", "", text, flags=re.MULTILINE)
+    # Ordered list markers
+    text = re.sub(r"^[\s]*\d+\.\s+", "", text, flags=re.MULTILINE)
+    # Blockquotes
+    text = re.sub(r"^>\s?", "", text, flags=re.MULTILINE)
+    # Horizontal rules
+    text = re.sub(r"^[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
+    # HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def synthesize(text: str) -> bytes:
     """Synthesize text to WAV bytes."""
     if _voice is None:
         raise RuntimeError("Piper voice not loaded — call init() first")
+    text = _strip_markdown(text)
     buf = io.BytesIO()
     wav_file = wave.open(buf, "wb")
-    # synthesize_wav sets WAV format (channels/sampwidth/framerate) and writes frames
     _voice.synthesize_wav(text, wav_file)
     wav_file.close()
     data = buf.getvalue()
