@@ -189,6 +189,7 @@ class UpdateSettingsRequest(BaseModel):
     voice_input_enabled: bool | None = None
     voice_auto_send: bool | None = None
     voice_auto_speak: bool | None = None
+    voice_tts_voice: str | None = Field(None, max_length=200)
 
 
 class CreateFactRequest(BaseModel):
@@ -611,6 +612,8 @@ async def update_settings(req: UpdateSettingsRequest):
         _db.set_setting("voice_auto_send", "true" if req.voice_auto_send else "false")
     if req.voice_auto_speak is not None:
         _db.set_setting("voice_auto_speak", "true" if req.voice_auto_speak else "false")
+    if req.voice_tts_voice is not None:
+        _db.set_setting("voice_tts_voice", req.voice_tts_voice)
     return _db.get_settings()
 
 

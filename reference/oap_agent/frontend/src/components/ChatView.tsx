@@ -21,7 +21,6 @@ export default function ChatView() {
 
   // Voice settings
   const [settings, setSettings] = useState<AgentSettings | null>(null)
-  const autoSpeakTTS = useTTS()
 
   useEffect(() => {
     fetch('/v1/agent/settings')
@@ -33,6 +32,8 @@ export default function ChatView() {
   const voiceEnabled = settings?.voice_input_enabled === 'true'
   const autoSend = settings?.voice_auto_send === 'true'
   const autoSpeak = settings?.voice_auto_speak === 'true'
+  const ttsVoice = settings?.voice_tts_voice || undefined
+  const autoSpeakTTS = useTTS(ttsVoice)
 
   useEffect(() => {
     if (initialConvId) {
@@ -229,7 +230,7 @@ export default function ChatView() {
           )}
 
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} ttsEnabled={voiceEnabled} />
+            <ChatMessage key={msg.id} message={msg} ttsEnabled={voiceEnabled} ttsVoice={ttsVoice} />
           ))}
 
           {streaming && (

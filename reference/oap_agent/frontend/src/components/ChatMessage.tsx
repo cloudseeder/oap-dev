@@ -7,12 +7,13 @@ import { useTTS } from '@/hooks/useTTS'
 interface ChatMessageProps {
   message: Message
   ttsEnabled?: boolean
+  ttsVoice?: string
 }
 
-export default function ChatMessage({ message, ttsEnabled = false }: ChatMessageProps) {
+export default function ChatMessage({ message, ttsEnabled = false, ttsVoice }: ChatMessageProps) {
   const isUser = message.role === 'user'
   const experienceCache = message.metadata?.experience_cache
-  const { speaking, speak, stop, supported: ttsSupported } = useTTS()
+  const { speaking, speak, stop, supported: ttsSupported } = useTTS(ttsVoice)
 
   const showSpeaker = !isUser && ttsEnabled && ttsSupported && message.content
 

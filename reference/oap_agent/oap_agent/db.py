@@ -100,6 +100,7 @@ class AgentDB:
             "voice_input_enabled": "true",
             "voice_auto_send": "false",
             "voice_auto_speak": "false",
+            "voice_tts_voice": "",
         }
         for key, value in defaults.items():
             self.conn.execute(

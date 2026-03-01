@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { AgentSettings, UserFact } from '@/lib/types'
+import { useVoices } from '@/hooks/useTTS'
 
 const PERSONALITY_PRESETS = [
   {
@@ -66,6 +67,8 @@ export default function SettingsView() {
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(true)
   const [voiceAutoSend, setVoiceAutoSend] = useState(false)
   const [voiceAutoSpeak, setVoiceAutoSpeak] = useState(false)
+  const [voiceTtsVoice, setVoiceTtsVoice] = useState('')
+  const voices = useVoices()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -90,6 +93,7 @@ export default function SettingsView() {
         setVoiceInputEnabled(s.voice_input_enabled !== 'false')
         setVoiceAutoSend(s.voice_auto_send === 'true')
         setVoiceAutoSpeak(s.voice_auto_speak === 'true')
+        setVoiceTtsVoice(s.voice_tts_voice || '')
       }
       if (memoryRes.ok) {
         const m = await memoryRes.json()
@@ -398,6 +402,56 @@ export default function SettingsView() {
                 />
               </button>
             </div>
+
+            {/* TTS Voice picker */}
+            {voices.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-gray-700">Voice</p>
+                <p className="mb-2 text-xs text-gray-400">Select a system voice for text-to-speech</p>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={voiceTtsVoice}
+                    onChange={async (e) => {
+                      const val = e.target.value
+                      setVoiceTtsVoice(val)
+                      try {
+                        await fetch('/v1/agent/settings', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ voice_tts_voice: val }),
+                        })
+                      } catch {}
+                    }}
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">System default</option>
+                    {voices.map((v) => (
+                      <option key={v.voiceURI} value={v.voiceURI}>
+                        {v.name}{v.lang ? ` (${v.lang})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      if (!window.speechSynthesis) return
+                      window.speechSynthesis.cancel()
+                      const u = new SpeechSynthesisUtterance('Hello, I am your assistant.')
+                      if (voiceTtsVoice) {
+                        const v = window.speechSynthesis.getVoices().find((v) => v.voiceURI === voiceTtsVoice)
+                        if (v) u.voice = v
+                      }
+                      window.speechSynthesis.speak(u)
+                    }}
+                    title="Preview voice"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
