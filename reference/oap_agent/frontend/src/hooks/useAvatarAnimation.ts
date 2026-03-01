@@ -75,8 +75,8 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
           const intensity = style.speakIntensity
 
           scale = 1 + level * intensity * 0.25
-          glowRadius = level * intensity * 2.0
-          glowAlpha = level * intensity * 0.9
+          glowRadius = level * intensity * 2.5
+          glowAlpha = level * intensity * 1.5
           break
         }
 
@@ -88,7 +88,7 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
 
           scale = 1 + mic * 0.35
           glowRadius = mic * 2.5
-          glowAlpha = mic * 1.0
+          glowAlpha = mic * 1.5
           break
         }
 

@@ -44,10 +44,10 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
       const haloGap = baseR * 0.2 + baseR * g * 0.35
       const haloR = shapeR + haloGap
       const wobbleAmt = baseR * g * 0.15
-      const lineWidth = 1.5 + a * 5
+      const lineWidth = 2 + a * 8
 
       ctx.strokeStyle = style.primary
-      ctx.globalAlpha = Math.min(1, a)
+      ctx.globalAlpha = Math.min(1, a * 0.9)
       ctx.lineWidth = lineWidth
       ctx.beginPath()
       for (let i = 0; i <= segments; i++) {
