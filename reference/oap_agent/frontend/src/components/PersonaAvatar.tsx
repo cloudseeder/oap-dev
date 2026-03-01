@@ -29,7 +29,7 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
 
     const cx = size / 2
     const cy = size / 2
-    const baseR = size * 0.14
+    const baseR = size * 0.28
 
     ctx.clearRect(0, 0, size, size)
 

@@ -265,15 +265,15 @@ export default function ChatView() {
   }, [recording, recorderStart, recorderStop])
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Avatar */}
-      <div className="flex justify-center py-3 shrink-0">
+    <div className="relative flex h-full flex-col">
+      {/* Avatar — upper right corner */}
+      <div className="absolute right-4 top-4 z-10">
         <PersonaAvatar
           persona={settings?.persona_name || ''}
           speaking={anySpeaking}
           recording={recording}
           streaming={streaming}
-          size={messages.length === 0 ? 256 : 160}
+          size={200}
           audioLevelRef={audioLevelRef}
         />
       </div>

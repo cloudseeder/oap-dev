@@ -296,7 +296,7 @@ export default function SettingsView() {
                   }`}
                 >
                   <div className="shrink-0">
-                    <PersonaAvatar persona={preset.name} speaking={false} recording={false} streaming={false} size={48} />
+                    <PersonaAvatar persona={preset.name} speaking={false} recording={false} streaming={false} size={32} />
                   </div>
                   <div>
                     <span className="font-medium">{preset.name}</span>
