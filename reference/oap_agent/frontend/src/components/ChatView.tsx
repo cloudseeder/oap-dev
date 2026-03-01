@@ -273,7 +273,7 @@ export default function ChatView() {
           speaking={anySpeaking}
           recording={recording}
           streaming={streaming}
-          size={messages.length === 0 ? 128 : 80}
+          size={messages.length === 0 ? 256 : 160}
           audioLevelRef={audioLevelRef}
         />
       </div>
