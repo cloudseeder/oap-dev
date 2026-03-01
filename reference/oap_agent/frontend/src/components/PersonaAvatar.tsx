@@ -35,15 +35,17 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
 
     const shapeR = baseR * frame.scale
 
-    // Wobbly halo ring — stroked path with per-point sine wobble
-    const haloGap = baseR * 0.25 + baseR * frame.glowRadius * 0.5
+    // Wobbly halo ring — glowRadius 0=tight, 2.5=far; glowAlpha 0=invisible, 1=bold
+    const g = frame.glowRadius  // 0 to ~2.5
+    const a = frame.glowAlpha   // 0 to ~1.0
+    const haloGap = baseR * 0.15 + baseR * g * 0.4
     const haloR = shapeR + haloGap
-    const wobbleAmt = baseR * frame.glowRadius * 0.15
-    const lineWidth = 1.5 + frame.glowAlpha * 3.5
+    const wobbleAmt = baseR * g * 0.12
+    const lineWidth = 1 + a * 5
     const segments = 64
 
     ctx.strokeStyle = style.primary
-    ctx.globalAlpha = Math.min(1, 0.3 + frame.glowAlpha * 0.7)
+    ctx.globalAlpha = Math.min(1, a)
     ctx.lineWidth = lineWidth
     ctx.beginPath()
     for (let i = 0; i <= segments; i++) {
@@ -59,16 +61,16 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
     ctx.closePath()
     ctx.stroke()
 
-    // Second halo ring when active — wider, fainter
-    if (frame.glowAlpha > 0.3) {
-      const outerR = haloR + baseR * 0.3
-      ctx.globalAlpha = Math.min(1, (frame.glowAlpha - 0.3) * 1.2)
-      ctx.lineWidth = lineWidth * 0.6
+    // Second halo ring — only when audio is active
+    if (a > 0.4) {
+      const outerR = haloR + baseR * 0.25 + baseR * g * 0.2
+      ctx.globalAlpha = Math.min(1, (a - 0.4) * 1.5)
+      ctx.lineWidth = lineWidth * 0.5
       ctx.beginPath()
       for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2
-        const wobble = Math.sin(angle * 4 - frame.rotation * 2.5) * wobbleAmt * 1.3
-          + Math.sin(angle * 7 + frame.rotation * 1.5) * wobbleAmt * 0.5
+        const wobble = Math.sin(angle * 4 - frame.rotation * 2.5) * wobbleAmt * 1.5
+          + Math.sin(angle * 7 + frame.rotation * 1.5) * wobbleAmt * 0.7
         const r = outerR + wobble
         const x = cx + Math.cos(angle) * r
         const y = cy + Math.sin(angle) * r

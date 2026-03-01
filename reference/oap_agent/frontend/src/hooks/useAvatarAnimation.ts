@@ -13,8 +13,8 @@ export interface AvatarFrame {
 
 const INITIAL_FRAME: AvatarFrame = {
   scale: 1,
-  glowRadius: 0.8,
-  glowAlpha: 0.35,
+  glowRadius: 0,
+  glowAlpha: 0,
   rotation: 0,
   quirk: 0,
 }
@@ -47,51 +47,57 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
       const t = (now - startRef.current) / 1000
 
       let scale = 1
-      let glowRadius = 0.5
-      let glowAlpha = 0.15
+      let glowRadius = 0
+      let glowAlpha = 0
       let rotation = 0
       let quirk = 0
 
       switch (mode) {
         case 'idle':
-          scale = 1 + 0.02 * Math.sin(t * style.idleSpeed * 2)
-          glowRadius = 0.5 + 0.05 * Math.sin(t * style.idleSpeed * 1.5)
-          glowAlpha = 0.12 + 0.05 * Math.sin(t * style.idleSpeed * 1.5)
+          // Minimal — thin faint ring, gentle breathe
+          scale = 1 + 0.015 * Math.sin(t * style.idleSpeed * 2)
+          glowRadius = 0.1 + 0.03 * Math.sin(t * style.idleSpeed * 1.5)
+          glowAlpha = 0.08 + 0.03 * Math.sin(t * style.idleSpeed * 1.5)
           break
 
         case 'speaking': {
-          // Simulated speech envelope — multiple overlapping rhythms
-          const syllable = Math.abs(Math.sin(t * 4.2)) ** 0.6
-          const word = (Math.sin(t * 2.1) * 0.5 + 0.5) ** 0.8
-          const emphasis = Math.sin(t * 0.7) * 0.3 + 0.7
-          const jitter = Math.sin(t * 17.3) * 0.15 + Math.sin(t * 31.7) * 0.08
-          const raw = Math.min(1, (syllable * 0.5 + word * 0.3 + jitter) * emphasis)
-          // Power curve: ramp up fast from dim to bright
-          const level = raw ** 0.4
+          // Speech-like envelope with real valleys between syllables
+          // Syllable bursts at ~4Hz with sharp attack, slower decay
+          const syllableRaw = Math.sin(t * 4.2)
+          const syllable = syllableRaw > 0 ? syllableRaw ** 0.3 : 0  // half-wave rectify + compress peaks
+          // Word grouping at ~1.5Hz — creates pauses between words
+          const wordGate = Math.max(0, Math.sin(t * 1.5)) ** 0.5
+          // Sentence-level dynamics
+          const emphasis = 0.5 + 0.5 * Math.sin(t * 0.4)
+          // High-freq flutter for texture
+          const flutter = Math.sin(t * 23) * 0.1 + Math.sin(t * 37) * 0.05
+          // Combine: word gate creates real silence gaps
+          const level = Math.min(1, Math.max(0, (syllable * 0.7 + flutter) * wordGate * emphasis))
           const intensity = style.speakIntensity
 
-          scale = 1 + level * intensity * 0.5
-          glowRadius = 0.6 + level * intensity * 2.0
-          glowAlpha = 0.25 + level * intensity * 0.75
+          scale = 1 + level * intensity * 0.3
+          glowRadius = level * intensity * 2.5
+          glowAlpha = level * intensity * 1.0
           break
         }
 
         case 'listening': {
-          // Real mic audio level — color organ style
+          // Real mic audio — direct mapping, no smoothing on top of analyser
           const raw = input.audioLevelRef?.current ?? 0
-          // Power curve: small sounds still produce visible glow, loud = blazing
-          const mic = raw ** 0.35
-          scale = 1 + mic * 0.5
-          glowRadius = 0.6 + mic * 2.2
-          glowAlpha = 0.25 + mic * 0.75
+          // Slight compression so quiet sounds register
+          const mic = raw ** 0.5
+
+          scale = 1 + mic * 0.35
+          glowRadius = mic * 2.5
+          glowAlpha = mic * 1.0
           break
         }
 
         case 'thinking':
           scale = 1 + 0.04 * Math.sin(t * 2)
           rotation = t * 1.5
-          glowRadius = 0.5 + 0.1 * Math.sin(t * 3)
-          glowAlpha = 0.15 + 0.1 * Math.abs(Math.sin(t * 1.5))
+          glowRadius = 0.15 + 0.08 * Math.sin(t * 3)
+          glowAlpha = 0.1 + 0.06 * Math.abs(Math.sin(t * 1.5))
           break
       }
 
