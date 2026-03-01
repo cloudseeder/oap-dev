@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 
 const MODELS = ['qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
@@ -9,9 +9,10 @@ interface ChatInputProps {
   defaultModel?: string
   voiceEnabled?: boolean
   autoSend?: boolean
+  recordTrigger?: number
 }
 
-export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b', voiceEnabled = false, autoSend = false }: ChatInputProps) {
+export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b', voiceEnabled = false, autoSend = false, recordTrigger = 0 }: ChatInputProps) {
   const [value, setValue] = useState('')
   const [model, setModel] = useState(defaultModel)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -21,7 +22,6 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b',
       onSend(text, model)
     } else {
       setValue((prev) => (prev ? prev + ' ' + text : text))
-      // Trigger auto-height after value update
       setTimeout(() => {
         const ta = textareaRef.current
         if (ta) {
@@ -34,6 +34,15 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b',
   }, [autoSend, onSend, model])
 
   const { recording, transcribing, start, stop, supported: micSupported } = useVoiceRecorder(handleTranscription)
+
+  // Auto-start recording when triggered by parent (hands-free conversation loop)
+  const prevTrigger = useRef(0)
+  useEffect(() => {
+    if (recordTrigger > prevTrigger.current && !disabled && !recording && !transcribing && micSupported && voiceEnabled) {
+      prevTrigger.current = recordTrigger
+      start()
+    }
+  }, [recordTrigger, disabled, recording, transcribing, micSupported, voiceEnabled, start])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -80,7 +89,7 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b',
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={transcribing ? 'Transcribing...' : 'Send a message...'}
+            placeholder={transcribing ? 'Transcribing...' : recording ? 'Listening...' : 'Send a message...'}
             rows={1}
             disabled={disabled || transcribing}
             className="flex-1 resize-none bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none disabled:opacity-50"
@@ -109,13 +118,11 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b',
                 }`}
               >
                 {transcribing ? (
-                  /* Spinner */
                   <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                 ) : (
-                  /* Microphone icon */
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 15a3 3 0 003-3V5a3 3 0 00-6 0v7a3 3 0 003 3z" />
                   </svg>

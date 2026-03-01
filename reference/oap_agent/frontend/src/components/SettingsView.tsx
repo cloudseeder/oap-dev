@@ -362,11 +362,11 @@ export default function SettingsView() {
               </button>
             </div>
 
-            {/* Auto-send toggle */}
+            {/* Always use STT toggle */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-700">Auto-send</p>
-                <p className="text-xs text-gray-400">Send transcribed text immediately without review</p>
+                <p className="text-sm font-medium text-gray-700">Always use STT</p>
+                <p className="text-xs text-gray-400">Auto-record and send voice input after each reply</p>
               </div>
               <button
                 onClick={() => handleToggleVoiceSetting('voice_auto_send', voiceAutoSend, setVoiceAutoSend)}
@@ -383,11 +383,11 @@ export default function SettingsView() {
               </button>
             </div>
 
-            {/* Auto-speak toggle */}
+            {/* Always use TTS toggle */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-700">Auto-speak</p>
-                <p className="text-xs text-gray-400">Speak assistant replies aloud automatically</p>
+                <p className="text-sm font-medium text-gray-700">Always use TTS</p>
+                <p className="text-xs text-gray-400">Speak all assistant replies aloud</p>
               </div>
               <button
                 onClick={() => handleToggleVoiceSetting('voice_auto_speak', voiceAutoSpeak, setVoiceAutoSpeak)}

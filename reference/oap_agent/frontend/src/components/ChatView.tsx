@@ -35,6 +35,20 @@ export default function ChatView() {
   const ttsVoice = settings?.voice_tts_voice || undefined
   const autoSpeakTTS = useTTS(ttsVoice)
 
+  // Auto-record trigger: increment to tell ChatInput to start recording
+  const [recordTrigger, setRecordTrigger] = useState(0)
+  const waitingForTTS = useRef(false)
+
+  // When TTS finishes speaking and we were waiting, trigger auto-record
+  useEffect(() => {
+    if (!autoSpeakTTS.speaking && waitingForTTS.current) {
+      waitingForTTS.current = false
+      // Small delay so the mic doesn't pick up the tail end of TTS audio
+      const timer = setTimeout(() => setRecordTrigger((t) => t + 1), 600)
+      return () => clearTimeout(timer)
+    }
+  }, [autoSpeakTTS.speaking])
+
   useEffect(() => {
     if (initialConvId) {
       setConversationId(initialConvId)
@@ -169,11 +183,18 @@ export default function ChatView() {
                 currentMetadata = msg.metadata || {}
                 assistantMsgId = msg.id || `assistant-${Date.now()}`
               } else if (ev.event === 'message_saved') {
-                // User message confirmed saved — update temp id if provided
+                // User message confirmed saved
               } else if (ev.event === 'done') {
-                // Stream complete — auto-speak if enabled
+                // Stream complete
                 if (autoSpeak && currentContent) {
                   autoSpeakTTS.speak(currentContent)
+                  // If STT is also on, wait for TTS to finish then auto-record
+                  if (autoSend) {
+                    waitingForTTS.current = true
+                  }
+                } else if (autoSend) {
+                  // No TTS — trigger auto-record after a short delay
+                  setTimeout(() => setRecordTrigger((t) => t + 1), 500)
                 }
               }
             }
@@ -206,7 +227,7 @@ export default function ChatView() {
     } finally {
       setStreaming(false)
     }
-  }, [conversationId, messages.length, navigate, streaming, autoSpeak, autoSpeakTTS])
+  }, [conversationId, messages.length, navigate, streaming, autoSpeak, autoSend, autoSpeakTTS])
 
   return (
     <div className="flex h-full flex-col">
@@ -262,6 +283,7 @@ export default function ChatView() {
         defaultModel="qwen3:8b"
         voiceEnabled={voiceEnabled}
         autoSend={autoSend}
+        recordTrigger={recordTrigger}
       />
     </div>
   )
