@@ -33,17 +33,37 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
 
     ctx.clearRect(0, 0, size, size)
 
-    // Outer glow — gradient starts at shape edge so bright ring is visible
+    // Outer glow — multiple layered passes for bright neon bloom
     const shapeR = baseR * frame.scale
-    const glowR = shapeR + baseR * frame.glowRadius
-    const gradient = ctx.createRadialGradient(cx, cy, shapeR * 0.8, cx, cy, glowR)
     const cr = parseInt(style.primary.slice(1, 3), 16)
     const cg = parseInt(style.primary.slice(3, 5), 16)
     const cb = parseInt(style.primary.slice(5, 7), 16)
-    gradient.addColorStop(0, `rgba(${cr},${cg},${cb},${frame.glowAlpha})`)
-    gradient.addColorStop(0.4, `rgba(${cr},${cg},${cb},${frame.glowAlpha * 0.5})`)
-    gradient.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
-    ctx.fillStyle = gradient
+    const a = frame.glowAlpha
+
+    // Layer 1: tight bright halo right at shape edge
+    const g1R = shapeR + baseR * frame.glowRadius * 0.4
+    const g1 = ctx.createRadialGradient(cx, cy, shapeR * 0.9, cx, cy, g1R)
+    g1.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`)
+    g1.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
+    ctx.fillStyle = g1
+    ctx.fillRect(0, 0, size, size)
+
+    // Layer 2: medium spread
+    const g2R = shapeR + baseR * frame.glowRadius * 0.8
+    const g2 = ctx.createRadialGradient(cx, cy, shapeR * 0.7, cx, cy, g2R)
+    g2.addColorStop(0, `rgba(${cr},${cg},${cb},${a * 0.7})`)
+    g2.addColorStop(0.5, `rgba(${cr},${cg},${cb},${a * 0.3})`)
+    g2.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
+    ctx.fillStyle = g2
+    ctx.fillRect(0, 0, size, size)
+
+    // Layer 3: wide soft outer glow
+    const g3R = shapeR + baseR * frame.glowRadius * 1.3
+    const g3 = ctx.createRadialGradient(cx, cy, shapeR * 0.5, cx, cy, g3R)
+    g3.addColorStop(0, `rgba(${cr},${cg},${cb},${a * 0.4})`)
+    g3.addColorStop(0.4, `rgba(${cr},${cg},${cb},${a * 0.15})`)
+    g3.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
+    ctx.fillStyle = g3
     ctx.fillRect(0, 0, size, size)
 
     ctx.save()
