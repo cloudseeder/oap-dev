@@ -1,11 +1,16 @@
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useEffect, useState } from 'react'
 import type { Conversation } from '@/lib/types'
+import PersonaAvatar from './PersonaAvatar'
+import { useAnySpeaking } from '@/hooks/useTTS'
+import { useAvatarState } from '@/hooks/useAvatarState'
 
 export default function AgentSidebar() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const anySpeaking = useAnySpeaking()
+  const { state: avatar } = useAvatarState()
 
   useEffect(() => {
     fetch('/v1/agent/conversations')
@@ -66,6 +71,18 @@ export default function AgentSidebar() {
           )
         })}
       </nav>
+
+      {/* Persona avatar */}
+      <div className="flex justify-center py-2 shrink-0">
+        <PersonaAvatar
+          persona={avatar.persona}
+          speaking={anySpeaking}
+          recording={avatar.recording}
+          streaming={avatar.streaming}
+          size={200}
+          audioLevelRef={avatar.audioLevelRef}
+        />
+      </div>
 
       <div className="border-t border-gray-700 p-2">
         <Link

@@ -4,9 +4,9 @@ import type { Message, ToolCall, AgentSettings } from '@/lib/types'
 import { parseSSE } from '@/lib/types'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
-import PersonaAvatar from './PersonaAvatar'
 import { useTTS, useAnySpeaking } from '@/hooks/useTTS'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
+import { useAvatarState } from '@/hooks/useAvatarState'
 
 export default function ChatView() {
   const navigate = useNavigate()
@@ -39,6 +39,9 @@ export default function ChatView() {
   // Global TTS detection — catches per-message speaker clicks too
   const anySpeaking = useAnySpeaking()
 
+  // Push avatar-relevant state up to shared context for sidebar
+  const { update: updateAvatar } = useAvatarState()
+
   // Voice recorder — lifted from ChatInput so ChatView owns recording state
   const modelRef = useRef('qwen3:8b')
   const pendingTranscriptionRef = useRef<((text: string) => void) | null>(null)
@@ -50,6 +53,11 @@ export default function ChatView() {
     }
   }, [autoSend])
   const { recording, transcribing, start: recorderStart, stop: recorderStop, supported: micSupported, audioLevelRef } = useVoiceRecorder(handleTranscription)
+
+  // Sync avatar state to shared context so sidebar can render the avatar
+  useEffect(() => {
+    updateAvatar({ recording, streaming, persona: settings?.persona_name || '', audioLevelRef })
+  }, [recording, streaming, settings?.persona_name, audioLevelRef, updateAvatar])
 
   // Stable ref to handleSend so transcription callback doesn't go stale
   const handleSendRef = useRef<(message: string, model: string) => void>(() => {})
@@ -265,19 +273,7 @@ export default function ChatView() {
   }, [recording, recorderStart, recorderStop])
 
   return (
-    <div className="relative flex h-full flex-col">
-      {/* Avatar — upper right corner */}
-      <div className="absolute right-4 top-4 z-10">
-        <PersonaAvatar
-          persona={settings?.persona_name || ''}
-          speaking={anySpeaking}
-          recording={recording}
-          streaming={streaming}
-          size={200}
-          audioLevelRef={audioLevelRef}
-        />
-      </div>
-
+    <div className="flex h-full flex-col">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto max-w-3xl space-y-4">
