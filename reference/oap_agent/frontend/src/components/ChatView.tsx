@@ -47,7 +47,7 @@ export default function ChatView() {
       pendingTranscriptionRef.current?.(text)
     }
   }, [autoSend])
-  const { recording, transcribing, start: recorderStart, stop: recorderStop, supported: micSupported } = useVoiceRecorder(handleTranscription)
+  const { recording, transcribing, start: recorderStart, stop: recorderStop, supported: micSupported, audioLevelRef } = useVoiceRecorder(handleTranscription)
 
   // Stable ref to handleSend so transcription callback doesn't go stale
   const handleSendRef = useRef<(message: string, model: string) => void>(() => {})
@@ -272,6 +272,7 @@ export default function ChatView() {
           recording={recording}
           streaming={streaming}
           size={messages.length === 0 ? 128 : 80}
+          audioLevelRef={audioLevelRef}
         />
       </div>
 

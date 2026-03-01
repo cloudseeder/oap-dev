@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, type MutableRefObject } from 'react'
 import { getPersonaStyle } from '@/lib/personaStyles'
 import { useAvatarAnimation } from '@/hooks/useAvatarAnimation'
 
@@ -8,12 +8,13 @@ interface PersonaAvatarProps {
   recording: boolean
   streaming: boolean
   size?: number
+  audioLevelRef?: MutableRefObject<number>
 }
 
-export default function PersonaAvatar({ persona, speaking, recording, streaming, size = 96 }: PersonaAvatarProps) {
+export default function PersonaAvatar({ persona, speaking, recording, streaming, size = 96, audioLevelRef }: PersonaAvatarProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const style = getPersonaStyle(persona)
-  const frame = useAvatarAnimation({ speaking, recording, streaming }, style)
+  const frame = useAvatarAnimation({ speaking, recording, streaming, audioLevelRef }, style)
 
   useEffect(() => {
     const canvas = canvasRef.current

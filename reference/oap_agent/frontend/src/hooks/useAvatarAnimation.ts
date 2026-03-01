@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import type { PersonaStyle } from '@/lib/personaStyles'
 
 export type AvatarMode = 'idle' | 'speaking' | 'listening' | 'thinking'
@@ -13,8 +13,8 @@ export interface AvatarFrame {
 
 const INITIAL_FRAME: AvatarFrame = {
   scale: 1,
-  glowRadius: 0.6,
-  glowAlpha: 0.15,
+  glowRadius: 0.8,
+  glowAlpha: 0.35,
   rotation: 0,
   quirk: 0,
 }
@@ -23,6 +23,8 @@ interface AnimationInput {
   speaking: boolean
   recording: boolean
   streaming: boolean
+  /** Real-time audio level 0–1 from mic analyser (recording) */
+  audioLevelRef?: MutableRefObject<number>
 }
 
 export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): AvatarFrame {
@@ -46,7 +48,7 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
 
       let scale = 1
       let glowRadius = 0.8
-      let glowAlpha = 0.4
+      let glowAlpha = 0.35
       let rotation = 0
       let quirk = 0
 
@@ -56,19 +58,33 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
           glowRadius = 0.8 + 0.1 * Math.sin(t * style.idleSpeed * 1.5)
           glowAlpha = 0.35 + 0.1 * Math.sin(t * style.idleSpeed * 1.5)
           break
+
         case 'speaking': {
-          const base = Math.sin(t * 8) * 0.5 + 0.5
-          const noise = Math.sin(t * 13.7) * 0.3 + Math.sin(t * 21.3) * 0.2
-          scale = 1 + style.speakIntensity * 0.1 * (base + noise * 0.5)
-          glowRadius = 0.9 + 0.2 * base
-          glowAlpha = 0.45 + 0.25 * base
+          // Simulated speech envelope — multiple overlapping rhythms
+          // like syllables (~4Hz), words (~2Hz), emphasis (~0.7Hz)
+          const syllable = Math.abs(Math.sin(t * 4.2)) ** 0.6
+          const word = (Math.sin(t * 2.1) * 0.5 + 0.5) ** 0.8
+          const emphasis = Math.sin(t * 0.7) * 0.3 + 0.7
+          const jitter = Math.sin(t * 17.3) * 0.15 + Math.sin(t * 31.7) * 0.08
+          const level = Math.min(1, (syllable * 0.5 + word * 0.3 + jitter) * emphasis)
+          const intensity = style.speakIntensity
+
+          scale = 1 + level * intensity * 0.35
+          glowRadius = 0.8 + level * intensity * 0.7
+          glowAlpha = 0.3 + level * intensity * 0.5
           break
         }
-        case 'listening':
-          scale = 1.05 + 0.02 * Math.sin(t * 3)
-          glowRadius = 0.9 + 0.1 * Math.sin(t * 2)
-          glowAlpha = 0.45 + 0.1 * Math.sin(t * 2)
+
+        case 'listening': {
+          // Real mic audio level — color organ style
+          const mic = input.audioLevelRef?.current ?? 0
+          // Smooth-ish but responsive — the ref already has analyser smoothing
+          scale = 1 + mic * 0.4
+          glowRadius = 0.8 + mic * 0.9
+          glowAlpha = 0.3 + mic * 0.55
           break
+        }
+
         case 'thinking':
           scale = 1 + 0.04 * Math.sin(t * 2)
           rotation = t * 1.5
@@ -99,7 +115,7 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
 
     rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [mode, style])
+  }, [mode, style, input.audioLevelRef])
 
   return frame
 }
