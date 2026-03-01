@@ -74,7 +74,8 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
           const level = Math.min(1, 0.3 + 0.7 * (syllable * 0.5 + word * 0.3 + flutter) * emphasis)
           const intensity = style.speakIntensity
 
-          scale = 1 + level * intensity * 0.25
+          // Shrink shape to give halo more room
+          scale = 0.6 + level * intensity * 0.15
           glowRadius = level * intensity * 2.5
           glowAlpha = level * intensity * 1.5
           break
@@ -86,14 +87,15 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
           // Slight compression so quiet sounds register
           const mic = raw ** 0.5
 
-          scale = 1 + mic * 0.35
+          // Shrink shape to give halo more room
+          scale = 0.6 + mic * 0.2
           glowRadius = mic * 2.5
           glowAlpha = mic * 1.5
           break
         }
 
         case 'thinking':
-          scale = 1 + 0.04 * Math.sin(t * 2)
+          scale = 0.7 + 0.04 * Math.sin(t * 2)
           rotation = t * 1.5
           glowRadius = 0.15 + 0.08 * Math.sin(t * 3)
           glowAlpha = 0.1 + 0.06 * Math.abs(Math.sin(t * 1.5))
