@@ -34,6 +34,9 @@ class VoiceConfig:
     device: str = "auto"              # auto, cpu, cuda
     compute_type: str = "auto"        # auto, int8, float16, float32
     language: str | None = None       # None = auto-detect
+    tts_enabled: bool = True
+    tts_model_path: str = ""          # path to .onnx voice file
+    tts_models_dir: str = "piper-voices"  # dir to scan for available voices
 
 
 @dataclass
@@ -88,6 +91,9 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
         cfg.voice.device = v.get("device", cfg.voice.device)
         cfg.voice.compute_type = v.get("compute_type", cfg.voice.compute_type)
         cfg.voice.language = v.get("language", cfg.voice.language)
+        cfg.voice.tts_enabled = v.get("tts_enabled", cfg.voice.tts_enabled)
+        cfg.voice.tts_model_path = v.get("tts_model_path", cfg.voice.tts_model_path)
+        cfg.voice.tts_models_dir = v.get("tts_models_dir", cfg.voice.tts_models_dir)
 
     cfg.debug = raw.get("debug", cfg.debug)
     cfg.max_tasks = raw.get("max_tasks", cfg.max_tasks)

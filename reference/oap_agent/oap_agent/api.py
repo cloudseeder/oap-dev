@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import time
@@ -33,6 +34,7 @@ _discovery_timeout: int = 120
 _debug_mode: bool = False
 _max_tasks: int = 20
 _voice_cfg = None  # VoiceConfig, set in lifespan
+_tts_enabled = False
 
 ALLOWED_MODELS = {"qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"}
 
@@ -72,7 +74,7 @@ def _validate_cron(schedule: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _db, _event_bus, _scheduler, _discovery_url, _discovery_model, _discovery_timeout
-    global _debug_mode, _max_tasks, _voice_cfg
+    global _debug_mode, _max_tasks, _voice_cfg, _tts_enabled
 
     config_path = getattr(app, "_config_path", "config.yaml")
     cfg = load_config(config_path)
@@ -100,6 +102,17 @@ async def lifespan(app: FastAPI):
             log.warning("Whisper model failed to load — voice input disabled: %s", exc)
             _voice_cfg = cfg.voice
             _voice_cfg.enabled = False
+
+    # Load Piper TTS model for voice output
+    if cfg.voice.enabled and cfg.voice.tts_enabled and cfg.voice.tts_model_path:
+        try:
+            from . import tts as _tts_module
+            _tts_module.init(cfg.voice.tts_model_path)
+            _tts_enabled = True
+            log.info("Piper TTS loaded — voice output ready")
+        except Exception as exc:
+            log.warning("Piper TTS failed to load — voice output disabled: %s", exc)
+            _tts_enabled = False
 
     conv_count = _db.list_conversations()["total"]
     task_count = len(_db.list_tasks())
@@ -685,9 +698,40 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
 @app.get("/v1/agent/voice/status")
 async def voice_status():
-    """Check if voice input is available (Whisper model loaded)."""
-    enabled = _voice_cfg is not None and _voice_cfg.enabled
-    return {"enabled": enabled}
+    """Check if voice input/output is available."""
+    stt_enabled = _voice_cfg is not None and _voice_cfg.enabled
+    return {"enabled": stt_enabled, "tts_enabled": _tts_enabled}
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., max_length=10_000)
+
+
+@app.post("/v1/agent/tts")
+async def text_to_speech(req: TTSRequest):
+    """Synthesize text to WAV audio via Piper TTS."""
+    if not _tts_enabled:
+        raise HTTPException(status_code=501, detail="TTS not enabled")
+    from . import tts
+
+    loop = asyncio.get_running_loop()
+    wav_bytes = await loop.run_in_executor(None, tts.synthesize, req.text)
+    return StreamingResponse(
+        io.BytesIO(wav_bytes),
+        media_type="audio/wav",
+        headers={"Content-Length": str(len(wav_bytes))},
+    )
+
+
+@app.get("/v1/agent/tts/voices")
+async def tts_voices():
+    """List available Piper voice models."""
+    from . import tts
+
+    models_dir = _voice_cfg.tts_models_dir if _voice_cfg else "piper-voices"
+    voices = tts.list_voices(models_dir)
+    current = tts.get_loaded_voice()
+    return {"voices": voices, "current": current}
 
 
 # ---------------------------------------------------------------------------

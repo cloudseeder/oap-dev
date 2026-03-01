@@ -38,6 +38,15 @@ export default function ChatView() {
   const autoSpeakTTS = useTTS(ttsVoice)
   // Global TTS detection — catches per-message speaker clicks too
   const anySpeaking = useAnySpeaking()
+  // Backend TTS availability
+  const [ttsAvailable, setTtsAvailable] = useState(false)
+
+  useEffect(() => {
+    fetch('/v1/agent/voice/status')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setTtsAvailable(!!data.tts_enabled) })
+      .catch(() => {})
+  }, [])
 
   // Push avatar-relevant state up to shared context for sidebar
   const { update: updateAvatar } = useAvatarState()
@@ -289,7 +298,7 @@ export default function ChatView() {
           )}
 
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} ttsEnabled={voiceEnabled} ttsVoice={ttsVoice} />
+            <ChatMessage key={msg.id} message={msg} ttsEnabled={voiceEnabled} ttsAvailable={ttsAvailable} ttsVoice={ttsVoice} />
           ))}
 
           {streaming && (

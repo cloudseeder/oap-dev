@@ -344,7 +344,7 @@ export default function SettingsView() {
         <div className="mb-8 rounded-xl border border-gray-200 bg-white p-6">
           <h2 className="mb-4 text-lg font-medium text-gray-900">Voice</h2>
           <p className="mb-4 text-sm text-gray-500">
-            Speech-to-text input via local Whisper model, text-to-speech output via browser.
+            Speech-to-text input via local Whisper model, text-to-speech output via Piper TTS.
           </p>
 
           <div className="space-y-4">
@@ -413,7 +413,7 @@ export default function SettingsView() {
             {voices.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-gray-700">Voice</p>
-                <p className="mb-2 text-xs text-gray-400">Select a system voice for text-to-speech</p>
+                <p className="mb-2 text-xs text-gray-400">Select a Piper voice for text-to-speech</p>
                 <div className="flex items-center gap-2">
                   <select
                     value={voiceTtsVoice}
@@ -430,23 +430,27 @@ export default function SettingsView() {
                     }}
                     className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   >
-                    <option value="">System default</option>
                     {voices.map((v) => (
-                      <option key={v.voiceURI} value={v.voiceURI}>
-                        {v.name}{v.lang ? ` (${v.lang})` : ''}
+                      <option key={v.name} value={v.name}>
+                        {v.name}{v.language ? ` (${v.language})` : ''}
                       </option>
                     ))}
                   </select>
                   <button
-                    onClick={() => {
-                      if (!window.speechSynthesis) return
-                      window.speechSynthesis.cancel()
-                      const u = new SpeechSynthesisUtterance('Hello, I am your assistant.')
-                      if (voiceTtsVoice) {
-                        const v = window.speechSynthesis.getVoices().find((v) => v.voiceURI === voiceTtsVoice)
-                        if (v) u.voice = v
-                      }
-                      window.speechSynthesis.speak(u)
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/v1/agent/tts', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ text: 'Hello, I am your assistant.' }),
+                        })
+                        if (!res.ok) return
+                        const blob = await res.blob()
+                        const url = URL.createObjectURL(blob)
+                        const audio = new Audio(url)
+                        audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
+                        await audio.play()
+                      } catch {}
                     }}
                     title="Preview voice"
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"

@@ -1,76 +1,172 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
-export function useTTS(voiceURI?: string) {
+// ---------------------------------------------------------------------------
+// Module-level audio tracking (replaces speechSynthesis.speaking polling)
+// ---------------------------------------------------------------------------
+
+const _activeAudios = new Set<HTMLAudioElement>()
+const _listeners = new Set<() => void>()
+
+function _notify() {
+  for (const fn of _listeners) fn()
+}
+
+function _trackAudio(audio: HTMLAudioElement) {
+  _activeAudios.add(audio)
+  _notify()
+  const cleanup = () => {
+    _activeAudios.delete(audio)
+    _notify()
+  }
+  audio.addEventListener('ended', cleanup, { once: true })
+  audio.addEventListener('pause', cleanup, { once: true })
+  audio.addEventListener('error', cleanup, { once: true })
+}
+
+function _stopAll() {
+  for (const audio of _activeAudios) {
+    audio.pause()
+    audio.currentTime = 0
+  }
+  _activeAudios.clear()
+  _notify()
+}
+
+function _subscribe(fn: () => void): () => void {
+  _listeners.add(fn)
+  return () => { _listeners.delete(fn) }
+}
+
+function _isAnySpeaking(): boolean {
+  return _activeAudios.size > 0
+}
+
+// ---------------------------------------------------------------------------
+// useTTS — fetch WAV from backend, play via HTMLAudioElement
+// ---------------------------------------------------------------------------
+
+export function useTTS(_voiceURI?: string) {
   const [speaking, setSpeaking] = useState(false)
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const blobUrlRef = useRef<string | null>(null)
 
-  const speak = useCallback((text: string) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return
-
-    window.speechSynthesis.cancel()
-
-    const utterance = new SpeechSynthesisUtterance(text)
-
-    if (voiceURI) {
-      const voice = window.speechSynthesis.getVoices().find((v) => v.voiceURI === voiceURI)
-      if (voice) utterance.voice = voice
+  const speak = useCallback(async (text: string) => {
+    // Stop any current playback first
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current)
+      blobUrlRef.current = null
     }
 
-    utterance.onend = () => setSpeaking(false)
-    utterance.onerror = () => setSpeaking(false)
-    utteranceRef.current = utterance
-
+    abortRef.current = new AbortController()
     setSpeaking(true)
-    window.speechSynthesis.speak(utterance)
-  }, [voiceURI])
+
+    try {
+      const res = await fetch('/v1/agent/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: abortRef.current.signal,
+      })
+      if (!res.ok) {
+        setSpeaking(false)
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      blobUrlRef.current = url
+
+      const audio = new Audio(url)
+      audioRef.current = audio
+
+      audio.addEventListener('ended', () => {
+        setSpeaking(false)
+        URL.revokeObjectURL(url)
+        blobUrlRef.current = null
+      }, { once: true })
+
+      audio.addEventListener('error', () => {
+        setSpeaking(false)
+        URL.revokeObjectURL(url)
+        blobUrlRef.current = null
+      }, { once: true })
+
+      _trackAudio(audio)
+      await audio.play()
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setSpeaking(false)
+      }
+    }
+  }, [])
 
   const stop = useCallback(() => {
-    if (typeof window !== 'undefined') {
-      window.speechSynthesis?.cancel()
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current)
+      blobUrlRef.current = null
     }
     setSpeaking(false)
   }, [])
 
-  const supported =
-    typeof window !== 'undefined' && !!window.speechSynthesis
-
-  return { speaking, speak, stop, supported }
-}
-
-/** Polls speechSynthesis.speaking globally — catches ALL TTS instances. */
-export function useAnySpeaking() {
-  const [speaking, setSpeaking] = useState(false)
-
+  // Cleanup on unmount
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return
-
-    let raf: number
-    function poll() {
-      setSpeaking(window.speechSynthesis.speaking)
-      raf = requestAnimationFrame(poll)
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
     }
-    raf = requestAnimationFrame(poll)
-    return () => cancelAnimationFrame(raf)
   }, [])
 
-  return speaking
+  return { speaking, speak, stop, supported: true }
 }
 
-/** Returns available system voices, updating when the browser loads them. */
+// ---------------------------------------------------------------------------
+// useAnySpeaking — event-driven (no rAF polling)
+// ---------------------------------------------------------------------------
+
+export function useAnySpeaking(): boolean {
+  return useSyncExternalStore(_subscribe, _isAnySpeaking, _isAnySpeaking)
+}
+
+// ---------------------------------------------------------------------------
+// useVoices — fetch Piper voices from backend
+// ---------------------------------------------------------------------------
+
+export interface PiperVoice {
+  name: string
+  path: string
+  language?: string
+  sample_rate?: number
+}
+
 export function useVoices() {
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [voices, setVoices] = useState<PiperVoice[]>([])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return
-
-    function load() {
-      setVoices(window.speechSynthesis.getVoices())
-    }
-
-    load()
-    window.speechSynthesis.addEventListener('voiceschanged', load)
-    return () => window.speechSynthesis.removeEventListener('voiceschanged', load)
+    fetch('/v1/agent/tts/voices')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.voices) setVoices(data.voices)
+      })
+      .catch(() => {})
   }, [])
 
   return voices
+}
+
+/** Stop all active TTS audio globally. */
+export function stopAllTTS() {
+  _stopAll()
 }
