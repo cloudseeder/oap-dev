@@ -47,16 +47,16 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
       const t = (now - startRef.current) / 1000
 
       let scale = 1
-      let glowRadius = 0.8
-      let glowAlpha = 0.35
+      let glowRadius = 0.4
+      let glowAlpha = 0.08
       let rotation = 0
       let quirk = 0
 
       switch (mode) {
         case 'idle':
-          scale = 1 + 0.03 * Math.sin(t * style.idleSpeed * 2)
-          glowRadius = 0.8 + 0.1 * Math.sin(t * style.idleSpeed * 1.5)
-          glowAlpha = 0.35 + 0.1 * Math.sin(t * style.idleSpeed * 1.5)
+          scale = 1 + 0.02 * Math.sin(t * style.idleSpeed * 2)
+          glowRadius = 0.4 + 0.05 * Math.sin(t * style.idleSpeed * 1.5)
+          glowAlpha = 0.06 + 0.04 * Math.sin(t * style.idleSpeed * 1.5)
           break
 
         case 'speaking': {
@@ -71,8 +71,8 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
           const intensity = style.speakIntensity
 
           scale = 1 + level * intensity * 0.5
-          glowRadius = 0.8 + level * intensity * 1.4
-          glowAlpha = 0.2 + level * intensity * 0.8
+          glowRadius = 0.4 + level * intensity * 1.8
+          glowAlpha = 0.08 + level * intensity * 0.92
           break
         }
 
@@ -82,16 +82,16 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
           // Power curve: small sounds still produce visible glow, loud = blazing
           const mic = raw ** 0.35
           scale = 1 + mic * 0.5
-          glowRadius = 0.8 + mic * 1.6
-          glowAlpha = 0.2 + mic * 0.8
+          glowRadius = 0.4 + mic * 2.0
+          glowAlpha = 0.08 + mic * 0.92
           break
         }
 
         case 'thinking':
           scale = 1 + 0.04 * Math.sin(t * 2)
           rotation = t * 1.5
-          glowRadius = 0.8 + 0.15 * Math.sin(t * 3)
-          glowAlpha = 0.3 + 0.15 * Math.abs(Math.sin(t * 1.5))
+          glowRadius = 0.4 + 0.1 * Math.sin(t * 3)
+          glowAlpha = 0.08 + 0.08 * Math.abs(Math.sin(t * 1.5))
           break
       }
 
