@@ -32,11 +32,15 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
 
     ctx.clearRect(0, 0, size, size)
 
-    // Outer glow
+    // Outer glow — use primary color with animated alpha for reliable rendering
     const glowR = baseR * (1 + frame.glowRadius)
-    const gradient = ctx.createRadialGradient(cx, cy, baseR * 0.5, cx, cy, glowR)
-    gradient.addColorStop(0, style.bgGlow.replace(/[\d.]+\)$/, `${frame.glowAlpha})`))
-    gradient.addColorStop(1, 'rgba(0,0,0,0)')
+    const gradient = ctx.createRadialGradient(cx, cy, baseR * 0.3, cx, cy, glowR)
+    const cr = parseInt(style.primary.slice(1, 3), 16)
+    const cg = parseInt(style.primary.slice(3, 5), 16)
+    const cb = parseInt(style.primary.slice(5, 7), 16)
+    gradient.addColorStop(0, `rgba(${cr},${cg},${cb},${frame.glowAlpha})`)
+    gradient.addColorStop(0.6, `rgba(${cr},${cg},${cb},${frame.glowAlpha * 0.4})`)
+    gradient.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, size, size)
 
