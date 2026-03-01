@@ -4,7 +4,9 @@ import type { Message, ToolCall, AgentSettings } from '@/lib/types'
 import { parseSSE } from '@/lib/types'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
+import PersonaAvatar from './PersonaAvatar'
 import { useTTS } from '@/hooks/useTTS'
+import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 
 export default function ChatView() {
   const navigate = useNavigate()
@@ -35,19 +37,35 @@ export default function ChatView() {
   const ttsVoice = settings?.voice_tts_voice || undefined
   const autoSpeakTTS = useTTS(ttsVoice)
 
-  // Auto-record trigger: increment to tell ChatInput to start recording
-  const [recordTrigger, setRecordTrigger] = useState(0)
+  // Voice recorder — lifted from ChatInput so ChatView owns recording state
+  const modelRef = useRef('qwen3:8b')
+  const pendingTranscriptionRef = useRef<((text: string) => void) | null>(null)
+  const handleTranscription = useCallback((text: string) => {
+    if (autoSend) {
+      handleSendRef.current(text, modelRef.current)
+    } else {
+      pendingTranscriptionRef.current?.(text)
+    }
+  }, [autoSend])
+  const { recording, transcribing, start: recorderStart, stop: recorderStop, supported: micSupported } = useVoiceRecorder(handleTranscription)
+
+  // Stable ref to handleSend so transcription callback doesn't go stale
+  const handleSendRef = useRef<(message: string, model: string) => void>(() => {})
+
   const waitingForTTS = useRef(false)
 
-  // When TTS finishes speaking and we were waiting, trigger auto-record
+  // When TTS finishes speaking and we were waiting, auto-record
   useEffect(() => {
     if (!autoSpeakTTS.speaking && waitingForTTS.current) {
       waitingForTTS.current = false
-      // Small delay so the mic doesn't pick up the tail end of TTS audio
-      const timer = setTimeout(() => setRecordTrigger((t) => t + 1), 600)
+      const timer = setTimeout(() => {
+        if (!recording && !transcribing && micSupported && voiceEnabled) {
+          recorderStart()
+        }
+      }, 600)
       return () => clearTimeout(timer)
     }
-  }, [autoSpeakTTS.speaking])
+  }, [autoSpeakTTS.speaking, recording, transcribing, micSupported, voiceEnabled, recorderStart])
 
   useEffect(() => {
     if (initialConvId) {
@@ -194,7 +212,9 @@ export default function ChatView() {
                   }
                 } else if (autoSend) {
                   // No TTS — trigger auto-record after a short delay
-                  setTimeout(() => setRecordTrigger((t) => t + 1), 500)
+                  setTimeout(() => {
+                    if (micSupported && voiceEnabled) recorderStart()
+                  }, 500)
                 }
               }
             }
@@ -227,10 +247,34 @@ export default function ChatView() {
     } finally {
       setStreaming(false)
     }
-  }, [conversationId, messages.length, navigate, streaming, autoSpeak, autoSend, autoSpeakTTS])
+  }, [conversationId, messages.length, navigate, streaming, autoSpeak, autoSend, autoSpeakTTS, micSupported, voiceEnabled, recorderStart])
+
+  // Keep handleSendRef current
+  useEffect(() => {
+    handleSendRef.current = handleSend
+  }, [handleSend])
+
+  const handleMicClick = useCallback(() => {
+    if (recording) {
+      recorderStop()
+    } else {
+      recorderStart()
+    }
+  }, [recording, recorderStart, recorderStop])
 
   return (
     <div className="flex h-full flex-col">
+      {/* Avatar */}
+      <div className="flex justify-center py-3 shrink-0">
+        <PersonaAvatar
+          persona={settings?.persona_name || ''}
+          speaking={autoSpeakTTS.speaking}
+          recording={recording}
+          streaming={streaming}
+          size={messages.length === 0 ? 128 : 80}
+        />
+      </div>
+
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto max-w-3xl space-y-4">
@@ -239,12 +283,7 @@ export default function ChatView() {
           )}
 
           {!loading && messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <div className="mb-4 rounded-full bg-primary-50 p-4">
-                <svg className="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
-              </div>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
               <h2 className="text-lg font-semibold text-gray-700">Start a new conversation</h2>
               <p className="mt-1 text-sm text-gray-400">Ask anything or describe a task to get started.</p>
             </div>
@@ -283,7 +322,12 @@ export default function ChatView() {
         defaultModel="qwen3:8b"
         voiceEnabled={voiceEnabled}
         autoSend={autoSend}
-        recordTrigger={recordTrigger}
+        recording={recording}
+        transcribing={transcribing}
+        micSupported={micSupported}
+        onMicClick={handleMicClick}
+        onModelChange={(m) => { modelRef.current = m }}
+        onTranscriptionRef={pendingTranscriptionRef}
       />
     </div>
   )

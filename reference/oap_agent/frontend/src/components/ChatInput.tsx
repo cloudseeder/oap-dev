@@ -1,5 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
-import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
+import { useRef, useState, useEffect, type MutableRefObject } from 'react'
 
 const MODELS = ['qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
 
@@ -9,40 +8,55 @@ interface ChatInputProps {
   defaultModel?: string
   voiceEnabled?: boolean
   autoSend?: boolean
-  recordTrigger?: number
+  recording?: boolean
+  transcribing?: boolean
+  micSupported?: boolean
+  onMicClick?: () => void
+  onModelChange?: (model: string) => void
+  onTranscriptionRef?: MutableRefObject<((text: string) => void) | null>
 }
 
-export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b', voiceEnabled = false, autoSend = false, recordTrigger = 0 }: ChatInputProps) {
+export default function ChatInput({
+  onSend,
+  disabled,
+  defaultModel = 'qwen3:8b',
+  voiceEnabled = false,
+  autoSend = false,
+  recording = false,
+  transcribing = false,
+  micSupported = false,
+  onMicClick,
+  onModelChange,
+  onTranscriptionRef,
+}: ChatInputProps) {
   const [value, setValue] = useState('')
   const [model, setModel] = useState(defaultModel)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const handleTranscription = useCallback((text: string) => {
-    if (autoSend) {
-      onSend(text, model)
-    } else {
-      setValue((prev) => (prev ? prev + ' ' + text : text))
-      setTimeout(() => {
-        const ta = textareaRef.current
-        if (ta) {
-          ta.style.height = 'auto'
-          ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`
-          ta.focus()
-        }
-      }, 0)
-    }
-  }, [autoSend, onSend, model])
-
-  const { recording, transcribing, start, stop, supported: micSupported } = useVoiceRecorder(handleTranscription)
-
-  // Auto-start recording when triggered by parent (hands-free conversation loop)
-  const prevTrigger = useRef(0)
+  // Notify parent of model changes
   useEffect(() => {
-    if (recordTrigger > prevTrigger.current && !disabled && !recording && !transcribing && micSupported && voiceEnabled) {
-      prevTrigger.current = recordTrigger
-      start()
+    onModelChange?.(model)
+  }, [model, onModelChange])
+
+  // Register transcription handler so parent can push text into the input
+  useEffect(() => {
+    if (onTranscriptionRef) {
+      onTranscriptionRef.current = (text: string) => {
+        setValue((prev) => (prev ? prev + ' ' + text : text))
+        setTimeout(() => {
+          const ta = textareaRef.current
+          if (ta) {
+            ta.style.height = 'auto'
+            ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`
+            ta.focus()
+          }
+        }, 0)
+      }
     }
-  }, [recordTrigger, disabled, recording, transcribing, micSupported, voiceEnabled, start])
+    return () => {
+      if (onTranscriptionRef) onTranscriptionRef.current = null
+    }
+  }, [onTranscriptionRef])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -67,14 +81,6 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b',
     if (ta) {
       ta.style.height = 'auto'
       ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`
-    }
-  }
-
-  function handleMicClick() {
-    if (recording) {
-      stop()
-    } else {
-      start()
     }
   }
 
@@ -108,7 +114,7 @@ export default function ChatInput({ onSend, disabled, defaultModel = 'qwen3:8b',
             </select>
             {showMic && (
               <button
-                onClick={handleMicClick}
+                onClick={onMicClick}
                 disabled={disabled || transcribing}
                 title={recording ? 'Stop recording' : 'Voice input'}
                 className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${

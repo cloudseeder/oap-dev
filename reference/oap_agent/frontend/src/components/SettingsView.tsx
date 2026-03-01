@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { AgentSettings, UserFact } from '@/lib/types'
 import { useVoices } from '@/hooks/useTTS'
+import PersonaAvatar from './PersonaAvatar'
 
 const PERSONALITY_PRESETS = [
   {
@@ -288,14 +289,19 @@ export default function SettingsView() {
                 <button
                   key={preset.name}
                   onClick={() => { setName(preset.name); setDescription(preset.description) }}
-                  className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                     name === preset.name
                       ? 'border-primary bg-primary-50 text-primary'
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
-                  <span className="font-medium">{preset.name}</span>
-                  <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{preset.tagline}</p>
+                  <div className="shrink-0">
+                    <PersonaAvatar persona={preset.name} speaking={false} recording={false} streaming={false} size={32} />
+                  </div>
+                  <div>
+                    <span className="font-medium">{preset.name}</span>
+                    <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{preset.tagline}</p>
+                  </div>
                 </button>
               ))}
             </div>
