@@ -92,22 +92,20 @@ class AgentDB:
         self._seed_defaults()
 
     def _seed_defaults(self):
-        """Insert default settings if the agent_settings table is empty."""
-        count = self.conn.execute("SELECT COUNT(*) FROM agent_settings").fetchone()[0]
-        if count == 0:
-            defaults = {
-                "persona_name": "",
-                "persona_description": "",
-                "memory_enabled": "false",
-                "voice_input_enabled": "true",
-                "voice_auto_send": "false",
-                "voice_auto_speak": "false",
-            }
-            for key, value in defaults.items():
-                self.conn.execute(
-                    "INSERT OR IGNORE INTO agent_settings (key, value) VALUES (?, ?)",
-                    (key, value),
-                )
+        """Insert default settings, adding any missing keys to existing databases."""
+        defaults = {
+            "persona_name": "",
+            "persona_description": "",
+            "memory_enabled": "false",
+            "voice_input_enabled": "true",
+            "voice_auto_send": "false",
+            "voice_auto_speak": "false",
+        }
+        for key, value in defaults.items():
+            self.conn.execute(
+                "INSERT OR IGNORE INTO agent_settings (key, value) VALUES (?, ?)",
+                (key, value),
+            )
             self.conn.commit()
 
     def close(self):
