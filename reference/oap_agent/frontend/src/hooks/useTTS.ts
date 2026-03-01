@@ -37,6 +37,25 @@ export function useTTS(voiceURI?: string) {
   return { speaking, speak, stop, supported }
 }
 
+/** Polls speechSynthesis.speaking globally — catches ALL TTS instances. */
+export function useAnySpeaking() {
+  const [speaking, setSpeaking] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return
+
+    let raf: number
+    function poll() {
+      setSpeaking(window.speechSynthesis.speaking)
+      raf = requestAnimationFrame(poll)
+    }
+    raf = requestAnimationFrame(poll)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  return speaking
+}
+
 /** Returns available system voices, updating when the browser loads them. */
 export function useVoices() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])

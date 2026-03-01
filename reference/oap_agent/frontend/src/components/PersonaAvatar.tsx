@@ -35,43 +35,26 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
 
     const shapeR = baseR * frame.scale
 
-    // Wobbly halo ring — glowRadius 0=tight, 2.5=far; glowAlpha 0=invisible, 1=bold
+    // Wobbly halo ring — only drawn when glowAlpha > threshold (not idle)
     const g = frame.glowRadius  // 0 to ~2.5
     const a = frame.glowAlpha   // 0 to ~1.0
-    const haloGap = baseR * 0.15 + baseR * g * 0.4
-    const haloR = shapeR + haloGap
-    const wobbleAmt = baseR * g * 0.12
-    const lineWidth = 1 + a * 5
     const segments = 64
 
-    ctx.strokeStyle = style.primary
-    ctx.globalAlpha = Math.min(1, a)
-    ctx.lineWidth = lineWidth
-    ctx.beginPath()
-    for (let i = 0; i <= segments; i++) {
-      const angle = (i / segments) * Math.PI * 2
-      const wobble = Math.sin(angle * 5 + frame.rotation * 3) * wobbleAmt
-        + Math.sin(angle * 3 - frame.rotation * 2) * wobbleAmt * 0.6
-      const r = haloR + wobble
-      const x = cx + Math.cos(angle) * r
-      const y = cy + Math.sin(angle) * r
-      if (i === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    }
-    ctx.closePath()
-    ctx.stroke()
+    if (a > 0.05) {
+      const haloGap = baseR * 0.2 + baseR * g * 0.35
+      const haloR = shapeR + haloGap
+      const wobbleAmt = baseR * g * 0.15
+      const lineWidth = 1.5 + a * 5
 
-    // Second halo ring — only when audio is active
-    if (a > 0.4) {
-      const outerR = haloR + baseR * 0.25 + baseR * g * 0.2
-      ctx.globalAlpha = Math.min(1, (a - 0.4) * 1.5)
-      ctx.lineWidth = lineWidth * 0.5
+      ctx.strokeStyle = style.primary
+      ctx.globalAlpha = Math.min(1, a)
+      ctx.lineWidth = lineWidth
       ctx.beginPath()
       for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2
-        const wobble = Math.sin(angle * 4 - frame.rotation * 2.5) * wobbleAmt * 1.5
-          + Math.sin(angle * 7 + frame.rotation * 1.5) * wobbleAmt * 0.7
-        const r = outerR + wobble
+        const wobble = Math.sin(angle * 5 + frame.rotation * 3) * wobbleAmt
+          + Math.sin(angle * 3 - frame.rotation * 2) * wobbleAmt * 0.6
+        const r = haloR + wobble
         const x = cx + Math.cos(angle) * r
         const y = cy + Math.sin(angle) * r
         if (i === 0) ctx.moveTo(x, y)
@@ -79,6 +62,26 @@ export default function PersonaAvatar({ persona, speaking, recording, streaming,
       }
       ctx.closePath()
       ctx.stroke()
+
+      // Second halo ring at high levels
+      if (a > 0.5) {
+        const outerR = haloR + baseR * 0.3 + baseR * g * 0.15
+        ctx.globalAlpha = Math.min(1, (a - 0.5) * 2)
+        ctx.lineWidth = lineWidth * 0.5
+        ctx.beginPath()
+        for (let i = 0; i <= segments; i++) {
+          const angle = (i / segments) * Math.PI * 2
+          const wobble = Math.sin(angle * 4 - frame.rotation * 2.5) * wobbleAmt * 1.5
+            + Math.sin(angle * 7 + frame.rotation * 1.5) * wobbleAmt * 0.7
+          const r = outerR + wobble
+          const x = cx + Math.cos(angle) * r
+          const y = cy + Math.sin(angle) * r
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.closePath()
+        ctx.stroke()
+      }
     }
 
     ctx.globalAlpha = 1.0

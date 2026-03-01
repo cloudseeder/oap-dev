@@ -5,7 +5,7 @@ import { parseSSE } from '@/lib/types'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
 import PersonaAvatar from './PersonaAvatar'
-import { useTTS } from '@/hooks/useTTS'
+import { useTTS, useAnySpeaking } from '@/hooks/useTTS'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 
 export default function ChatView() {
@@ -36,6 +36,8 @@ export default function ChatView() {
   const autoSpeak = settings?.voice_auto_speak === 'true'
   const ttsVoice = settings?.voice_tts_voice || undefined
   const autoSpeakTTS = useTTS(ttsVoice)
+  // Global TTS detection — catches per-message speaker clicks too
+  const anySpeaking = useAnySpeaking()
 
   // Voice recorder — lifted from ChatInput so ChatView owns recording state
   const modelRef = useRef('qwen3:8b')
@@ -268,7 +270,7 @@ export default function ChatView() {
       <div className="flex justify-center py-3 shrink-0">
         <PersonaAvatar
           persona={settings?.persona_name || ''}
-          speaking={autoSpeakTTS.speaking}
+          speaking={anySpeaking}
           recording={recording}
           streaming={streaming}
           size={messages.length === 0 ? 128 : 80}

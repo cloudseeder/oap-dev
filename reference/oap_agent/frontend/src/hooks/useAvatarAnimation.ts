@@ -54,10 +54,10 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
 
       switch (mode) {
         case 'idle':
-          // Minimal — thin faint ring, gentle breathe
+          // No halo at all — just gentle shape breathing
           scale = 1 + 0.015 * Math.sin(t * style.idleSpeed * 2)
-          glowRadius = 0.1 + 0.03 * Math.sin(t * style.idleSpeed * 1.5)
-          glowAlpha = 0.08 + 0.03 * Math.sin(t * style.idleSpeed * 1.5)
+          glowRadius = 0
+          glowAlpha = 0
           break
 
         case 'speaking': {
