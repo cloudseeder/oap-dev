@@ -61,23 +61,22 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
           break
 
         case 'speaking': {
-          // Speech-like envelope with real valleys between syllables
-          // Syllable bursts at ~4Hz with sharp attack, slower decay
-          const syllableRaw = Math.sin(t * 4.2)
-          const syllable = syllableRaw > 0 ? syllableRaw ** 0.3 : 0  // half-wave rectify + compress peaks
-          // Word grouping at ~1.5Hz — creates pauses between words
-          const wordGate = Math.max(0, Math.sin(t * 1.5)) ** 0.5
-          // Sentence-level dynamics
-          const emphasis = 0.5 + 0.5 * Math.sin(t * 0.4)
-          // High-freq flutter for texture
-          const flutter = Math.sin(t * 23) * 0.1 + Math.sin(t * 37) * 0.05
-          // Combine: word gate creates real silence gaps
-          const level = Math.min(1, Math.max(0, (syllable * 0.7 + flutter) * wordGate * emphasis))
+          // Speech-like envelope — pulses between moderate and bold, never zero
+          // Syllable rhythm at ~4Hz
+          const syllable = Math.abs(Math.sin(t * 4.2))
+          // Word-level modulation at ~1.8Hz — dips but never kills
+          const word = 0.5 + 0.5 * Math.sin(t * 1.8)
+          // Gentle sentence-level swell
+          const emphasis = 0.75 + 0.25 * Math.sin(t * 0.5)
+          // Texture
+          const flutter = Math.sin(t * 19) * 0.08
+          // Floor of 0.3 so halo is always present during speech
+          const level = Math.min(1, 0.3 + 0.7 * (syllable * 0.5 + word * 0.3 + flutter) * emphasis)
           const intensity = style.speakIntensity
 
-          scale = 1 + level * intensity * 0.3
-          glowRadius = level * intensity * 2.5
-          glowAlpha = level * intensity * 1.0
+          scale = 1 + level * intensity * 0.25
+          glowRadius = level * intensity * 2.0
+          glowAlpha = level * intensity * 0.9
           break
         }
 
