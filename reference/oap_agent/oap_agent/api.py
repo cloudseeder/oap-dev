@@ -688,15 +688,23 @@ async def voice_status():
 
 
 # ---------------------------------------------------------------------------
-# Static files (Vite SPA)
+# Static files (Vite SPA) — catch-all for SPA client-side routing
 # ---------------------------------------------------------------------------
 
-from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from fastapi.responses import FileResponse
 
 _static_dir = Path(__file__).parent / "static"
+
 if _static_dir.is_dir():
-    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve static files or fall back to index.html for SPA routes."""
+        if full_path:
+            file_path = _static_dir / full_path
+            if file_path.is_file():
+                return FileResponse(file_path)
+        return FileResponse(_static_dir / "index.html")
 
 
 # ---------------------------------------------------------------------------
