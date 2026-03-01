@@ -61,27 +61,29 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
 
         case 'speaking': {
           // Simulated speech envelope — multiple overlapping rhythms
-          // like syllables (~4Hz), words (~2Hz), emphasis (~0.7Hz)
           const syllable = Math.abs(Math.sin(t * 4.2)) ** 0.6
           const word = (Math.sin(t * 2.1) * 0.5 + 0.5) ** 0.8
           const emphasis = Math.sin(t * 0.7) * 0.3 + 0.7
           const jitter = Math.sin(t * 17.3) * 0.15 + Math.sin(t * 31.7) * 0.08
-          const level = Math.min(1, (syllable * 0.5 + word * 0.3 + jitter) * emphasis)
+          const raw = Math.min(1, (syllable * 0.5 + word * 0.3 + jitter) * emphasis)
+          // Power curve: ramp up fast from dim to bright
+          const level = raw ** 0.4
           const intensity = style.speakIntensity
 
-          scale = 1 + level * intensity * 0.35
-          glowRadius = 0.8 + level * intensity * 0.7
-          glowAlpha = 0.3 + level * intensity * 0.5
+          scale = 1 + level * intensity * 0.5
+          glowRadius = 0.8 + level * intensity * 1.4
+          glowAlpha = 0.2 + level * intensity * 0.8
           break
         }
 
         case 'listening': {
           // Real mic audio level — color organ style
-          const mic = input.audioLevelRef?.current ?? 0
-          // Smooth-ish but responsive — the ref already has analyser smoothing
-          scale = 1 + mic * 0.4
-          glowRadius = 0.8 + mic * 0.9
-          glowAlpha = 0.3 + mic * 0.55
+          const raw = input.audioLevelRef?.current ?? 0
+          // Power curve: small sounds still produce visible glow, loud = blazing
+          const mic = raw ** 0.35
+          scale = 1 + mic * 0.5
+          glowRadius = 0.8 + mic * 1.6
+          glowAlpha = 0.2 + mic * 0.8
           break
         }
 
