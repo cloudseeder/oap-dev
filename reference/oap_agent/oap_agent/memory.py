@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 import httpx
 
@@ -60,6 +61,8 @@ async def extract_facts_from_text(
         data = resp.json()
 
     raw = data.get("response", "")
+    # Strip qwen3 thinking tags if present
+    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
     parsed = json.loads(raw)
     facts = parsed.get("facts", [])
     if not isinstance(facts, list):
@@ -113,6 +116,8 @@ async def extract_and_store_facts(
             data = resp.json()
 
         text = data.get("response", "")
+        # Strip qwen3 thinking tags if present
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
         parsed = json.loads(text)
         facts = parsed.get("facts", [])
         if not isinstance(facts, list):
@@ -124,4 +129,4 @@ async def extract_and_store_facts(
             if added:
                 log.info("Extracted %d new user fact(s): %s", added, clean)
     except Exception:
-        log.debug("User fact extraction failed", exc_info=True)
+        log.warning("User fact extraction failed", exc_info=True)

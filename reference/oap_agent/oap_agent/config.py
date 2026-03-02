@@ -78,6 +78,11 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
         db = raw["database"]
         cfg.database.path = db.get("path", cfg.database.path)
 
+    # Resolve relative DB path against config file directory, not CWD
+    db_path = Path(cfg.database.path)
+    if not db_path.is_absolute():
+        cfg.database.path = str(p.parent.resolve() / db_path)
+
     if "discovery" in raw:
         disc = raw["discovery"]
         cfg.discovery.url = _validate_url(disc.get("url", cfg.discovery.url))
