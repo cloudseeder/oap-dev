@@ -277,6 +277,25 @@ class ExperienceStore:
         self._db.commit()
         return cursor.rowcount
 
+    def prune(self, max_records: int) -> int:
+        """Delete excess records, keeping the most-recently-used with highest use counts.
+
+        Returns the number of records deleted.
+        """
+        total = self.count()
+        if total <= max_records:
+            return 0
+        cursor = self._db.execute(
+            """DELETE FROM experiences WHERE id NOT IN (
+                   SELECT id FROM experiences
+                   ORDER BY last_used DESC, use_count DESC
+                   LIMIT ?
+               )""",
+            (max_records,),
+        )
+        self._db.commit()
+        return cursor.rowcount
+
     def stats(self) -> dict[str, Any]:
         """Summary statistics for the experience store."""
         total = self.count()

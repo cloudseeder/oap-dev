@@ -199,6 +199,12 @@ async def lifespan(app: FastAPI):
             tool_api._experience_cfg = _cfg.experience
             log.info("Experience cache wired into tool bridge")
 
+    # Prune experience store at startup
+    if _experience_store is not None:
+        pruned = _experience_store.prune(_cfg.experience.max_records)
+        if pruned:
+            log.info("Pruned %d experience record(s) to max %d", pruned, _cfg.experience.max_records)
+
     yield
 
     if _fts_store is not None:

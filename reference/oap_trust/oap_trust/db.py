@@ -144,6 +144,15 @@ class TrustStore:
         ).fetchone()
         return dict(row) if row else None
 
+    def cleanup_expired_attestations(self) -> int:
+        """Remove expired attestations. Returns count removed."""
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = self._conn.execute(
+            "DELETE FROM attestations WHERE expires_at <= ?", (now,)
+        )
+        self._conn.commit()
+        return cursor.rowcount
+
     def count_attestations(self) -> int:
         """Total number of non-expired attestations."""
         now = datetime.now(timezone.utc).isoformat()

@@ -410,6 +410,29 @@ class AgentDB:
             "limit": limit,
         }
 
+    def cleanup_old_runs(self, max_per_task: int = 100) -> int:
+        """Delete task runs beyond the newest *max_per_task* per task.
+
+        Returns total number of rows deleted.
+        """
+        task_ids = [
+            row[0] for row in self.conn.execute("SELECT DISTINCT task_id FROM task_runs").fetchall()
+        ]
+        deleted = 0
+        with self._lock:
+            for tid in task_ids:
+                cur = self.conn.execute(
+                    """DELETE FROM task_runs WHERE task_id = ? AND id NOT IN (
+                           SELECT id FROM task_runs WHERE task_id = ?
+                           ORDER BY started_at DESC LIMIT ?
+                       )""",
+                    (tid, tid, max_per_task),
+                )
+                deleted += cur.rowcount
+            if deleted:
+                self.conn.commit()
+        return deleted
+
     def _decode_run(self, row: dict) -> dict:
         if row.get("tool_calls"):
             row["tool_calls"] = json.loads(row["tool_calls"])

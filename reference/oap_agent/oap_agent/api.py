@@ -115,6 +115,11 @@ async def lifespan(app: FastAPI):
             log.warning("Piper TTS failed to load — voice output disabled: %s", exc)
             _tts_enabled = False
 
+    # Cleanup old task runs at startup
+    pruned_runs = _db.cleanup_old_runs(max_per_task=100)
+    if pruned_runs:
+        log.info("Cleaned up %d old task run(s)", pruned_runs)
+
     conv_count = _db.list_conversations()["total"]
     task_count = len(_db.list_tasks())
     log.info("Manifest started — %d conversations, %d tasks", conv_count, task_count)
@@ -544,6 +549,11 @@ async def _run_task_background(task: dict, run_id: str) -> None:
     finally:
         if semaphore:
             semaphore.release()
+        # Cleanup old runs for this task after each execution
+        try:
+            _db.cleanup_old_runs(max_per_task=100)
+        except Exception:
+            log.warning("Failed to cleanup old runs for task %s", task_id, exc_info=True)
 
 
 @app.get("/v1/agent/tasks/{task_id}/runs")

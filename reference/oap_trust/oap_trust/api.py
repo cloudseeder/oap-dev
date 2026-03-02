@@ -72,6 +72,14 @@ async def lifespan(app: FastAPI):
     _store = TrustStore(_cfg.database)
     _service = AttestationService(_cfg, _keys, _store)
 
+    # Cleanup expired records at startup
+    expired_challenges = _store.cleanup_expired_challenges()
+    if expired_challenges:
+        log.info("Cleaned up %d expired challenge(s)", expired_challenges)
+    expired_attestations = _store.cleanup_expired_attestations()
+    if expired_attestations:
+        log.info("Cleaned up %d expired attestation(s)", expired_attestations)
+
     count = _store.count_attestations()
     log.info("Trust API started — %d active attestations", count)
     yield
