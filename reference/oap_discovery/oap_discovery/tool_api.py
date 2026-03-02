@@ -951,6 +951,8 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 ):
                     should_escalate = True
                     log.info("Large tool result (%d chars) — escalating to big LLM", len(result_str))
+                    # Break out of tool_calls loop — big LLM handles it from here
+                    break
 
                 if debug:
                     debug_executions.append({
@@ -976,6 +978,10 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     "ollama_response": resp_message,
                     "tool_executions": debug_executions,
                 })
+
+            # Large result triggered escalation — skip further Ollama rounds
+            if should_escalate and tool_exec_results:
+                break
 
         # Inner loop finished (max rounds reached or broke out).
         # If this was a cache hit and tools had errors, degrade and retry.
