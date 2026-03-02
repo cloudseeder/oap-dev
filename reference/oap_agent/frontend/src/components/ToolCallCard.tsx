@@ -6,7 +6,7 @@ interface ToolCallCardProps {
 }
 
 export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const hasError = toolCall.result?.startsWith('Error')
 
   return (
