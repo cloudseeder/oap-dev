@@ -34,7 +34,8 @@ export default function ChatView() {
   const voiceEnabled = settings?.voice_input_enabled === 'true'
   const autoSend = settings?.voice_auto_send === 'true'
   const autoSpeak = settings?.voice_auto_speak === 'true'
-  const ttsVoice = settings?.voice_tts_voice || undefined
+  const personaName = settings?.persona_name?.toLowerCase() || ''
+  const ttsVoice = (personaName && settings?.[`persona_voice_${personaName}`]) || settings?.voice_tts_voice || undefined
   const autoSpeakTTS = useTTS(ttsVoice)
   // Global TTS detection — catches per-message speaker clicks too
   const anySpeaking = useAnySpeaking()

@@ -6,6 +6,7 @@ import asyncio
 import io
 import json
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -14,7 +15,7 @@ import uvicorn
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import load_config
 from .db import AgentDB
@@ -107,7 +108,7 @@ async def lifespan(app: FastAPI):
     if cfg.voice.enabled and cfg.voice.tts_enabled and cfg.voice.tts_model_path:
         try:
             from . import tts as _tts_module
-            _tts_module.init(cfg.voice.tts_model_path)
+            _tts_module.init(cfg.voice.tts_model_path, cfg.voice.tts_models_dir)
             _tts_enabled = True
             log.info("Piper TTS loaded — voice output ready")
         except Exception as exc:
@@ -196,6 +197,8 @@ class CreateTaskRequest(BaseModel):
 
 
 class UpdateSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     persona_name: str | None = Field(None, max_length=100)
     persona_description: str | None = Field(None, max_length=500)
     memory_enabled: bool | None = None
@@ -627,6 +630,10 @@ async def update_settings(req: UpdateSettingsRequest):
         _db.set_setting("voice_auto_speak", "true" if req.voice_auto_speak else "false")
     if req.voice_tts_voice is not None:
         _db.set_setting("voice_tts_voice", req.voice_tts_voice)
+    # Persist extra keys (e.g. persona_voice_kai, persona_voice_marvin)
+    for key, value in (req.model_extra or {}).items():
+        if re.fullmatch(r"persona_voice_[a-z0-9_]+", key) and isinstance(value, str) and len(value) <= 200:
+            _db.set_setting(key, value)
     return _db.get_settings()
 
 
@@ -705,6 +712,7 @@ async def voice_status():
 
 class TTSRequest(BaseModel):
     text: str = Field(..., max_length=10_000)
+    voice: str | None = Field(None, max_length=200)
 
 
 @app.post("/v1/agent/tts")
@@ -712,10 +720,11 @@ async def text_to_speech(req: TTSRequest):
     """Synthesize text to WAV audio via Piper TTS."""
     if not _tts_enabled:
         raise HTTPException(status_code=501, detail="TTS not enabled")
+    from functools import partial
     from . import tts
 
     loop = asyncio.get_running_loop()
-    wav_bytes = await loop.run_in_executor(None, tts.synthesize, req.text)
+    wav_bytes = await loop.run_in_executor(None, partial(tts.synthesize, req.text, req.voice))
     return StreamingResponse(
         io.BytesIO(wav_bytes),
         media_type="audio/wav",

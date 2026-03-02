@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { AgentSettings, UserFact } from '@/lib/types'
-import { useVoices } from '@/hooks/useTTS'
+import { useVoices, useTTS } from '@/hooks/useTTS'
 import PersonaAvatar from './PersonaAvatar'
 
 const PERSONALITY_PRESETS = [
@@ -52,6 +52,32 @@ const PERSONALITY_PRESETS = [
     tagline: 'The cake is a lie',
   },
 ]
+
+function PersonaVoicePreview({ voice }: { voice: string }) {
+  const { speaking, speak, stop } = useTTS(voice || undefined)
+  return (
+    <button
+      onClick={() => {
+        if (speaking) { stop(); return }
+        speak('Hello, I am your assistant.')
+      }}
+      title="Preview voice"
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-300 transition-colors ${
+        speaking ? 'bg-primary-50 text-primary' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+      }`}
+    >
+      {speaking ? (
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+          <rect x="6" y="6" width="12" height="12" rx="1" />
+        </svg>
+      ) : (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+        </svg>
+      )}
+    </button>
+  )
+}
 
 export default function SettingsView() {
   const navigate = useNavigate()
@@ -307,6 +333,44 @@ export default function SettingsView() {
             </div>
           </div>
 
+          {/* Per-persona voice picker */}
+          {name && voices.length > 0 && (
+            <div className="mb-4">
+              <p className="mb-2 text-sm font-medium text-gray-700">
+                Voice for <span className="font-semibold">{name}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <select
+                  value={settings?.[`persona_voice_${name.toLowerCase()}` as keyof typeof settings] as string || ''}
+                  onChange={async (e) => {
+                    const val = e.target.value
+                    const key = `persona_voice_${name.toLowerCase()}`
+                    try {
+                      const res = await fetch('/v1/agent/settings', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ [key]: val }),
+                      })
+                      if (res.ok) {
+                        const s = await res.json()
+                        setSettings(s)
+                      }
+                    } catch {}
+                  }}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">Default voice</option>
+                  {voices.map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.name}{v.language ? ` (${v.language})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <PersonaVoicePreview voice={settings?.[`persona_voice_${name.toLowerCase()}` as keyof typeof settings] as string || ''} />
+              </div>
+            </div>
+          )}
+
           <div className="mb-4">
             <label className="mb-1 block text-sm font-medium text-gray-700">Name</label>
             <input
@@ -436,29 +500,7 @@ export default function SettingsView() {
                       </option>
                     ))}
                   </select>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await fetch('/v1/agent/tts', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ text: 'Hello, I am your assistant.' }),
-                        })
-                        if (!res.ok) return
-                        const blob = await res.blob()
-                        const url = URL.createObjectURL(blob)
-                        const audio = new Audio(url)
-                        audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
-                        await audio.play()
-                      } catch {}
-                    }}
-                    title="Preview voice"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                    </svg>
-                  </button>
+                  <PersonaVoicePreview voice={voiceTtsVoice} />
                 </div>
               </div>
             )}

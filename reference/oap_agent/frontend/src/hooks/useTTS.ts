@@ -45,7 +45,7 @@ function _isAnySpeaking(): boolean {
 // useTTS — fetch WAV from backend, play via HTMLAudioElement
 // ---------------------------------------------------------------------------
 
-export function useTTS(_voiceURI?: string) {
+export function useTTS(voice?: string) {
   const [speaking, setSpeaking] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -72,7 +72,7 @@ export function useTTS(_voiceURI?: string) {
       const res = await fetch('/v1/agent/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, voice: voice || undefined }),
         signal: abortRef.current.signal,
       })
       if (!res.ok) {
@@ -105,7 +105,7 @@ export function useTTS(_voiceURI?: string) {
         setSpeaking(false)
       }
     }
-  }, [])
+  }, [voice])
 
   const stop = useCallback(() => {
     if (abortRef.current) {

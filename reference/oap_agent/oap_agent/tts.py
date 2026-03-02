@@ -11,18 +11,45 @@ from pathlib import Path
 
 log = logging.getLogger("oap.agent.tts")
 
-_voice = None  # PiperVoice instance
-_voice_name: str = ""
+_voices: dict = {}  # name -> PiperVoice instance
+_default_voice: str = ""
+_models_dir: str = ""
 
 
-def init(model_path: str) -> None:
-    """Load a Piper voice model. Call once at startup."""
-    global _voice, _voice_name
+def init(model_path: str, models_dir: str = "") -> None:
+    """Load the default Piper voice model. Call once at startup."""
+    global _default_voice, _models_dir
     from piper.voice import PiperVoice
 
-    _voice = PiperVoice.load(model_path)
-    _voice_name = Path(model_path).stem
-    log.info("Piper voice loaded: %s", _voice_name)
+    name = Path(model_path).stem
+    _voices[name] = PiperVoice.load(model_path)
+    _default_voice = name
+    _models_dir = models_dir
+    log.info("Piper voice loaded: %s", name)
+
+
+def _get_voice(name: str | None = None):
+    """Return a cached voice, loading on demand if needed."""
+    if not name or name == _default_voice:
+        v = _voices.get(_default_voice)
+        if v is None:
+            raise RuntimeError("Piper voice not loaded — call init() first")
+        return v
+
+    if name in _voices:
+        return _voices[name]
+
+    # Try loading from models_dir
+    if _models_dir:
+        onnx_path = Path(_models_dir) / f"{name}.onnx"
+        if onnx_path.exists():
+            from piper.voice import PiperVoice
+            log.info("Loading voice on demand: %s", name)
+            _voices[name] = PiperVoice.load(str(onnx_path))
+            return _voices[name]
+
+    log.warning("Voice %r not found, falling back to default %r", name, _default_voice)
+    return _voices[_default_voice]
 
 
 def _strip_markdown(text: str) -> str:
@@ -60,17 +87,16 @@ def _strip_markdown(text: str) -> str:
     return text.strip()
 
 
-def synthesize(text: str) -> bytes:
-    """Synthesize text to WAV bytes."""
-    if _voice is None:
-        raise RuntimeError("Piper voice not loaded — call init() first")
+def synthesize(text: str, voice: str | None = None) -> bytes:
+    """Synthesize text to WAV bytes using the specified (or default) voice."""
+    v = _get_voice(voice)
     text = _strip_markdown(text)
     buf = io.BytesIO()
     wav_file = wave.open(buf, "wb")
-    _voice.synthesize_wav(text, wav_file)
+    v.synthesize_wav(text, wav_file)
     wav_file.close()
     data = buf.getvalue()
-    log.info("Synthesized %d bytes for %d chars", len(data), len(text))
+    log.info("Synthesized %d bytes for %d chars (voice=%s)", len(data), len(text), voice or _default_voice)
     return data
 
 
@@ -97,5 +123,5 @@ def list_voices(models_dir: str) -> list[dict]:
 
 
 def get_loaded_voice() -> str:
-    """Return the name of the currently loaded voice, or empty string."""
-    return _voice_name
+    """Return the name of the default loaded voice, or empty string."""
+    return _default_voice
