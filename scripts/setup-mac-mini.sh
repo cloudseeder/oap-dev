@@ -24,7 +24,7 @@ if [ ! -d "$VENV_DIR" ]; then
     exit 1
 fi
 
-for cmd in oap-api oap-trust-api oap-dashboard-api oap-crawl; do
+for cmd in oap-api oap-trust-api oap-dashboard-api oap-crawl oap-agent-api; do
     if [ ! -f "$VENV_DIR/bin/$cmd" ]; then
         echo "ERROR: $cmd not found in $VENV_DIR/bin/"
         echo "Install services first: pip install -e reference/oap_discovery (etc.)"
@@ -142,6 +142,11 @@ write_plist "com.oap.dashboard" \
     "$REPO_DIR/reference/oap_dashboard" \
     "yes"
 
+write_plist "com.oap.agent" \
+    "$VENV_DIR/bin/oap-agent-api" \
+    "$REPO_DIR/reference/oap_agent" \
+    "no"
+
 write_plist "com.oap.crawler" \
     "$VENV_DIR/bin/oap-crawl" \
     "$REPO_DIR/reference/oap_discovery" \
@@ -154,7 +159,7 @@ echo ""
 # --- Load all services ---
 
 echo "Loading services..."
-for label in com.oap.discovery com.oap.trust com.oap.dashboard com.oap.crawler; do
+for label in com.oap.discovery com.oap.trust com.oap.dashboard com.oap.agent com.oap.crawler; do
     launchctl load "$LAUNCH_DIR/$label.plist"
     echo "  Loaded $label"
 done
@@ -172,11 +177,12 @@ echo "Running health checks..."
 OK=0
 FAIL=0
 
-for port_name in "8300:Discovery:discovery" "8301:Trust:trust" "8302:Dashboard:dashboard"; do
+for port_name in "8300:Discovery:discovery:/health" "8301:Trust:trust:/health" "8302:Dashboard:dashboard:/health" "8303:Agent:agent:/v1/agent/health"; do
     port="$(echo "$port_name" | cut -d: -f1)"
     name="$(echo "$port_name" | cut -d: -f2)"
     label="$(echo "$port_name" | cut -d: -f3)"
-    if curl -sf -H "X-Backend-Token: $SECRET" "http://localhost:$port/health" >/dev/null 2>&1; then
+    path="$(echo "$port_name" | cut -d: -f4)"
+    if curl -sf -H "X-Backend-Token: $SECRET" "http://localhost:$port$path" >/dev/null 2>&1; then
         echo "  $name (:$port) — OK"
         OK=$((OK + 1))
     else
@@ -195,4 +201,5 @@ echo "Logs:"
 echo "  tail -f /tmp/com.oap.discovery.log"
 echo "  tail -f /tmp/com.oap.trust.log"
 echo "  tail -f /tmp/com.oap.dashboard.log"
+echo "  tail -f /tmp/com.oap.agent.log"
 echo "  tail -f /tmp/com.oap.crawler.log"
