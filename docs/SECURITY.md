@@ -217,6 +217,23 @@ Auto-cleanup at 10K entries to prevent memory exhaustion.
 - HTML sanitization via `rehype-sanitize` on all rendered markdown
 - Heading IDs generated from rendered HTML, not raw user input
 
+## Hardening: Local-Only Manifests
+
+By default, the discovery service crawls remote domains listed in `seeds.txt` on startup, indexing their manifests alongside the local ones in `manifests/*.json`. For environments where you want to run exclusively with locally curated manifests — no external code, no third-party invoke URLs — empty or delete `seeds.txt`:
+
+```bash
+# Disable remote manifest crawling
+> reference/oap_discovery/seeds.txt
+```
+
+With an empty seeds file:
+- Only manifests from `manifests/*.json` are indexed
+- No outbound HTTP requests to external domains
+- The LLM can only invoke tools you've explicitly placed in the manifests directory
+- All tool execution stays within your curated set
+
+This is the strongest posture for a personal server behind a NAT router: sandbox-exec for write protection, local-only manifests for invoke control, and Cloudflare Tunnel path filtering to keep the tool bridge off the internet.
+
 ## Threat Model Summary
 
 | Threat | Mitigation |
