@@ -912,6 +912,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         summarize_threshold=bridge_cfg.summarize_threshold,
                         chunk_size=bridge_cfg.chunk_size,
                         max_output=bridge_cfg.max_tool_result,
+                        escalation_available=bool(
+                            _escalation_cfg and _escalation_cfg.enabled
+                        ),
                     )
                 duration_ms = int((time.monotonic() - t0) * 1000)
 

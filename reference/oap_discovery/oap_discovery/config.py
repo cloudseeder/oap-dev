@@ -69,6 +69,9 @@ class ToolBridgeConfig:
     stdio_timeout: int = 10
     credentials_file: str = "credentials.yaml"
     max_tool_result: int = 16000
+    # 16k chars ≈ 4k tokens — fits in qwen3:8b's 4096 context window
+    # with room for system prompt + response.  Above this, large results
+    # are escalated to a big LLM (if configured) or map-reduce summarized.
     summarize_threshold: int = 16000
     chunk_size: int = 6000
     think_prefixes: list[str] = field(default_factory=list)

@@ -175,6 +175,7 @@ async def execute_tool_call(
     summarize_threshold: int = 16000,
     chunk_size: int = 6000,
     max_output: int = 16000,
+    escalation_available: bool = False,
 ) -> str:
     """Execute a tool call by looking up its manifest and invoking it.
 
@@ -275,8 +276,11 @@ async def execute_tool_call(
 
         if result.status == "success":
             body = result.response_body or "Success (no output)"
-            if len(body) > summarize_threshold and ollama is not None and task:
-                body = await summarize_result(body, task, ollama, chunk_size, max_output)
+            if len(body) > summarize_threshold:
+                if escalation_available:
+                    log.info("Large output (%d chars) — deferring to big LLM escalation", len(body))
+                elif ollama is not None and task:
+                    body = await summarize_result(body, task, ollama, chunk_size, max_output)
             return body
         else:
             return f"Error: {result.error or 'Unknown error'}"
