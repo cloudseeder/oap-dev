@@ -24,7 +24,7 @@ class DatabaseConfig:
 class DiscoveryConfig:
     url: str = "http://localhost:8300"
     model: str = "qwen3:8b"
-    timeout: int = 120
+    timeout: int = 300
 
 
 @dataclass

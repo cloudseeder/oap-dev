@@ -15,7 +15,7 @@ async def execute_chat(
     discovery_url: str,
     messages: list[dict],
     model: str = "qwen3:8b",
-    timeout: int = 120,
+    timeout: int = 300,
     debug: bool = True,
 ) -> dict[str, Any]:
     """Send a chat request to the OAP discovery service.
@@ -81,7 +81,7 @@ async def execute_task(
     discovery_url: str,
     prompt: str,
     model: str = "qwen3:8b",
-    timeout: int = 120,
+    timeout: int = 300,
     debug: bool = True,
 ) -> dict[str, Any]:
     """Wrap a single prompt as a user message and execute via chat."""
