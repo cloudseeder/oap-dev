@@ -742,6 +742,43 @@ async def text_to_speech(req: TTSRequest):
     )
 
 
+@app.post("/v1/agent/tts/stream")
+async def text_to_speech_stream(req: TTSRequest):
+    """Stream sentence-level WAV chunks as they are synthesized."""
+    if not _tts_enabled:
+        raise HTTPException(status_code=501, detail="TTS not enabled")
+    from . import tts
+
+    async def generate():
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
+        def _produce():
+            try:
+                for wav_chunk in tts.synthesize_stream(req.text, req.voice):
+                    loop.call_soon_threadsafe(queue.put_nowait, wav_chunk)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        # Run the blocking generator in a thread
+        fut = loop.run_in_executor(None, _produce)
+        try:
+            while True:
+                chunk = await queue.get()
+                if chunk is None:
+                    break
+                # Length-prefix: 4-byte big-endian uint32
+                yield len(chunk).to_bytes(4, "big") + chunk
+        finally:
+            await fut  # ensure thread finishes
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/octet-stream",
+        headers={"X-TTS-Stream": "chunked-wav"},
+    )
+
+
 @app.get("/v1/agent/tts/voices")
 async def tts_voices():
     """List available Piper voice models."""

@@ -87,6 +87,42 @@ def _strip_markdown(text: str) -> str:
     return text.strip()
 
 
+def _make_wav_header(pcm_length: int, sample_rate: int = 22050, channels: int = 1, sample_width: int = 2) -> bytes:
+    """Build a 44-byte WAV header for raw PCM data."""
+    import struct
+    byte_rate = sample_rate * channels * sample_width
+    block_align = channels * sample_width
+    data_size = pcm_length
+    file_size = 36 + data_size
+    return struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", file_size, b"WAVE",
+        b"fmt ", 16,          # subchunk1 size
+        1,                    # PCM format
+        channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        sample_width * 8,     # bits per sample
+        b"data", data_size,
+    )
+
+
+def synthesize_stream(text: str, voice: str | None = None):
+    """Yield per-sentence WAV bytes. Each yield is a complete mini-WAV."""
+    v = _get_voice(voice)
+    text = _strip_markdown(text)
+
+    # Get sample rate from voice config (default 22050 for Piper)
+    sr = getattr(v.config, "sample_rate", 22050)
+
+    for pcm_bytes in v.synthesize_stream_raw(text):
+        if not pcm_bytes:
+            continue
+        header = _make_wav_header(len(pcm_bytes), sample_rate=sr)
+        yield header + pcm_bytes
+
+
 def synthesize(text: str, voice: str | None = None) -> bytes:
     """Synthesize text to WAV bytes using the specified (or default) voice."""
     v = _get_voice(voice)

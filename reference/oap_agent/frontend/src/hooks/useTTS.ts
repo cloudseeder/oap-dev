@@ -42,14 +42,21 @@ function _isAnySpeaking(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// useTTS — fetch WAV from backend, play via HTMLAudioElement
+// useTTS — stream WAV chunks from backend, play sequentially
 // ---------------------------------------------------------------------------
 
 export function useTTS(voice?: string) {
   const [speaking, setSpeaking] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const blobUrlRef = useRef<string | null>(null)
+  const blobUrlsRef = useRef<string[]>([])
+
+  const revokeAll = useCallback(() => {
+    for (const url of blobUrlsRef.current) {
+      URL.revokeObjectURL(url)
+    }
+    blobUrlsRef.current = []
+  }, [])
 
   const speak = useCallback(async (text: string) => {
     // Stop any current playback first
@@ -60,52 +67,115 @@ export function useTTS(voice?: string) {
     if (abortRef.current) {
       abortRef.current.abort()
     }
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current)
-      blobUrlRef.current = null
-    }
+    revokeAll()
 
-    abortRef.current = new AbortController()
+    const controller = new AbortController()
+    abortRef.current = controller
     setSpeaking(true)
 
     try {
-      const res = await fetch('/v1/agent/tts', {
+      const res = await fetch('/v1/agent/tts/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voice: voice || undefined }),
-        signal: abortRef.current.signal,
+        signal: controller.signal,
       })
-      if (!res.ok) {
+
+      if (!res.ok || !res.body) {
         setSpeaking(false)
         return
       }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      blobUrlRef.current = url
 
-      const audio = new Audio(url)
-      audioRef.current = audio
+      const reader = res.body.getReader()
+      const chunks: Blob[] = []
+      let buffer = new Uint8Array(0)
 
-      audio.addEventListener('ended', () => {
+      // Read length-prefixed WAV chunks from the stream
+      const readChunks = async () => {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          // Append to buffer
+          const next = new Uint8Array(buffer.length + value.length)
+          next.set(buffer)
+          next.set(value, buffer.length)
+          buffer = next
+          // Parse complete chunks from buffer
+          while (buffer.length >= 4) {
+            const len = (buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3]
+            if (buffer.length < 4 + len) break
+            const wavData = buffer.slice(4, 4 + len)
+            buffer = buffer.slice(4 + len)
+            chunks.push(new Blob([wavData], { type: 'audio/wav' }))
+          }
+        }
+      }
+
+      // Start reading chunks in the background
+      const readPromise = readChunks()
+
+      // Play chunks sequentially as they arrive
+      let chunkIndex = 0
+      const playNext = (): Promise<void> => {
+        return new Promise((resolve) => {
+          const tryPlay = () => {
+            if (controller.signal.aborted) {
+              resolve()
+              return
+            }
+            if (chunkIndex < chunks.length) {
+              const blob = chunks[chunkIndex++]
+              const url = URL.createObjectURL(blob)
+              blobUrlsRef.current.push(url)
+
+              const audio = new Audio(url)
+              audioRef.current = audio
+              _trackAudio(audio)
+
+              audio.addEventListener('ended', () => {
+                resolve()
+              }, { once: true })
+
+              audio.addEventListener('error', () => {
+                resolve()
+              }, { once: true })
+
+              audio.play().catch(() => resolve())
+            } else {
+              // No chunk yet — wait a bit and retry
+              setTimeout(tryPlay, 50)
+            }
+          }
+          tryPlay()
+        })
+      }
+
+      // Play loop: play each chunk then move to next
+      const playLoop = async () => {
+        let streamDone = false
+        readPromise.then(() => { streamDone = true })
+        while (!controller.signal.aborted) {
+          if (chunkIndex < chunks.length) {
+            await playNext()
+          } else if (streamDone) {
+            break
+          } else {
+            // Wait for more chunks
+            await new Promise((r) => setTimeout(r, 50))
+          }
+        }
+      }
+
+      await Promise.all([readPromise, playLoop()])
+      if (!controller.signal.aborted) {
         setSpeaking(false)
-        URL.revokeObjectURL(url)
-        blobUrlRef.current = null
-      }, { once: true })
-
-      audio.addEventListener('error', () => {
-        setSpeaking(false)
-        URL.revokeObjectURL(url)
-        blobUrlRef.current = null
-      }, { once: true })
-
-      _trackAudio(audio)
-      await audio.play()
+      }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         setSpeaking(false)
       }
     }
-  }, [voice])
+  }, [voice, revokeAll])
 
   const stop = useCallback(() => {
     if (abortRef.current) {
@@ -115,19 +185,16 @@ export function useTTS(voice?: string) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
     }
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current)
-      blobUrlRef.current = null
-    }
+    revokeAll()
     setSpeaking(false)
-  }, [])
+  }, [revokeAll])
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+      revokeAll()
     }
-  }, [])
+  }, [revokeAll])
 
   return { speaking, speak, stop, supported: true }
 }
