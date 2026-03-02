@@ -96,10 +96,12 @@ write_plist() {
     fi
 
     local args_block="        <string>$program</string>"
-    for arg in "${extra_args[@]}"; do
-        args_block="$args_block
+    if [ ${#extra_args[@]} -gt 0 ]; then
+        for arg in "${extra_args[@]}"; do
+            args_block="$args_block
         <string>$arg</string>"
-    done
+        done
+    fi
 
     cat > "$plist_path" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
