@@ -168,27 +168,42 @@ echo ""
 
 # --- Wait for services to start ---
 
-echo "Waiting for services to start..."
-sleep 5
+echo "Waiting for services to start (up to 60s)..."
 
-# --- Health checks ---
-
-echo "Running health checks..."
 OK=0
 FAIL=0
+MAX_WAIT=60
+INTERVAL=5
+ELAPSED=0
 
-for port_name in "8300:Discovery:discovery:/health" "8301:Trust:trust:/health" "8302:Dashboard:dashboard:/health" "8303:Agent:agent:/v1/agent/health"; do
+# Build list of services to check
+REMAINING="8300:Discovery:discovery:/health 8301:Trust:trust:/health 8302:Dashboard:dashboard:/health 8303:Agent:agent:/v1/agent/health"
+
+while [ $ELAPSED -lt $MAX_WAIT ] && [ -n "$REMAINING" ]; do
+    sleep $INTERVAL
+    ELAPSED=$((ELAPSED + INTERVAL))
+    STILL_WAITING=""
+    for port_name in $REMAINING; do
+        port="$(echo "$port_name" | cut -d: -f1)"
+        name="$(echo "$port_name" | cut -d: -f2)"
+        path="$(echo "$port_name" | cut -d: -f4)"
+        if curl -sf -H "X-Backend-Token: $SECRET" "http://localhost:$port$path" >/dev/null 2>&1; then
+            echo "  $name (:$port) — OK (${ELAPSED}s)"
+            OK=$((OK + 1))
+        else
+            STILL_WAITING="$STILL_WAITING $port_name"
+        fi
+    done
+    REMAINING="$(echo "$STILL_WAITING" | xargs)"
+done
+
+# Mark anything still not responding as failed
+for port_name in $REMAINING; do
     port="$(echo "$port_name" | cut -d: -f1)"
     name="$(echo "$port_name" | cut -d: -f2)"
     label="$(echo "$port_name" | cut -d: -f3)"
-    path="$(echo "$port_name" | cut -d: -f4)"
-    if curl -sf -H "X-Backend-Token: $SECRET" "http://localhost:$port$path" >/dev/null 2>&1; then
-        echo "  $name (:$port) — OK"
-        OK=$((OK + 1))
-    else
-        echo "  $name (:$port) — FAILED (check /tmp/com.oap.$label.err)"
-        FAIL=$((FAIL + 1))
-    fi
+    echo "  $name (:$port) — FAILED after ${MAX_WAIT}s (check /tmp/com.oap.$label.err)"
+    FAIL=$((FAIL + 1))
 done
 
 echo ""
