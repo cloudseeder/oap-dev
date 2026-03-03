@@ -1,21 +1,41 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router'
 import AgentSidebar from './AgentSidebar'
 import AgentEventProvider from './AgentEventProvider'
 import { AvatarStateContext, type AvatarState } from '@/hooks/useAvatarState'
+import { useAnySpeaking } from '@/hooks/useTTS'
 
 export default function AgentLayout() {
   const [avatarState, setAvatarState] = useState<AvatarState>({
     recording: false,
     streaming: false,
+    speaking: false,
     persona: '',
   })
   const stateRef = useRef(avatarState)
   stateRef.current = avatarState
+  const anySpeaking = useAnySpeaking()
+
+  // Keep speaking in avatar state in sync with TTS
+  useEffect(() => {
+    setAvatarState((prev) => prev.speaking === anySpeaking ? prev : { ...prev, speaking: anySpeaking })
+  }, [anySpeaking])
 
   const update = useCallback((patch: Partial<AvatarState>) => {
     setAvatarState((prev) => ({ ...prev, ...patch }))
   }, [])
+
+  // Broadcast avatar state to external display windows
+  useEffect(() => {
+    const ch = new BroadcastChannel('oap-avatar')
+    ch.postMessage({
+      recording: avatarState.recording,
+      streaming: avatarState.streaming,
+      speaking: avatarState.speaking,
+      persona: avatarState.persona,
+    })
+    return () => ch.close()
+  }, [avatarState.recording, avatarState.streaming, avatarState.speaking, avatarState.persona])
 
   return (
     <AgentEventProvider>

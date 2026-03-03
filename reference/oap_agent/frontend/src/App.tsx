@@ -4,10 +4,12 @@ import ChatView from '@/components/ChatView'
 import TaskList from '@/components/TaskList'
 import TaskDetail from '@/components/TaskDetail'
 import SettingsView from '@/components/SettingsView'
+import AvatarDisplay from '@/components/AvatarDisplay'
 
 export default function App() {
   return (
     <Routes>
+      <Route path="avatar" element={<AvatarDisplay />} />
       <Route element={<AgentLayout />}>
         <Route index element={<Navigate to="/chat" replace />} />
         <Route path="chat" element={<ChatView />} />
