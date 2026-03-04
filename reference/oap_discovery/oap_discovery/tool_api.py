@@ -818,7 +818,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 # Escalate final reasoning to big LLM if configured
                 if should_escalate:
                     from .escalation import escalate as _escalate
-                    escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg)
+                    escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg, persona=caller_system)
                     if escalated_text:
                         ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
                         ollama_resp["oap_escalated"] = True
@@ -1225,7 +1225,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
     # Escalate final reasoning to big LLM if configured
     if should_escalate:
         from .escalation import escalate as _escalate
-        escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg)
+        escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg, persona=caller_system)
         if escalated_text:
             ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
             ollama_resp["oap_escalated"] = True

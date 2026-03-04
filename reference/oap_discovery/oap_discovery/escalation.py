@@ -17,7 +17,7 @@ from .config import EscalationConfig
 
 log = logging.getLogger("oap.escalation")
 
-SYSTEM_PROMPT = (
+_BASE_SYSTEM_PROMPT = (
     "Answer the user's question using the tool execution results below. "
     "If the results contain file contents, summarize or analyze as the user requested. "
     "Verify all arithmetic and calculations before responding. "
@@ -57,6 +57,7 @@ async def escalate(
     user_message: str,
     tool_results: list[dict],
     config: EscalationConfig,
+    persona: str = "",
 ) -> str | None:
     """Send tool results to a big LLM for final reasoning.
 
@@ -69,15 +70,19 @@ async def escalate(
         log.warning("Escalation skipped — no API key (set OAP_ESCALATION_API_KEY)")
         return None
 
+    system_prompt = _BASE_SYSTEM_PROMPT
+    if persona:
+        system_prompt = f"{persona} Respond in character.\n\n{system_prompt}"
+
     formatted_results = _format_tool_results(tool_results)
     user_content = f"{user_message}\n\n--- Tool execution results ---\n{formatted_results}"
 
     try:
         if config.provider == "anthropic":
-            return await _call_anthropic(user_content, api_key, config)
+            return await _call_anthropic(user_content, api_key, config, system_prompt)
         else:
             # OpenAI-compatible (covers OpenAI, OpenRouter, Groq, etc.)
-            return await _call_openai(user_content, api_key, config)
+            return await _call_openai(user_content, api_key, config, system_prompt)
     except Exception:
         log.exception("Escalation failed — falling back to small LLM response")
         return None
@@ -87,6 +92,7 @@ async def _call_openai(
     user_content: str,
     api_key: str,
     config: EscalationConfig,
+    system_prompt: str = "",
 ) -> str | None:
     """Call an OpenAI-compatible chat completions endpoint."""
     base_url = config.base_url or "https://api.openai.com/v1"
@@ -102,7 +108,7 @@ async def _call_openai(
             json={
                 "model": config.model,
                 "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt or _BASE_SYSTEM_PROMPT},
                     {"role": "user", "content": user_content},
                 ],
                 "temperature": 0,
@@ -118,6 +124,7 @@ async def _call_anthropic(
     user_content: str,
     api_key: str,
     config: EscalationConfig,
+    system_prompt: str = "",
 ) -> str | None:
     """Call the Anthropic Messages API."""
     base_url = config.base_url or "https://api.anthropic.com"
@@ -134,7 +141,7 @@ async def _call_anthropic(
             json={
                 "model": config.model,
                 "max_tokens": config.max_tokens,
-                "system": SYSTEM_PROMPT,
+                "system": system_prompt or _BASE_SYSTEM_PROMPT,
                 "messages": [
                     {"role": "user", "content": user_content},
                 ],
