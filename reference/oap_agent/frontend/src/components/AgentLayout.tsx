@@ -25,16 +25,21 @@ export default function AgentLayout() {
     setAvatarState((prev) => ({ ...prev, ...patch }))
   }, [])
 
-  // Broadcast avatar state to external display windows
+  // Persistent broadcast channel for external display windows
+  const channelRef = useRef<BroadcastChannel | null>(null)
   useEffect(() => {
-    const ch = new BroadcastChannel('oap-avatar')
-    ch.postMessage({
+    channelRef.current = new BroadcastChannel('oap-avatar')
+    return () => { channelRef.current?.close(); channelRef.current = null }
+  }, [])
+
+  // Post state changes to the channel
+  useEffect(() => {
+    channelRef.current?.postMessage({
       recording: avatarState.recording,
       streaming: avatarState.streaming,
       speaking: avatarState.speaking,
       persona: avatarState.persona,
     })
-    return () => ch.close()
   }, [avatarState.recording, avatarState.streaming, avatarState.speaking, avatarState.persona])
 
   return (
