@@ -108,19 +108,35 @@ def _make_wav_header(pcm_length: int, sample_rate: int = 22050, channels: int = 
     )
 
 
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences for streaming synthesis."""
+    parts = re.split(r'(?<=[.!?])\s+', text)
+    return [p.strip() for p in parts if p.strip()]
+
+
 def synthesize_stream(text: str, voice: str | None = None):
     """Yield per-sentence WAV bytes. Each yield is a complete mini-WAV."""
     v = _get_voice(voice)
     text = _strip_markdown(text)
 
-    # Get sample rate from voice config (default 22050 for Piper)
-    sr = getattr(v.config, "sample_rate", 22050)
-
-    for pcm_bytes in v.synthesize_stream_raw(text):
-        if not pcm_bytes:
-            continue
-        header = _make_wav_header(len(pcm_bytes), sample_rate=sr)
-        yield header + pcm_bytes
+    if hasattr(v, "synthesize_stream_raw"):
+        # Native streaming — yields raw PCM per sentence
+        sr = getattr(v.config, "sample_rate", 22050)
+        for pcm_bytes in v.synthesize_stream_raw(text):
+            if not pcm_bytes:
+                continue
+            header = _make_wav_header(len(pcm_bytes), sample_rate=sr)
+            yield header + pcm_bytes
+    else:
+        # Fallback — synthesize each sentence individually
+        for sentence in _split_sentences(text):
+            buf = io.BytesIO()
+            wav_file = wave.open(buf, "wb")
+            v.synthesize_wav(sentence, wav_file)
+            wav_file.close()
+            data = buf.getvalue()
+            if data:
+                yield data
 
 
 def synthesize(text: str, voice: str | None = None) -> bytes:
