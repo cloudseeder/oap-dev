@@ -114,6 +114,12 @@ export function useTTS(voice?: string) {
       // Start reading chunks in the background
       const readPromise = readChunks()
 
+      // Single Audio element — reuse across chunks so the user-gesture
+      // autoplay privilege is retained even when the tab is in the background
+      // (creating new Audio() per chunk loses the privilege).
+      const audio = new Audio()
+      audioRef.current = audio
+
       // Play chunks sequentially as they arrive
       let chunkIndex = 0
       const playNext = (): Promise<void> => {
@@ -128,8 +134,7 @@ export function useTTS(voice?: string) {
               const url = URL.createObjectURL(blob)
               blobUrlsRef.current.push(url)
 
-              const audio = new Audio(url)
-              audioRef.current = audio
+              audio.src = url
               _trackAudio(audio)
 
               audio.addEventListener('ended', () => {
