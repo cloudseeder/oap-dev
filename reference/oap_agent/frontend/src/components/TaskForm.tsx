@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { AgentTask } from '@/lib/types'
 import CronInput from './CronInput'
 
-const MODELS = ['qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
+const MODELS = ['qwen3:14b', 'qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
 
 interface TaskFormProps {
   task?: AgentTask
@@ -14,7 +14,7 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
   const [name, setName] = useState(task?.name || '')
   const [prompt, setPrompt] = useState(task?.prompt || '')
   const [schedule, setSchedule] = useState(task?.schedule || '')
-  const [model, setModel] = useState(task?.model || 'qwen3:8b')
+  const [model, setModel] = useState(task?.model || 'qwen3:14b')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

@@ -13,7 +13,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
     id         TEXT PRIMARY KEY,
     title      TEXT NOT NULL,
-    model      TEXT NOT NULL DEFAULT 'qwen3:8b',
+    model      TEXT NOT NULL DEFAULT 'qwen3:14b',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     name       TEXT NOT NULL,
     prompt     TEXT NOT NULL,
     schedule   TEXT,
-    model      TEXT NOT NULL DEFAULT 'qwen3:8b',
+    model      TEXT NOT NULL DEFAULT 'qwen3:14b',
     enabled    INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -114,7 +114,7 @@ class AgentDB:
 
     # --- Conversations ---
 
-    def create_conversation(self, title: str = "New Conversation", model: str = "qwen3:8b") -> dict:
+    def create_conversation(self, title: str = "New Conversation", model: str = "qwen3:14b") -> dict:
         conv_id = _new_id("conv_")
         now = _now()
         with self._lock:
@@ -252,7 +252,7 @@ class AgentDB:
         name: str,
         prompt: str,
         schedule: str | None = None,
-        model: str = "qwen3:8b",
+        model: str = "qwen3:14b",
     ) -> dict:
         task_id = _new_id("task_")
         now = _now()

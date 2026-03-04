@@ -30,14 +30,14 @@ _db: AgentDB | None = None
 _event_bus: EventBus | None = None
 _scheduler: TaskScheduler | None = None
 _discovery_url: str = "http://localhost:8300"
-_discovery_model: str = "qwen3:8b"
+_discovery_model: str = "qwen3:14b"
 _discovery_timeout: int = 300
 _debug_mode: bool = False
 _max_tasks: int = 20
 _voice_cfg = None  # VoiceConfig, set in lifespan
 _tts_enabled = False
 
-ALLOWED_MODELS = {"qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"}
+ALLOWED_MODELS = {"qwen3:14b", "qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"}
 
 
 def _validate_model(v: str | None) -> str | None:

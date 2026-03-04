@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, type MutableRefObject } from 'react'
 
-const MODELS = ['qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
+const MODELS = ['qwen3:14b', 'qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
 
 interface ChatInputProps {
   onSend: (message: string, model: string) => void
@@ -19,7 +19,7 @@ interface ChatInputProps {
 export default function ChatInput({
   onSend,
   disabled,
-  defaultModel = 'qwen3:8b',
+  defaultModel = 'qwen3:14b',
   voiceEnabled = false,
   autoSend = false,
   recording = false,

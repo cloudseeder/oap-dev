@@ -53,7 +53,7 @@ export default function ChatView() {
   const { update: updateAvatar } = useAvatarState()
 
   // Voice recorder — lifted from ChatInput so ChatView owns recording state
-  const modelRef = useRef('qwen3:8b')
+  const modelRef = useRef('qwen3:14b')
   const pendingTranscriptionRef = useRef<((text: string) => void) | null>(null)
   const handleTranscription = useCallback((text: string) => {
     if (autoSend) {
@@ -107,7 +107,7 @@ export default function ChatView() {
       primerSent.current = true
       handleSend(
         "Let's do a quick get-to-know-me. Ask me exactly 5 questions, one at a time — wait for my answer before asking the next. Ask about: (1) my name, (2) where I live, (3) what I do for work, (4) my hobbies and interests, (5) any preferences you should remember. After all 5, briefly summarize what you learned and end the conversation.",
-        'qwen3:8b',
+        'qwen3:14b',
       )
     }
   }, [searchParams, initialConvId])
@@ -328,7 +328,7 @@ export default function ChatView() {
       <ChatInput
         onSend={handleSend}
         disabled={streaming || loading}
-        defaultModel="qwen3:8b"
+        defaultModel="qwen3:14b"
         voiceEnabled={voiceEnabled}
         autoSend={autoSend}
         recording={recording}
