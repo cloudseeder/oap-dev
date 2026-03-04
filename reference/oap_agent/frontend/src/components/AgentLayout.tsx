@@ -3,44 +3,50 @@ import { Outlet } from 'react-router'
 import AgentSidebar from './AgentSidebar'
 import AgentEventProvider from './AgentEventProvider'
 import { AvatarStateContext, type AvatarState } from '@/hooks/useAvatarState'
-import { useAnySpeaking } from '@/hooks/useTTS'
+import { subscribeSpeaking } from '@/hooks/useTTS'
 
 export default function AgentLayout() {
   const [avatarState, setAvatarState] = useState<AvatarState>({
     recording: false,
     streaming: false,
-    speaking: false,
     persona: '',
   })
   const stateRef = useRef(avatarState)
   stateRef.current = avatarState
-  const anySpeaking = useAnySpeaking()
-
-  // Keep speaking in avatar state in sync with TTS
-  useEffect(() => {
-    setAvatarState((prev) => prev.speaking === anySpeaking ? prev : { ...prev, speaking: anySpeaking })
-  }, [anySpeaking])
 
   const update = useCallback((patch: Partial<AvatarState>) => {
     setAvatarState((prev) => ({ ...prev, ...patch }))
   }, [])
 
-  // Persistent broadcast channel for external display windows
+  // Broadcast avatar state to external display windows via BroadcastChannel.
+  // Uses a raw TTS subscription instead of useAnySpeaking() so that speaking
+  // changes never trigger React re-renders in this component or its children.
+  const speakingRef = useRef(false)
   const channelRef = useRef<BroadcastChannel | null>(null)
-  useEffect(() => {
-    channelRef.current = new BroadcastChannel('oap-avatar')
-    return () => { channelRef.current?.close(); channelRef.current = null }
+
+  const broadcast = useCallback(() => {
+    const s = stateRef.current
+    channelRef.current?.postMessage({
+      recording: s.recording,
+      streaming: s.streaming,
+      speaking: speakingRef.current,
+      persona: s.persona,
+    })
   }, [])
 
-  // Post state changes to the channel
   useEffect(() => {
-    channelRef.current?.postMessage({
-      recording: avatarState.recording,
-      streaming: avatarState.streaming,
-      speaking: avatarState.speaking,
-      persona: avatarState.persona,
+    channelRef.current = new BroadcastChannel('oap-avatar')
+    const unsub = subscribeSpeaking((v) => {
+      speakingRef.current = v
+      broadcast()
     })
-  }, [avatarState.recording, avatarState.streaming, avatarState.speaking, avatarState.persona])
+    return () => { unsub(); channelRef.current?.close(); channelRef.current = null }
+  }, [broadcast])
+
+  // Re-broadcast when avatar state changes (recording/streaming/persona)
+  useEffect(() => {
+    broadcast()
+  }, [avatarState.recording, avatarState.streaming, avatarState.persona, broadcast])
 
   return (
     <AgentEventProvider>

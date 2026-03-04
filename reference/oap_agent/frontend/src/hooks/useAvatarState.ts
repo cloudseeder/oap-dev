@@ -3,12 +3,11 @@ import { createContext, useContext, type MutableRefObject } from 'react'
 export interface AvatarState {
   recording: boolean
   streaming: boolean
-  speaking: boolean
   persona: string
   audioLevelRef?: MutableRefObject<number>
 }
 
-const DEFAULT: AvatarState = { recording: false, streaming: false, speaking: false, persona: '' }
+const DEFAULT: AvatarState = { recording: false, streaming: false, persona: '' }
 
 export const AvatarStateContext = createContext<{
   state: AvatarState

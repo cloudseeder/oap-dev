@@ -237,3 +237,8 @@ export function useVoices() {
 export function stopAllTTS() {
   _stopAll()
 }
+
+/** Subscribe to speaking state changes outside React (no re-renders). */
+export function subscribeSpeaking(cb: (speaking: boolean) => void): () => void {
+  return _subscribe(() => cb(_isAnySpeaking()))
+}
