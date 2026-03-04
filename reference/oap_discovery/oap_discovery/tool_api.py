@@ -706,8 +706,10 @@ async def chat_proxy(req: ChatRequest) -> Any:
     if original_messages and original_messages[0].get("role") == "system":
         caller_system = original_messages.pop(0).get("content", "")
 
+    # Persona goes first — small LLMs follow the opening line most strongly
+    persona_prefix = caller_system + " " if caller_system else ""
     system_content = (
-        "You are a tool-calling assistant. Be brief. "
+        f"{persona_prefix}You are a tool-calling assistant. Be brief. "
         + "Use function calls to invoke tools — never write JSON in your response. "
         "IMPORTANT: Always call a tool unless the task is impossible or blocked — "
         "in that case, briefly explain why you cannot complete the request. "
@@ -737,7 +739,8 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "To look up commands or utilities by topic, use `apropos <keyword>` — "
         "never search through binary files with find or grep. "
         "When querying weather for US locations, use temperature_unit=fahrenheit and wind_speed_unit=mph. "
-        "After a tool result, reply in 1-2 sentences."
+        "After a tool result, reply in 1-2 sentences"
+        + (" in character." if caller_system else ".")
     )
 
     if failure_hints:
@@ -753,14 +756,8 @@ async def chat_proxy(req: ChatRequest) -> Any:
             + "\n".join(f"  {u}" for u in discovered_usage)
         )
 
-    # Append caller-provided system content (persona, user facts) so the
-    # LLM adopts the persona's voice in its final reply
-    caller_hint = ""
-    if caller_system:
-        caller_hint = f"\n\n{caller_system} Respond in character."
-
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_content + usage_hint + caller_hint},
+        {"role": "system", "content": system_content + usage_hint},
         *original_messages,
     ]
 
@@ -1067,7 +1064,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     + "\n".join(f"  {u}" for u in discovered_usage)
                 )
             messages = [
-                {"role": "system", "content": system_content + usage_hint + caller_hint},
+                {"role": "system", "content": system_content + usage_hint},
                 *original_messages,
             ]
             continue  # retry the outer loop
@@ -1127,7 +1124,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     + "\n".join(f"  {u}" for u in discovered_usage)
                 )
             messages = [
-                {"role": "system", "content": system_content + usage_hint + caller_hint},
+                {"role": "system", "content": system_content + usage_hint},
                 *original_messages,
             ]
             continue  # retry the outer loop
@@ -1209,7 +1206,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     + "\n".join(f"  {u}" for u in discovered_usage)
                 )
             messages = [
-                {"role": "system", "content": system_content + usage_hint + caller_hint},
+                {"role": "system", "content": system_content + usage_hint},
                 *original_messages,
             ]
             continue  # retry the outer loop
