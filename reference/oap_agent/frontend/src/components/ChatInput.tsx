@@ -10,6 +10,7 @@ interface ChatInputProps {
   autoSend?: boolean
   recording?: boolean
   listening?: boolean
+  attentive?: boolean
   transcribing?: boolean
   streaming?: boolean
   micSupported?: boolean
@@ -28,6 +29,7 @@ export default function ChatInput({
   autoSend = false,
   recording = false,
   listening = false,
+  attentive = false,
   transcribing = false,
   streaming = false,
   micSupported = false,
@@ -103,7 +105,7 @@ export default function ChatInput({
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={transcribing ? 'Transcribing...' : recording ? 'Listening...' : listening ? `Say '${wakeWord}' to start...` : 'Send a message...'}
+            placeholder={transcribing ? 'Transcribing...' : attentive ? 'Listening — go ahead...' : recording ? 'Listening...' : listening ? `Say '${wakeWord}' to start...` : 'Send a message...'}
             rows={1}
             disabled={disabled || transcribing}
             className="flex-1 resize-none bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none disabled:opacity-50"
@@ -124,13 +126,15 @@ export default function ChatInput({
               <button
                 onClick={onMicClick}
                 disabled={disabled || transcribing}
-                title={recording ? 'Stop recording' : listening ? 'Stop listening' : 'Voice input'}
+                title={attentive ? 'Listening for request...' : recording ? 'Stop recording' : listening ? 'Stop listening' : 'Voice input'}
                 className={`relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                  recording
-                    ? 'bg-red-500 text-white animate-pulse'
-                    : listening
-                      ? 'bg-gray-200 text-gray-600'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                  attentive
+                    ? 'bg-primary text-white animate-pulse'
+                    : recording
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : listening
+                        ? 'bg-gray-200 text-gray-600'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
                 }`}
               >
                 {transcribing ? (
@@ -172,7 +176,7 @@ export default function ChatInput({
           </div>
         </div>
         <p className="mt-1.5 text-center text-xs text-gray-400">
-          Enter to send, Shift+Enter for newline{showMic && (recording ? ' — Recording...' : listening ? ' — Listening...' : '')}
+          Enter to send, Shift+Enter for newline{showMic && (attentive ? ' — Go ahead, listening...' : recording ? ' — Recording...' : listening ? ' — Listening...' : '')}
         </p>
       </div>
     </div>
