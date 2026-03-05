@@ -17,9 +17,12 @@ def init(
     _model = WhisperModel(model_size, device=device, compute_type=compute_type)
 
 
-def transcribe(audio_path: str, language: str | None = None) -> str:
+def transcribe(audio_path: str, language: str | None = None, initial_prompt: str | None = None) -> str:
     """Transcribe an audio file to text. Returns the full transcript."""
     if _model is None:
         raise RuntimeError("Whisper model not loaded — call init() first")
-    segments, _ = _model.transcribe(audio_path, language=language, beam_size=5)
+    kwargs: dict = {"language": language, "beam_size": 5}
+    if initial_prompt:
+        kwargs["initial_prompt"] = initial_prompt
+    segments, _ = _model.transcribe(audio_path, **kwargs)
     return " ".join(seg.text.strip() for seg in segments)
