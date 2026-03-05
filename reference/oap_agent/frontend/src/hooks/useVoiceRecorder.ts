@@ -2,38 +2,42 @@ import { useRef, useState, useCallback } from 'react'
 
 // --- Continuous listening thresholds ---
 const SPEECH_THRESHOLD = 0.03    // RMS level to detect speech onset
-const SILENCE_THRESHOLD = 0.015  // RMS level to detect silence
 const ONSET_FRAMES = 10          // ~170ms of speech before capture starts
 const SILENCE_DURATION = 1500    // ms of silence before auto-stop
 const MIN_UTTERANCE_MS = 500     // ignore clicks/bumps shorter than this
+const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
+const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
+const SPEECH_EMA_ALPHA = 0.15    // faster EMA for tracking speech level during capture
 
 interface StartOptions {
   continuous?: boolean
   wakeWord?: string
 }
 
-/** Strip wake word prefix from transcript. Returns remaining text or null if no match. */
+/** Strip wake word prefix (and repeated hallucinations) from transcript.
+ *  Returns remaining text, or null if no wake word match or only wake words. */
 function stripWakeWord(transcript: string, wakeWord: string): string | null {
   if (!wakeWord) return transcript
-  const clean = transcript.replace(/^[,.\-!?\s]+/, '').toLowerCase()
+  let clean = transcript.replace(/^[,.\-!?\s]+/, '').toLowerCase()
   const wk = wakeWord.toLowerCase().replace(/[^a-z0-9\s]/g, '')
-  // Match patterns: "kai ...", "hey kai ...", "ok kai ...", "okay kai ..."
-  const prefixes = [
-    wk,
-    `hey ${wk}`,
-    `ok ${wk}`,
-    `okay ${wk}`,
-  ]
-  for (const prefix of prefixes) {
-    // Check if transcript starts with prefix, allowing trailing punctuation/space
-    const re = new RegExp(`^${prefix.replace(/\s+/g, '[,\\s]+')}[,\\s]*`, 'i')
-    const match = clean.match(re)
-    if (match) {
-      const remainder = clean.slice(match[0].length).trim()
-      return remainder || null // null if wake word only (no content)
-    }
+
+  // First check: does the transcript contain the wake word at all?
+  if (!clean.includes(wk)) return null
+
+  // Strip all leading wake word repetitions and prefixes like "hey/ok/okay"
+  // Handles: "kai", "kai, kai, kai", "hey kai", "ok kai, kai", etc.
+  const wkPattern = wk.replace(/\s+/g, '[,\\s]+')
+  const repPattern = new RegExp(
+    `^(?:(?:hey|ok|okay)[,\\s]+)?${wkPattern}[,\\.\\s]*`, 'i'
+  )
+  let prev = ''
+  while (clean !== prev) {
+    prev = clean
+    clean = clean.replace(repPattern, '').trim()
   }
-  return null // no wake word match
+
+  // If nothing left after stripping, it was just wake word repetitions
+  return clean || null
 }
 
 export function useVoiceRecorder(onResult: (text: string) => void) {
@@ -57,6 +61,9 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
   const silenceStartRef = useRef(0)
   const captureStartRef = useRef(0)
   const stateRef = useRef<'passive' | 'capturing' | 'processing'>('passive')
+  // Adaptive level tracking
+  const ambientLevelRef = useRef(0)   // slow EMA of ambient noise floor (passive mode)
+  const speechPeakRef = useRef(0)     // EMA of speech level during capture
   // Prevent re-entry when restarting passive monitoring after transcription
   const restartingRef = useRef(false)
 
@@ -110,6 +117,7 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     speechFramesRef.current = 0
     silenceStartRef.current = 0
     captureStartRef.current = 0
+    speechPeakRef.current = 0
     setRecording(false)
     setListening(true)
     restartingRef.current = false
@@ -142,6 +150,8 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
         stateRef.current = 'passive'
         speechFramesRef.current = 0
         silenceStartRef.current = 0
+        ambientLevelRef.current = 0
+        speechPeakRef.current = 0
         setListening(true)
 
         function updateLevelContinuous() {
@@ -156,13 +166,22 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
           audioLevelRef.current = rms
 
           if (stateRef.current === 'passive') {
-            if (rms > SPEECH_THRESHOLD) {
+            // Track ambient noise floor with slow EMA
+            ambientLevelRef.current = ambientLevelRef.current === 0
+              ? rms
+              : ambientLevelRef.current * (1 - AMBIENT_EMA_ALPHA) + rms * AMBIENT_EMA_ALPHA
+
+            // Speech onset: RMS must exceed both absolute threshold AND
+            // be significantly above the ambient floor
+            const onsetThreshold = Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5)
+            if (rms > onsetThreshold) {
               speechFramesRef.current++
               if (speechFramesRef.current >= ONSET_FRAMES) {
                 // Speech detected — start MediaRecorder
                 stateRef.current = 'capturing'
                 captureStartRef.current = Date.now()
                 silenceStartRef.current = 0
+                speechPeakRef.current = rms
                 startMediaRecorder(stream)
                 setRecording(true)
                 setListening(false)
@@ -171,7 +190,20 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               speechFramesRef.current = 0
             }
           } else if (stateRef.current === 'capturing') {
-            if (rms < SILENCE_THRESHOLD) {
+            // Track speech level with faster EMA
+            if (rms > speechPeakRef.current) {
+              speechPeakRef.current = rms
+            } else {
+              speechPeakRef.current = speechPeakRef.current * (1 - SPEECH_EMA_ALPHA) + rms * SPEECH_EMA_ALPHA
+            }
+
+            // Silence = RMS dropped to SILENCE_DROP_RATIO of the speech peak,
+            // or back down near the ambient floor
+            const silenceThreshold = Math.max(
+              speechPeakRef.current * SILENCE_DROP_RATIO,
+              ambientLevelRef.current * 1.3,
+            )
+            if (rms < silenceThreshold) {
               if (silenceStartRef.current === 0) {
                 silenceStartRef.current = Date.now()
               } else if (

@@ -710,13 +710,13 @@ async def transcribe_audio(file: UploadFile = File(...)):
         tmp.write(data)
         tmp_path = tmp.name
     try:
-        # Bias Whisper toward the wake word vocabulary
+        # Lightly bias Whisper toward the wake word spelling
         prompt = None
         if _db:
             settings = _db.get_settings()
             wake = settings.get("voice_wake_word") or settings.get("persona_name") or ""
             if wake:
-                prompt = f"Hey {wake}, OK {wake}, {wake},"
+                prompt = f"{wake},"
         text = tx.transcribe(tmp_path, language=_voice_cfg.language, initial_prompt=prompt)
         return {"text": text}
     finally:
