@@ -45,7 +45,7 @@ class AgentConfig:
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     voice: VoiceConfig = field(default_factory=VoiceConfig)
-    debug: bool = False
+    debug: bool = True
     max_tasks: int = 20
     max_concurrent_tasks: int = 1
 

@@ -310,7 +310,7 @@ async def chat(req: ChatRequest):
                 messages=llm_messages,
                 model=model,
                 timeout=_discovery_timeout,
-                debug=True,
+                debug=_debug_mode,
             )
         except Exception as exc:
             log.error("Chat execution failed: %s", exc, exc_info=True)
@@ -866,6 +866,7 @@ def main():
     # Ensure oap.agent loggers survive uvicorn's log reconfiguration
     oap_logger = logging.getLogger("oap.agent")
     oap_logger.setLevel(logging.INFO)
+    oap_logger.propagate = False
     if not oap_logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))

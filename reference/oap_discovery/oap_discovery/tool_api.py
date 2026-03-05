@@ -809,6 +809,24 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         })
                     break
 
+                # Cache hit but model skipped tool calls on round 1 — likely
+                # hallucinating an answer instead of using the tool.  Degrade
+                # the cache entry and retry with full discovery.
+                if exp_cache_hit and round_num == 0 and not tools_executed and tools and _attempt == 0:
+                    log.warning(
+                        "Cache hit but model made no tool calls — degrading cache entry and retrying"
+                    )
+                    if _experience_store and exp_id:
+                        _experience_store.degrade_confidence(exp_id)
+                    if debug:
+                        debug_rounds.append({
+                            "round": round_num + 1,
+                            "ollama_response": resp_message,
+                            "tool_executions": [],
+                            "note": "no_tool_calls_on_cache_hit",
+                        })
+                    break
+
                 # No tool calls or auto-execute disabled — return as-is
                 ollama_resp["oap_tools_injected"] = len(registry)
                 ollama_resp["oap_round"] = round_num + 1
@@ -995,11 +1013,14 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 break
 
         # Inner loop finished (max rounds reached or broke out).
-        # If this was a cache hit and tools had errors, degrade and retry.
-        if exp_cache_hit and tools_had_errors and _attempt == 0 and _experience_store and exp_id:
+        # If this was a cache hit and tools had errors (or model skipped
+        # tool calls entirely), degrade and retry with full discovery.
+        if exp_cache_hit and (tools_had_errors or not tools_executed) and _attempt == 0 and _experience_store and exp_id:
+            reason = "produced errors" if tools_had_errors else "model skipped tool calls"
             new_conf = _experience_store.degrade_confidence(exp_id)
             log.warning(
-                "Cache hit produced errors — degraded %s confidence to %.2f, retrying with full discovery",
+                "Cache hit %s — degraded %s confidence to %.2f, retrying with full discovery",
+                reason,
                 exp_id,
                 new_conf or 0.0,
             )
