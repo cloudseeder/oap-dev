@@ -310,7 +310,7 @@ async def chat(req: ChatRequest):
                 messages=llm_messages,
                 model=model,
                 timeout=_discovery_timeout,
-                debug=_debug_mode,
+                debug=True,
             )
         except Exception as exc:
             log.error("Chat execution failed: %s", exc, exc_info=True)
