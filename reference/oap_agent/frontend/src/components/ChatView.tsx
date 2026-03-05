@@ -74,6 +74,20 @@ export default function ChatView() {
 
   const waitingForTTS = useRef(false)
 
+  // Refs for values used inside the async SSE loop (avoids stale closures)
+  const autoSpeakRef = useRef(autoSpeak)
+  autoSpeakRef.current = autoSpeak
+  const autoSendRef = useRef(autoSend)
+  autoSendRef.current = autoSend
+  const speakRef = useRef(autoSpeakTTS.speak)
+  speakRef.current = autoSpeakTTS.speak
+  const micSupportedRef = useRef(micSupported)
+  micSupportedRef.current = micSupported
+  const voiceEnabledRef = useRef(voiceEnabled)
+  voiceEnabledRef.current = voiceEnabled
+  const recorderStartRef = useRef(recorderStart)
+  recorderStartRef.current = recorderStart
+
   // When TTS finishes speaking and we were waiting, auto-record
   useEffect(() => {
     if (!autoSpeakTTS.speaking && waitingForTTS.current) {
@@ -223,17 +237,17 @@ export default function ChatView() {
               } else if (ev.event === 'message_saved') {
                 // User message confirmed saved
               } else if (ev.event === 'done') {
-                // Stream complete
-                if (autoSpeak && currentContent) {
-                  autoSpeakTTS.speak(currentContent)
+                // Stream complete — use refs to avoid stale closure values
+                if (autoSpeakRef.current && currentContent) {
+                  speakRef.current(currentContent)
                   // If STT is also on, wait for TTS to finish then auto-record
-                  if (autoSend) {
+                  if (autoSendRef.current) {
                     waitingForTTS.current = true
                   }
-                } else if (autoSend) {
+                } else if (autoSendRef.current) {
                   // No TTS — trigger auto-record after a short delay
                   setTimeout(() => {
-                    if (micSupported && voiceEnabled) recorderStart()
+                    if (micSupportedRef.current && voiceEnabledRef.current) recorderStartRef.current()
                   }, 500)
                 }
               }
@@ -267,7 +281,7 @@ export default function ChatView() {
     } finally {
       setStreaming(false)
     }
-  }, [conversationId, messages.length, navigate, streaming, autoSpeak, autoSend, autoSpeakTTS, micSupported, voiceEnabled, recorderStart])
+  }, [conversationId, messages.length, navigate, streaming])
 
   // Keep handleSendRef current
   useEffect(() => {
