@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import type { PersonaStyle } from '@/lib/personaStyles'
 
-export type AvatarMode = 'idle' | 'speaking' | 'listening' | 'thinking'
+export type AvatarMode = 'idle' | 'speaking' | 'listening' | 'thinking' | 'attentive'
 
 export interface AvatarFrame {
   scale: number
@@ -23,6 +23,7 @@ interface AnimationInput {
   speaking: boolean
   recording: boolean
   streaming: boolean
+  attentive: boolean
   /** Real-time audio level 0–1 from mic analyser (recording) */
   audioLevelRef?: MutableRefObject<number>
 }
@@ -34,11 +35,13 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
 
   const mode: AvatarMode = input.speaking
     ? 'speaking'
-    : input.recording
-      ? 'listening'
-      : input.streaming
-        ? 'thinking'
-        : 'idle'
+    : input.attentive
+      ? 'attentive'
+      : input.recording
+        ? 'listening'
+        : input.streaming
+          ? 'thinking'
+          : 'idle'
 
   useEffect(() => {
     startRef.current = performance.now()
@@ -91,6 +94,20 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
           scale = 0.6 + mic * 0.2
           glowRadius = mic * 2.5
           glowAlpha = mic * 1.5
+          break
+        }
+
+        case 'attentive': {
+          // Blend of thinking (slow orbit) + listening (mic-reactive halo)
+          const raw = input.audioLevelRef?.current ?? 0
+          const mic = raw ** 0.5
+          // Slow orbit signals "paying attention"
+          rotation = t * 0.8
+          // Shape slightly shrunk, pulses with mic
+          scale = 0.65 + mic * 0.15
+          // Halo always visible (floor 0.3), reacts to mic on top
+          glowRadius = 0.3 + mic * 2.0
+          glowAlpha = 0.3 + mic * 1.2
           break
         }
 

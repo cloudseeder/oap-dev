@@ -7,14 +7,15 @@ interface PersonaAvatarProps {
   speaking: boolean
   recording: boolean
   streaming: boolean
+  attentive?: boolean
   size?: number
   audioLevelRef?: MutableRefObject<number>
 }
 
-export default function PersonaAvatar({ persona, speaking, recording, streaming, size = 96, audioLevelRef }: PersonaAvatarProps) {
+export default function PersonaAvatar({ persona, speaking, recording, streaming, attentive = false, size = 96, audioLevelRef }: PersonaAvatarProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const style = getPersonaStyle(persona)
-  const frame = useAvatarAnimation({ speaking, recording, streaming, audioLevelRef }, style)
+  const frame = useAvatarAnimation({ speaking, recording, streaming, attentive, audioLevelRef }, style)
 
   useEffect(() => {
     const canvas = canvasRef.current

@@ -67,8 +67,8 @@ export default function ChatView() {
 
   // Sync avatar state to shared context so sidebar can render the avatar
   useEffect(() => {
-    updateAvatar({ recording, streaming, persona: settings?.persona_name || '', audioLevelRef })
-  }, [recording, streaming, settings?.persona_name, audioLevelRef, updateAvatar])
+    updateAvatar({ recording, streaming, attentive, persona: settings?.persona_name || '', audioLevelRef })
+  }, [recording, streaming, attentive, settings?.persona_name, audioLevelRef, updateAvatar])
 
   // Stable ref to handleSend so transcription callback doesn't go stale
   const handleSendRef = useRef<(message: string, model: string) => void>(() => {})

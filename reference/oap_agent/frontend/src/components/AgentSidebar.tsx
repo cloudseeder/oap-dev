@@ -79,6 +79,7 @@ export default function AgentSidebar() {
           speaking={anySpeaking}
           recording={avatar.recording}
           streaming={avatar.streaming}
+          attentive={avatar.attentive}
           size={200}
           audioLevelRef={avatar.audioLevelRef}
         />

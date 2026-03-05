@@ -9,6 +9,7 @@ export default function AgentLayout() {
   const [avatarState, setAvatarState] = useState<AvatarState>({
     recording: false,
     streaming: false,
+    attentive: false,
     persona: '',
   })
   const stateRef = useRef(avatarState)

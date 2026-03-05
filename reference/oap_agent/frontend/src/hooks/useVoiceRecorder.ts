@@ -3,11 +3,10 @@ import { useRef, useState, useCallback } from 'react'
 // --- Continuous listening thresholds ---
 const SPEECH_THRESHOLD = 0.03    // RMS level to detect speech onset
 const ONSET_FRAMES = 10          // ~170ms of speech before capture starts
-const SILENCE_DURATION = 1500    // ms of silence before auto-stop
+const SILENCE_DURATION = 1500    // ms of silence before auto-stop (wake word capture only)
 const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
 const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
 const SPEECH_EMA_ALPHA = 0.15    // faster EMA for tracking speech level during capture
-const ATTENTIVE_TIMEOUT = 8000   // ms to wait for follow-up speech after wake word
 
 interface StartOptions {
   continuous?: boolean
@@ -39,8 +38,7 @@ function fuzzyMatch(a: string, b: string): boolean {
   return diffs <= 1
 }
 
-/** Check if transcript contains the wake word. Returns { found, remainder }.
- *  remainder is the text after the wake word, or empty if just the wake word. */
+/** Check if transcript contains the wake word. Returns { found, remainder }. */
 function parseWakeWord(transcript: string, wakeWord: string): { found: boolean; remainder: string } {
   if (!wakeWord) return { found: true, remainder: transcript }
   const wk = wakeWord.toLowerCase().replace(/[^a-z0-9\s]/g, '')
@@ -53,7 +51,6 @@ function parseWakeWord(transcript: string, wakeWord: string): { found: boolean; 
   for (let i = 0; i < Math.min(words.length, 6); i++) {
     if (fuzzyMatch(words[i], wk)) {
       wakeEnd = i + 1
-      // Consume repeated wake words (hallucination)
       while (wakeEnd < words.length && fuzzyMatch(words[wakeEnd], wk)) wakeEnd++
       break
     }
@@ -62,7 +59,6 @@ function parseWakeWord(transcript: string, wakeWord: string): { found: boolean; 
 
   if (wakeEnd === -1) return { found: false, remainder: '' }
 
-  // Reconstruct remainder from original transcript
   let charPos = 0
   const lower = transcript.toLowerCase()
   for (let i = 0; i < wakeEnd; i++) {
@@ -94,19 +90,18 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
   const speechFramesRef = useRef(0)
   const silenceStartRef = useRef(0)
   const captureStartRef = useRef(0)
-  // States: passive → capturing → processing → (attentive → capturing_request → processing_request) → passive
-  const stateRef = useRef<'passive' | 'capturing' | 'processing' | 'attentive' | 'capturing_request' | 'processing_request'>('passive')
-  // Adaptive level tracking
+  // States: passive → capturing → (attentive) → passive
+  // In attentive mode, MediaRecorder runs until manual stop
+  const stateRef = useRef<'passive' | 'capturing' | 'processing' | 'attentive'>('passive')
   const ambientLevelRef = useRef(0)
   const speechPeakRef = useRef(0)
-  const attentiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const restartingRef = useRef(false)
 
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
 
-  /** Transcribe a blob. Phase 1 (wake word check) or Phase 2 (send request). */
-  const transcribeBlob = useCallback(async (blob: Blob, isRequest: boolean) => {
+  /** Transcribe wake word capture. If wake word found, go attentive. */
+  const transcribeWakeCheck = useCallback(async (blob: Blob) => {
     if (blob.size === 0) {
       if (continuousRef.current) goPassive()
       return
@@ -123,50 +118,45 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
       const trimmed = text?.trim()
       if (!trimmed) return
 
-      if (isRequest) {
-        // Phase 2: this is the actual request — send it directly
-        onResultRef.current(trimmed)
-      } else if (wakeWordRef.current) {
-        // Phase 1: check for wake word
-        const { found, remainder } = parseWakeWord(trimmed, wakeWordRef.current)
-        if (found && remainder) {
-          // Wake word + request in one utterance — send it
-          onResultRef.current(remainder)
-        } else if (found) {
-          // Wake word only — go attentive, wait for the real request
-          goAttentive()
-          return // don't restart passive
-        }
-        // No wake word found — discard, back to passive
-      } else {
+      if (!wakeWordRef.current) {
         // No wake word configured — send everything
         onResultRef.current(trimmed)
+        return
       }
+
+      const { found, remainder } = parseWakeWord(trimmed, wakeWordRef.current)
+      if (found && remainder) {
+        // Wake word + request in one breath — send it, then go attentive
+        // to stay listening for more
+        onResultRef.current(remainder)
+      } else if (found) {
+        // Just the wake word — go attentive, wait for manual stop
+        goAttentive()
+        return // don't go passive
+      }
+      // No wake word — discard
     } finally {
       setTranscribing(false)
-      // Return to passive unless we went attentive
-      if (continuousRef.current && stateRef.current !== 'attentive' && stateRef.current !== 'capturing_request') {
+      if (continuousRef.current && stateRef.current !== 'attentive') {
         goPassive()
       }
     }
   }, [])
 
-  /** Enter attentive state — avatar shows listening, waiting for the real request. */
+  /** Enter attentive state — start recording, keep going until manual stop. */
   function goAttentive() {
+    if (!streamRef.current) return
     stateRef.current = 'attentive'
     speechFramesRef.current = 0
     silenceStartRef.current = 0
     speechPeakRef.current = 0
     setTranscribing(false)
-    setRecording(true)  // show recording state in avatar
+    setRecording(true)
     setListening(false)
     setAttentive(true)
 
-    // Timeout: if no speech comes within ATTENTIVE_TIMEOUT, go back to passive
-    if (attentiveTimerRef.current) clearTimeout(attentiveTimerRef.current)
-    attentiveTimerRef.current = setTimeout(() => {
-      if (stateRef.current === 'attentive') goPassive()
-    }, ATTENTIVE_TIMEOUT)
+    // Start a new MediaRecorder for the actual request
+    startMediaRecorder(streamRef.current, true)
   }
 
   /** Return to passive monitoring. */
@@ -174,7 +164,6 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     if (!continuousRef.current || restartingRef.current) return
     if (!analyserRef.current || !streamRef.current) return
     restartingRef.current = true
-    if (attentiveTimerRef.current) { clearTimeout(attentiveTimerRef.current); attentiveTimerRef.current = null }
     stateRef.current = 'passive'
     speechFramesRef.current = 0
     silenceStartRef.current = 0
@@ -238,7 +227,7 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
             if (rms > onsetThreshold) {
               speechFramesRef.current++
               if (speechFramesRef.current >= ONSET_FRAMES) {
-                // Speech detected — start recording for wake word check
+                // Speech detected — record for wake word check
                 stateRef.current = 'capturing'
                 captureStartRef.current = Date.now()
                 silenceStartRef.current = 0
@@ -250,15 +239,15 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
             } else {
               speechFramesRef.current = 0
             }
-          } else if (state === 'capturing' || state === 'capturing_request') {
-            // Track speech peak
+          } else if (state === 'capturing') {
+            // Track speech peak for silence detection
             if (rms > speechPeakRef.current) {
               speechPeakRef.current = rms
             } else {
               speechPeakRef.current = speechPeakRef.current * (1 - SPEECH_EMA_ALPHA) + rms * SPEECH_EMA_ALPHA
             }
 
-            // Check for silence
+            // Auto-stop on silence (this is just the wake word capture)
             const silenceThreshold = Math.max(
               speechPeakRef.current * SILENCE_DROP_RATIO,
               ambientLevelRef.current * 1.3,
@@ -267,8 +256,7 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               if (silenceStartRef.current === 0) {
                 silenceStartRef.current = Date.now()
               } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION) {
-                // Silence detected — stop recording
-                stateRef.current = state === 'capturing_request' ? 'processing_request' : 'processing'
+                stateRef.current = 'processing'
                 if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
                   mediaRecorderRef.current.stop()
                 }
@@ -277,26 +265,9 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
             } else {
               silenceStartRef.current = 0
             }
-          } else if (state === 'attentive') {
-            // Waiting for follow-up speech after wake word
-            const onsetThreshold = Math.max(SPEECH_THRESHOLD, ambientLevelRef.current * 2.5)
-            if (rms > onsetThreshold) {
-              speechFramesRef.current++
-              if (speechFramesRef.current >= ONSET_FRAMES) {
-                // Speech started — capture the actual request
-                if (attentiveTimerRef.current) { clearTimeout(attentiveTimerRef.current); attentiveTimerRef.current = null }
-                stateRef.current = 'capturing_request'
-                captureStartRef.current = Date.now()
-                silenceStartRef.current = 0
-                speechPeakRef.current = rms
-                startMediaRecorder(stream, true)
-                // recording is already true from goAttentive
-              }
-            } else {
-              speechFramesRef.current = 0
-            }
           }
-          // processing / processing_request: RAF loop runs but does nothing
+          // 'attentive': just keep the RAF loop running for audio levels
+          // MediaRecorder runs until manual stop — no silence detection
 
           levelRafRef.current = requestAnimationFrame(updateLevelContinuous)
         }
@@ -322,9 +293,9 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     } catch {
       // getUserMedia denied or unavailable
     }
-  }, [transcribeBlob])
+  }, [transcribeWakeCheck])
 
-  /** Create and start a MediaRecorder. isRequest=true for phase 2 (actual request). */
+  /** Create and start a MediaRecorder. isRequest=true means attentive mode (manual stop). */
   function startMediaRecorder(stream: MediaStream, isRequest: boolean) {
     const recorder = new MediaRecorder(stream, {
       mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -340,9 +311,7 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
     recorder.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
 
-      if (continuousRef.current) {
-        await transcribeBlob(blob, isRequest)
-      } else {
+      if (!continuousRef.current) {
         // Single-shot: tear down everything
         cancelAnimationFrame(levelRafRef.current)
         audioLevelRef.current = 0
@@ -353,7 +322,6 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
         streamRef.current = null
 
         if (blob.size === 0) return
-
         setTranscribing(true)
         try {
           const form = new FormData()
@@ -366,6 +334,37 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
         } finally {
           setTranscribing(false)
         }
+      } else if (isRequest) {
+        // Attentive mode recording stopped (manual) — transcribe and send
+        setAttentive(false)
+        if (blob.size === 0) {
+          goPassive()
+          return
+        }
+        setTranscribing(true)
+        try {
+          const form = new FormData()
+          form.append('file', blob, 'recording.webm')
+          const res = await fetch('/v1/agent/transcribe', { method: 'POST', body: form })
+          if (res.ok) {
+            const { text } = await res.json()
+            if (text?.trim()) {
+              // Strip wake word if present (user might repeat it)
+              if (wakeWordRef.current) {
+                const { found, remainder } = parseWakeWord(text.trim(), wakeWordRef.current)
+                onResultRef.current(found && remainder ? remainder : text.trim())
+              } else {
+                onResultRef.current(text.trim())
+              }
+            }
+          }
+        } finally {
+          setTranscribing(false)
+          goPassive()
+        }
+      } else {
+        // Wake word capture — check for wake word
+        await transcribeWakeCheck(blob)
       }
     }
 
@@ -374,9 +373,21 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
   }
 
   const stop = useCallback(() => {
+    const wasAttentive = stateRef.current === 'attentive'
+
+    if (wasAttentive) {
+      // In attentive mode: stop the recorder (triggers onstop → transcribe → send)
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop()
+      }
+      setRecording(false)
+      // Don't tear down mic — onstop handler will goPassive() after transcription
+      return
+    }
+
+    // Full stop — tear down everything
     continuousRef.current = false
     stateRef.current = 'passive'
-    if (attentiveTimerRef.current) { clearTimeout(attentiveTimerRef.current); attentiveTimerRef.current = null }
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
