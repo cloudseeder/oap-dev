@@ -4,7 +4,7 @@ import { useRef, useState, useCallback } from 'react'
 const SPEECH_THRESHOLD = 0.03    // RMS level to detect speech onset
 const ONSET_FRAMES = 10          // ~170ms of speech before capture starts
 const SILENCE_DURATION = 1500    // ms of silence before auto-stop
-const MIN_UTTERANCE_MS = 500     // ignore clicks/bumps shorter than this
+const MIN_UTTERANCE_MS = 3000    // always capture at least 3s (wake word + request)
 const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
 const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
 const SPEECH_EMA_ALPHA = 0.15    // faster EMA for tracking speech level during capture
@@ -14,30 +14,79 @@ interface StartOptions {
   wakeWord?: string
 }
 
+/** Simple similarity check — do two short words sound alike?
+ *  Checks: exact match, starts-with, contains, or edit distance ≤ 1. */
+function fuzzyMatch(a: string, b: string): boolean {
+  if (a === b) return true
+  if (a.length > 1 && b.length > 1) {
+    if (a.startsWith(b) || b.startsWith(a)) return true
+    if (a.includes(b) || b.includes(a)) return true
+  }
+  // Levenshtein distance ≤ 1 for short words
+  if (Math.abs(a.length - b.length) > 1) return false
+  let diffs = 0
+  const longer = a.length >= b.length ? a : b
+  const shorter = a.length >= b.length ? b : a
+  if (longer.length === shorter.length) {
+    for (let i = 0; i < longer.length; i++) {
+      if (longer[i] !== shorter[i]) diffs++
+    }
+    return diffs <= 1
+  }
+  // One char inserted
+  let si = 0
+  for (let li = 0; li < longer.length; li++) {
+    if (si < shorter.length && longer[li] === shorter[si]) si++
+    else diffs++
+  }
+  return diffs <= 1
+}
+
 /** Strip wake word prefix (and repeated hallucinations) from transcript.
- *  Returns remaining text, or null if no wake word match or only wake words. */
+ *  Returns remaining text, or null if no wake word match or only wake words.
+ *  Uses fuzzy word matching — Whisper may produce "Chi", "Ky", "Todd" etc. */
 function stripWakeWord(transcript: string, wakeWord: string): string | null {
   if (!wakeWord) return transcript
-  let clean = transcript.replace(/^[,.\-!?\s]+/, '').toLowerCase()
   const wk = wakeWord.toLowerCase().replace(/[^a-z0-9\s]/g, '')
 
-  // First check: does the transcript contain the wake word at all?
-  if (!clean.includes(wk)) return null
+  // Tokenize: split on punctuation/whitespace, keep only alpha tokens
+  const words = transcript.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
+  if (words.length === 0) return null
 
-  // Strip all leading wake word repetitions and prefixes like "hey/ok/okay"
-  // Handles: "kai", "kai, kai, kai", "hey kai", "ok kai, kai", etc.
-  const wkPattern = wk.replace(/\s+/g, '[,\\s]+')
-  const repPattern = new RegExp(
-    `^(?:(?:hey|ok|okay)[,\\s]+)?${wkPattern}[,\\.\\s]*`, 'i'
-  )
-  let prev = ''
-  while (clean !== prev) {
-    prev = clean
-    clean = clean.replace(repPattern, '').trim()
+  // Find the wake word (or fuzzy match) in the first few words
+  // Allow prefixes like "hey", "ok", "okay" before the wake word
+  const skipWords = new Set(['hey', 'ok', 'okay', 'hi', 'hello'])
+  let wakeEnd = -1 // index after the last wake-word token
+
+  for (let i = 0; i < Math.min(words.length, 6); i++) {
+    if (fuzzyMatch(words[i], wk)) {
+      wakeEnd = i + 1
+      // Keep consuming if the next word is also the wake word (hallucination: "kai kai kai")
+      while (wakeEnd < words.length && fuzzyMatch(words[wakeEnd], wk)) {
+        wakeEnd++
+      }
+      break
+    }
+    // Skip known greeting prefixes
+    if (!skipWords.has(words[i])) break
   }
 
-  // If nothing left after stripping, it was just wake word repetitions
-  return clean || null
+  if (wakeEnd === -1) return null // no wake word found
+
+  // Reconstruct remainder from original transcript
+  // Find the character position after the wake word tokens
+  let charPos = 0
+  const lower = transcript.toLowerCase()
+  for (let i = 0; i < wakeEnd; i++) {
+    const idx = lower.indexOf(words[i], charPos)
+    if (idx >= 0) charPos = idx + words[i].length
+  }
+  // Skip trailing punctuation/whitespace after wake word
+  while (charPos < transcript.length && /[,.\-!?\s]/.test(transcript[charPos])) {
+    charPos++
+  }
+  const remainder = transcript.slice(charPos).trim()
+  return remainder || null
 }
 
 export function useVoiceRecorder(onResult: (text: string) => void) {
@@ -190,35 +239,40 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
               speechFramesRef.current = 0
             }
           } else if (stateRef.current === 'capturing') {
-            // Track speech level with faster EMA
+            const elapsed = Date.now() - captureStartRef.current
+
+            // Always track the true peak (only goes up)
             if (rms > speechPeakRef.current) {
               speechPeakRef.current = rms
-            } else {
+            } else if (elapsed > MIN_UTTERANCE_MS) {
+              // Only decay the peak after the minimum capture window
               speechPeakRef.current = speechPeakRef.current * (1 - SPEECH_EMA_ALPHA) + rms * SPEECH_EMA_ALPHA
             }
 
-            // Silence = RMS dropped to SILENCE_DROP_RATIO of the speech peak,
-            // or back down near the ambient floor
-            const silenceThreshold = Math.max(
-              speechPeakRef.current * SILENCE_DROP_RATIO,
-              ambientLevelRef.current * 1.3,
-            )
-            if (rms < silenceThreshold) {
-              if (silenceStartRef.current === 0) {
-                silenceStartRef.current = Date.now()
-              } else if (
-                Date.now() - silenceStartRef.current > SILENCE_DURATION &&
-                Date.now() - captureStartRef.current > MIN_UTTERANCE_MS
-              ) {
-                // Silence detected — stop recording
-                stateRef.current = 'processing'
-                if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-                  mediaRecorderRef.current.stop()
-                }
-                setRecording(false)
-              }
-            } else {
+            // Don't even check for silence until minimum capture time has passed
+            if (elapsed <= MIN_UTTERANCE_MS) {
               silenceStartRef.current = 0
+            } else {
+              // Silence = RMS dropped to SILENCE_DROP_RATIO of the speech peak,
+              // or back down near the ambient floor
+              const silenceThreshold = Math.max(
+                speechPeakRef.current * SILENCE_DROP_RATIO,
+                ambientLevelRef.current * 1.3,
+              )
+              if (rms < silenceThreshold) {
+                if (silenceStartRef.current === 0) {
+                  silenceStartRef.current = Date.now()
+                } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION) {
+                  // Silence detected — stop recording
+                  stateRef.current = 'processing'
+                  if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                    mediaRecorderRef.current.stop()
+                  }
+                  setRecording(false)
+                }
+              } else {
+                silenceStartRef.current = 0
+              }
             }
           }
           // In 'processing' state, keep the RAF loop running but do nothing
