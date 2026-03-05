@@ -378,9 +378,11 @@ export default function ChatView() {
         recording={recording}
         listening={listening}
         transcribing={transcribing}
+        streaming={streaming}
         micSupported={micSupported}
         wakeWord={wakeWord}
         onMicClick={handleMicClick}
+        onStop={() => abortRef.current?.abort()}
         onModelChange={(m) => { modelRef.current = m }}
         onTranscriptionRef={pendingTranscriptionRef}
       />

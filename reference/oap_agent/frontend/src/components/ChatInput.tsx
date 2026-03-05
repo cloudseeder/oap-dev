@@ -11,9 +11,11 @@ interface ChatInputProps {
   recording?: boolean
   listening?: boolean
   transcribing?: boolean
+  streaming?: boolean
   micSupported?: boolean
   wakeWord?: string
   onMicClick?: () => void
+  onStop?: () => void
   onModelChange?: (model: string) => void
   onTranscriptionRef?: MutableRefObject<((text: string) => void) | null>
 }
@@ -27,9 +29,11 @@ export default function ChatInput({
   recording = false,
   listening = false,
   transcribing = false,
+  streaming = false,
   micSupported = false,
   wakeWord = '',
   onMicClick,
+  onStop,
   onModelChange,
   onTranscriptionRef,
 }: ChatInputProps) {
@@ -144,15 +148,27 @@ export default function ChatInput({
                 )}
               </button>
             )}
-            <button
-              onClick={handleSend}
-              disabled={disabled || !value.trim()}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition-colors hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
+            {streaming ? (
+              <button
+                onClick={onStop}
+                title="Stop generating"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+              >
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                onClick={handleSend}
+                disabled={disabled || !value.trim()}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition-colors hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
         <p className="mt-1.5 text-center text-xs text-gray-400">
