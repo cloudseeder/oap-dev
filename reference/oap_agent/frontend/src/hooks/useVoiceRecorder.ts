@@ -13,29 +13,77 @@ interface StartOptions {
   wakeWord?: string
 }
 
-/** Simple similarity — exact, starts-with, contains, or edit distance <= 1. */
-function fuzzyMatch(a: string, b: string): boolean {
+/** Soundex phonetic code — maps words to a letter + 3 digits based on pronunciation. */
+function soundex(s: string): string {
+  if (!s) return ''
+  const a = s.toLowerCase().replace(/[^a-z]/g, '')
+  if (!a) return ''
+  const map: Record<string, string> = {
+    b: '1', f: '1', p: '1', v: '1',
+    c: '2', g: '2', j: '2', k: '2', q: '2', s: '2', x: '2', z: '2',
+    d: '3', t: '3',
+    l: '4',
+    m: '5', n: '5',
+    r: '6',
+  }
+  let code = a[0].toUpperCase()
+  let prev = map[a[0]] || '0'
+  for (let i = 1; i < a.length && code.length < 4; i++) {
+    const c = map[a[i]] || '0'
+    if (c !== '0' && c !== prev) code += c
+    prev = c
+  }
+  return code.padEnd(4, '0')
+}
+
+/** Get the initial consonant sound of a word for quick comparison. */
+function onsetSound(s: string): string {
+  const w = s.toLowerCase().replace(/[^a-z]/g, '')
+  if (!w) return ''
+  // Map common onset equivalences
+  const onsets: [RegExp, string][] = [
+    [/^(k|c|q|ck)/, 'K'], [/^(ch|tch)/, 'CH'], [/^(sh|sch)/, 'SH'],
+    [/^(th)/, 'TH'], [/^(ph|f)/, 'F'], [/^(wh|w)/, 'W'],
+    [/^(g|gh)/, 'G'], [/^(j|ge|gi)/, 'J'], [/^(n|kn|gn)/, 'N'],
+    [/^(s|ce|ci)/, 'S'], [/^(z)/, 'Z'], [/^(h)/, 'H'],
+  ]
+  for (const [re, sound] of onsets) {
+    if (re.test(w)) return sound
+  }
+  return w[0].toUpperCase()
+}
+
+/** Check if two words match phonetically — soundex, onset, or edit distance. */
+function phoneticMatch(a: string, b: string): boolean {
   if (a === b) return true
   if (a.length > 1 && b.length > 1) {
     if (a.startsWith(b) || b.startsWith(a)) return true
     if (a.includes(b) || b.includes(a)) return true
   }
-  if (Math.abs(a.length - b.length) > 1) return false
-  let diffs = 0
-  const longer = a.length >= b.length ? a : b
-  const shorter = a.length >= b.length ? b : a
-  if (longer.length === shorter.length) {
-    for (let i = 0; i < longer.length; i++) {
-      if (longer[i] !== shorter[i]) diffs++
+  // Soundex match
+  const sa = soundex(a), sb = soundex(b)
+  if (sa && sb && sa === sb) return true
+  // Same onset sound + similar length (for short words)
+  if (onsetSound(a) === onsetSound(b) && Math.abs(a.length - b.length) <= 1) return true
+  // Edit distance <= 1 for similar-length words
+  if (Math.abs(a.length - b.length) <= 1) {
+    const longer = a.length >= b.length ? a : b
+    const shorter = a.length >= b.length ? b : a
+    let diffs = 0
+    if (longer.length === shorter.length) {
+      for (let i = 0; i < longer.length; i++) {
+        if (longer[i] !== shorter[i]) diffs++
+      }
+      return diffs <= 1
+    }
+    let si = 0
+    for (let li = 0; li < longer.length; li++) {
+      if (si < shorter.length && longer[li] === shorter[si]) si++
+      else diffs++
     }
     return diffs <= 1
   }
-  let si = 0
-  for (let li = 0; li < longer.length; li++) {
-    if (si < shorter.length && longer[li] === shorter[si]) si++
-    else diffs++
-  }
-  return diffs <= 1
+  return false
 }
 
 /** Check if transcript contains the wake word. Returns { found, remainder }. */
@@ -49,9 +97,9 @@ function parseWakeWord(transcript: string, wakeWord: string): { found: boolean; 
   let wakeEnd = -1
 
   for (let i = 0; i < Math.min(words.length, 6); i++) {
-    if (fuzzyMatch(words[i], wk)) {
+    if (phoneticMatch(words[i], wk)) {
       wakeEnd = i + 1
-      while (wakeEnd < words.length && fuzzyMatch(words[wakeEnd], wk)) wakeEnd++
+      while (wakeEnd < words.length && phoneticMatch(words[wakeEnd], wk)) wakeEnd++
       break
     }
     if (!skipWords.has(words[i])) break
