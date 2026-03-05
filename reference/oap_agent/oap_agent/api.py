@@ -863,6 +863,13 @@ def main():
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+    # Ensure oap.agent loggers survive uvicorn's log reconfiguration
+    oap_logger = logging.getLogger("oap.agent")
+    oap_logger.setLevel(logging.INFO)
+    if not oap_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+        oap_logger.addHandler(handler)
 
     cfg = load_config(args.config)
     app._config_path = args.config
