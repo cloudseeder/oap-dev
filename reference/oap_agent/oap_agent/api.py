@@ -318,6 +318,33 @@ async def chat(req: ChatRequest):
             yield _sse_event("done", {"conversation_id": conv_id})
             return
 
+        # Log debug trace from tool bridge
+        raw = result.get("raw", {})
+        dbg = raw.get("oap_debug", {})
+        if dbg:
+            log.info(
+                "Tool bridge: fingerprint=%s cache=%s escalated=%s tools=%s",
+                dbg.get("experience_fingerprint"),
+                dbg.get("experience_cache"),
+                dbg.get("escalated"),
+                dbg.get("tools_discovered"),
+            )
+            for rd in dbg.get("rounds", []):
+                for te in rd.get("tool_executions", []):
+                    log.info(
+                        "  Round %d: %s(%s) → %s (%dms)",
+                        rd.get("round", "?"),
+                        te.get("tool"),
+                        json.dumps(te.get("arguments", {}), default=str)[:200],
+                        (te.get("result", "")[:200] or "(empty)"),
+                        te.get("duration_ms", 0),
+                    )
+                resp_msg = rd.get("ollama_response", {})
+                if resp_msg.get("content"):
+                    log.info("  Round %d LLM: %s", rd.get("round", "?"), resp_msg["content"][:300])
+        elif raw.get("oap_experience_cache"):
+            log.info("Tool bridge: cache=%s (debug not enabled)", raw["oap_experience_cache"])
+
         # Emit each tool call
         for tc in result.get("tool_calls", []):
             yield _sse_event("tool_call", tc)
