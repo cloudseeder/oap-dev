@@ -9,8 +9,10 @@ interface ChatInputProps {
   voiceEnabled?: boolean
   autoSend?: boolean
   recording?: boolean
+  listening?: boolean
   transcribing?: boolean
   micSupported?: boolean
+  wakeWord?: string
   onMicClick?: () => void
   onModelChange?: (model: string) => void
   onTranscriptionRef?: MutableRefObject<((text: string) => void) | null>
@@ -23,8 +25,10 @@ export default function ChatInput({
   voiceEnabled = false,
   autoSend = false,
   recording = false,
+  listening = false,
   transcribing = false,
   micSupported = false,
+  wakeWord = '',
   onMicClick,
   onModelChange,
   onTranscriptionRef,
@@ -95,7 +99,7 @@ export default function ChatInput({
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={transcribing ? 'Transcribing...' : recording ? 'Listening...' : 'Send a message...'}
+            placeholder={transcribing ? 'Transcribing...' : recording ? 'Listening...' : listening ? `Say '${wakeWord}' to start...` : 'Send a message...'}
             rows={1}
             disabled={disabled || transcribing}
             className="flex-1 resize-none bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none disabled:opacity-50"
@@ -116,11 +120,13 @@ export default function ChatInput({
               <button
                 onClick={onMicClick}
                 disabled={disabled || transcribing}
-                title={recording ? 'Stop recording' : 'Voice input'}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                title={recording ? 'Stop recording' : listening ? 'Stop listening' : 'Voice input'}
+                className={`relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                   recording
                     ? 'bg-red-500 text-white animate-pulse'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                    : listening
+                      ? 'bg-gray-200 text-gray-600'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
                 }`}
               >
                 {transcribing ? (
@@ -132,6 +138,9 @@ export default function ChatInput({
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 15a3 3 0 003-3V5a3 3 0 00-6 0v7a3 3 0 003 3z" />
                   </svg>
+                )}
+                {listening && !transcribing && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-500" />
                 )}
               </button>
             )}
@@ -147,7 +156,7 @@ export default function ChatInput({
           </div>
         </div>
         <p className="mt-1.5 text-center text-xs text-gray-400">
-          Enter to send, Shift+Enter for newline{showMic && (recording ? ' — Recording...' : '')}
+          Enter to send, Shift+Enter for newline{showMic && (recording ? ' — Recording...' : listening ? ' — Listening...' : '')}
         </p>
       </div>
     </div>

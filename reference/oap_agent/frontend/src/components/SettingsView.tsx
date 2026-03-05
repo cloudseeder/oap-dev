@@ -95,6 +95,7 @@ export default function SettingsView() {
   const [voiceAutoSend, setVoiceAutoSend] = useState(false)
   const [voiceAutoSpeak, setVoiceAutoSpeak] = useState(false)
   const [voiceTtsVoice, setVoiceTtsVoice] = useState('')
+  const [voiceWakeWord, setVoiceWakeWord] = useState('')
   const voices = useVoices()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -121,6 +122,7 @@ export default function SettingsView() {
         setVoiceAutoSend(s.voice_auto_send === 'true')
         setVoiceAutoSpeak(s.voice_auto_speak === 'true')
         setVoiceTtsVoice(s.voice_tts_voice || '')
+        setVoiceWakeWord(s.voice_wake_word || '')
       }
       if (memoryRes.ok) {
         const m = await memoryRes.json()
@@ -502,6 +504,37 @@ export default function SettingsView() {
                   </select>
                   <PersonaVoicePreview voice={voiceTtsVoice} />
                 </div>
+              </div>
+            )}
+
+            {/* Wake word */}
+            {voiceInputEnabled && (
+              <div>
+                <p className="text-sm font-medium text-gray-700">Wake word</p>
+                <p className="mb-2 text-xs text-gray-400">
+                  Say this word to start recording. Leave blank to use persona name.
+                </p>
+                <input
+                  type="text"
+                  value={voiceWakeWord}
+                  onChange={(e) => setVoiceWakeWord(e.target.value)}
+                  onBlur={async () => {
+                    try {
+                      const res = await fetch('/v1/agent/settings', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ voice_wake_word: voiceWakeWord }),
+                      })
+                      if (res.ok) {
+                        const s = await res.json()
+                        setSettings(s)
+                      }
+                    } catch {}
+                  }}
+                  placeholder={name || 'e.g. Kai'}
+                  maxLength={50}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
               </div>
             )}
           </div>

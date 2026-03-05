@@ -35,6 +35,7 @@ export default function ChatView() {
   const autoSend = settings?.voice_auto_send === 'true'
   const autoSpeak = settings?.voice_auto_speak === 'true'
   const personaName = settings?.persona_name?.toLowerCase() || ''
+  const wakeWord = settings?.voice_wake_word || settings?.persona_name || ''
   const ttsVoice = (personaName && settings?.[`persona_voice_${personaName}`]) || settings?.voice_tts_voice || undefined
   const autoSpeakTTS = useTTS(ttsVoice)
   // Global TTS detection — catches per-message speaker clicks too
@@ -62,7 +63,7 @@ export default function ChatView() {
       pendingTranscriptionRef.current?.(text)
     }
   }, [autoSend])
-  const { recording, transcribing, start: recorderStart, stop: recorderStop, supported: micSupported, audioLevelRef } = useVoiceRecorder(handleTranscription)
+  const { recording, listening, transcribing, start: recorderStart, stop: recorderStop, supported: micSupported, audioLevelRef } = useVoiceRecorder(handleTranscription)
 
   // Sync avatar state to shared context so sidebar can render the avatar
   useEffect(() => {
@@ -87,19 +88,40 @@ export default function ChatView() {
   voiceEnabledRef.current = voiceEnabled
   const recorderStartRef = useRef(recorderStart)
   recorderStartRef.current = recorderStart
+  const wakeWordRef = useRef(wakeWord)
+  wakeWordRef.current = wakeWord
+  const listeningRef = useRef(listening)
+  listeningRef.current = listening
+
+  /** Whether continuous listening mode should be used (auto-send + wake word set). */
+  const useContinuous = autoSend && !!wakeWord
 
   // When TTS finishes speaking and we were waiting, auto-record
   useEffect(() => {
     if (!autoSpeakTTS.speaking && waitingForTTS.current) {
       waitingForTTS.current = false
       const timer = setTimeout(() => {
-        if (!recording && !transcribing && micSupported && voiceEnabled) {
-          recorderStart()
+        if (!recording && !transcribing && !listening && micSupported && voiceEnabled) {
+          if (useContinuous) {
+            recorderStart({ continuous: true, wakeWord })
+          } else {
+            recorderStart()
+          }
         }
       }, 600)
       return () => clearTimeout(timer)
     }
-  }, [autoSpeakTTS.speaking, recording, transcribing, micSupported, voiceEnabled, recorderStart])
+  }, [autoSpeakTTS.speaking, recording, transcribing, listening, micSupported, voiceEnabled, recorderStart, useContinuous, wakeWord])
+
+  // Auto-start continuous listening on mount when settings permit
+  const autoStartedRef = useRef(false)
+  useEffect(() => {
+    if (autoStartedRef.current) return
+    if (useContinuous && voiceEnabled && micSupported && !recording && !listening && !transcribing) {
+      autoStartedRef.current = true
+      recorderStart({ continuous: true, wakeWord })
+    }
+  }, [useContinuous, voiceEnabled, micSupported, recording, listening, transcribing, recorderStart, wakeWord])
 
   useEffect(() => {
     if (initialConvId) {
@@ -247,7 +269,13 @@ export default function ChatView() {
                 } else if (autoSendRef.current) {
                   // No TTS — trigger auto-record after a short delay
                   setTimeout(() => {
-                    if (micSupportedRef.current && voiceEnabledRef.current) recorderStartRef.current()
+                    if (micSupportedRef.current && voiceEnabledRef.current) {
+                      if (wakeWordRef.current) {
+                        recorderStartRef.current({ continuous: true, wakeWord: wakeWordRef.current })
+                      } else {
+                        recorderStartRef.current()
+                      }
+                    }
                   }, 500)
                 }
               }
@@ -289,12 +317,14 @@ export default function ChatView() {
   }, [handleSend])
 
   const handleMicClick = useCallback(() => {
-    if (recording) {
+    if (recording || listening) {
       recorderStop()
+    } else if (useContinuous) {
+      recorderStart({ continuous: true, wakeWord })
     } else {
       recorderStart()
     }
-  }, [recording, recorderStart, recorderStop])
+  }, [recording, listening, recorderStart, recorderStop, useContinuous, wakeWord])
 
   return (
     <div className="flex h-full flex-col">
@@ -346,8 +376,10 @@ export default function ChatView() {
         voiceEnabled={voiceEnabled}
         autoSend={autoSend}
         recording={recording}
+        listening={listening}
         transcribing={transcribing}
         micSupported={micSupported}
+        wakeWord={wakeWord}
         onMicClick={handleMicClick}
         onModelChange={(m) => { modelRef.current = m }}
         onTranscriptionRef={pendingTranscriptionRef}

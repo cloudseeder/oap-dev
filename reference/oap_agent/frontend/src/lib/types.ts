@@ -59,6 +59,7 @@ export interface AgentSettings {
   voice_auto_send: string
   voice_auto_speak: string
   voice_tts_voice: string
+  voice_wake_word: string
   [key: string]: string  // dynamic keys like persona_voice_kai
 }
 

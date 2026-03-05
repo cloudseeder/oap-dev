@@ -211,6 +211,7 @@ class UpdateSettingsRequest(BaseModel):
     voice_auto_send: bool | None = None
     voice_auto_speak: bool | None = None
     voice_tts_voice: str | None = Field(None, max_length=200)
+    voice_wake_word: str | None = Field(None, max_length=50)
 
 
 class CreateFactRequest(BaseModel):
@@ -640,6 +641,8 @@ async def update_settings(req: UpdateSettingsRequest):
         _db.set_setting("voice_auto_speak", "true" if req.voice_auto_speak else "false")
     if req.voice_tts_voice is not None:
         _db.set_setting("voice_tts_voice", req.voice_tts_voice)
+    if req.voice_wake_word is not None:
+        _db.set_setting("voice_wake_word", req.voice_wake_word)
     # Persist extra keys (e.g. persona_voice_kai, persona_voice_marvin)
     for key, value in (req.model_extra or {}).items():
         if re.fullmatch(r"persona_voice_[a-z0-9_]+", key) and isinstance(value, str) and len(value) <= 200:

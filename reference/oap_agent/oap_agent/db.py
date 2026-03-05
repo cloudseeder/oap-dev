@@ -101,6 +101,7 @@ class AgentDB:
             "voice_auto_send": "false",
             "voice_auto_speak": "false",
             "voice_tts_voice": "",
+            "voice_wake_word": "",
         }
         for key, value in defaults.items():
             self.conn.execute(
