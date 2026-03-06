@@ -106,7 +106,7 @@ async def extract_and_store_facts(
             "system": EXTRACTION_SYSTEM,
             "stream": False,
             "format": "json",
-            "options": {"num_predict": 200},
+            "options": {"num_predict": 400},
         }
 
         url = f"{discovery_url.rstrip('/')}/api/generate"
@@ -118,7 +118,19 @@ async def extract_and_store_facts(
         text = data.get("response", "")
         # Strip qwen3 thinking tags if present
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-        parsed = json.loads(text)
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            # LLM output was truncated by num_predict — try to salvage
+            # by closing any open strings/arrays/objects
+            for suffix in ['"}', '"]', '"]}', '"}]', '"}]}']:
+                try:
+                    parsed = json.loads(text + suffix)
+                    break
+                except json.JSONDecodeError:
+                    continue
+            else:
+                return
         facts = parsed.get("facts", [])
         if not isinstance(facts, list):
             return
