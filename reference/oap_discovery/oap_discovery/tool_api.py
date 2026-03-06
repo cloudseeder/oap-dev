@@ -1001,18 +1001,6 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     "result": result_str,
                 })
 
-                # Force escalation when tool result is large and escalation
-                # is configured but wasn't triggered by fingerprint prefix
-                if (
-                    not should_escalate
-                    and _escalation_cfg and _escalation_cfg.enabled
-                    and len(result_str) > bridge_cfg.summarize_threshold
-                ):
-                    should_escalate = True
-                    log.info("Large tool result (%d chars) — escalating to big LLM", len(result_str))
-                    # Break out of tool_calls loop — big LLM handles it from here
-                    break
-
                 if debug:
                     debug_executions.append({
                         "tool": tool_name,
@@ -1025,11 +1013,23 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 if len(result_str) > bridge_cfg.max_tool_result:
                     result_str = result_str[:bridge_cfg.max_tool_result] + "\n...(truncated)"
 
-                # Append tool result message
+                # Append tool result message — MUST happen before any break
                 messages.append({
                     "role": "tool",
                     "content": result_str,
                 })
+
+                # Force escalation when tool result is large and escalation
+                # is configured but wasn't triggered by fingerprint prefix
+                if (
+                    not should_escalate
+                    and _escalation_cfg and _escalation_cfg.enabled
+                    and len(result_str) > bridge_cfg.summarize_threshold
+                ):
+                    should_escalate = True
+                    log.info("Large tool result (%d chars) — escalating to big LLM", len(result_str))
+                    # Break out of tool_calls loop — big LLM handles it from here
+                    break
 
             if debug:
                 debug_rounds.append({
@@ -1281,6 +1281,31 @@ async def chat_proxy(req: ChatRequest) -> Any:
             ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
             ollama_resp["oap_escalated"] = True
             log.info("Escalated final reasoning to %s/%s", _escalation_cfg.provider, _escalation_cfg.model)
+        else:
+            # Escalation failed — fall back to small LLM with truncated tool result
+            log.warning("Escalation failed — falling back to small LLM with truncated result")
+            try:
+                fallback_payload: dict[str, Any] = {
+                    "model": req.model,
+                    "messages": messages,  # already has truncated tool result appended
+                    "stream": False,
+                    "think": False,
+                    "options": {"num_ctx": ollama_cfg.num_ctx},
+                    "keep_alive": ollama_cfg.keep_alive,
+                }
+                async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
+                    fb_resp = await client.post(
+                        f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
+                        json=fallback_payload,
+                    )
+                    fb_resp.raise_for_status()
+                    fb_data = fb_resp.json()
+                fb_content = fb_data.get("message", {}).get("content", "")
+                if fb_content:
+                    ollama_resp["message"] = {"role": "assistant", "content": fb_content}
+                    ollama_resp["oap_escalation_fallback"] = True
+            except Exception:
+                log.warning("Escalation fallback also failed", exc_info=True)
 
     # Max rounds exceeded — return last response
     ollama_resp["oap_tools_injected"] = len(registry)
