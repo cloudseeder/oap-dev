@@ -2,7 +2,7 @@ import { useRef, useState, useCallback } from 'react'
 
 // --- Continuous listening thresholds ---
 const SPEECH_THRESHOLD = 0.03    // RMS level to detect speech onset
-const ONSET_FRAMES = 10          // ~170ms of speech before capture starts
+const ONSET_FRAMES = 20          // ~340ms of sustained speech before capture starts
 const SILENCE_DURATION = 1500    // ms of silence before auto-stop (wake word capture only)
 const SILENCE_DROP_RATIO = 0.3   // silence = RMS drops to 30% of peak speech level
 const AMBIENT_EMA_ALPHA = 0.01   // slow EMA for tracking ambient noise floor
@@ -152,6 +152,15 @@ export function useVoiceRecorder(onResult: (text: string) => void) {
   const transcribeWakeCheck = useCallback(async (blob: Blob) => {
     if (blob.size === 0) {
       if (continuousRef.current) goPassive()
+      return
+    }
+
+    // Skip very short captures — keyboard clicks, bumps, etc.
+    const captureDuration = captureStartRef.current
+      ? Date.now() - captureStartRef.current
+      : 0
+    if (captureDuration > 0 && captureDuration < 500) {
+      goPassive()
       return
     }
 
