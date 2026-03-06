@@ -47,3 +47,14 @@ tool_bridge:
   blocked_commands: [rm, rmdir, dd, mkfs, shutdown, reboot]
   # danger_will_robinson: true   # uncomment to DISABLE sandbox — you've been warned
   sandbox_dir: "/tmp/oap-sandbox"
+  # think_prefixes: [compute]    # fingerprint prefixes that get think=true for verification
+  # escalate_prefixes: [compute, search, query]  # fingerprint prefixes routed to big LLM for final answer
+
+# Big LLM escalation — final reasoning step for complex queries.
+# Small LLM still handles discovery and tool execution.
+# escalation:
+#   enabled: true
+#   provider: anthropic          # openai, anthropic, or googleai
+#   model: claude-sonnet-4-6
+#   timeout: 120
+#   # api_key from OAP_ANTHROPIC_API_KEY env var (or OAP_ESCALATION_API_KEY)
