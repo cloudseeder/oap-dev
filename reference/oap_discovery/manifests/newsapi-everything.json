@@ -8,8 +8,7 @@
     "parameters": {
       "q": {"type": "string", "description": "Search keywords or phrase (max 500 chars). Supports: exact match with quotes, +/- prefix, AND/OR/NOT operators.", "required": true},
       "searchIn": {"type": "string", "description": "Restrict search to: title, description, content (comma-separated)", "required": false},
-      "sources": {"type": "string", "description": "Comma-separated source IDs to restrict results", "required": false},
-      "domains": {"type": "string", "description": "Comma-separated domains to restrict (e.g. 'nytimes.com,bbc.co.uk')", "required": false},
+      "domains": {"type": "string", "description": "Comma-separated domains to restrict results (e.g. 'nytimes.com,bbc.co.uk,oregonlive.com')", "required": false},
       "from": {"type": "string", "description": "Oldest article date (ISO 8601, e.g. '2026-02-20')", "required": false},
       "to": {"type": "string", "description": "Newest article date (ISO 8601)", "required": false},
       "language": {"type": "string", "description": "2-letter language code: ar, de, en, es, fr, he, it, nl, no, pt, ru, sv, zh", "required": false},

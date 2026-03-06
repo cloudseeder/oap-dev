@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -385,12 +386,33 @@ async def ollama_embed(request: Request):
     return await _proxy_to_ollama(request.url.path, request)
 
 
+class _RedactSecretsFilter(logging.Filter):
+    """Redact API keys and tokens from httpx URL logs."""
+
+    _SENSITIVE_PARAMS = re.compile(
+        r'((?:apiKey|api_key|token|key|secret|password|authorization)=)[^&\s"]+',
+        re.IGNORECASE,
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.args:
+            record.args = tuple(
+                self._SENSITIVE_PARAMS.sub(r'\1[REDACTED]', str(a))
+                if isinstance(a, str) else a
+                for a in record.args
+            )
+        record.msg = self._SENSITIVE_PARAMS.sub(r'\1[REDACTED]', str(record.msg))
+        return True
+
+
 def main() -> None:
     """Entry point for oap-api command."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+    # Redact secrets from httpx URL logging
+    logging.getLogger("httpx").addFilter(_RedactSecretsFilter())
     config_path = _find_config()
     cfg = load_config(config_path)
     uvicorn.run(
