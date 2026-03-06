@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .config import load_config
 from .db import AgentDB
 from .events import EventBus
-from .executor import execute_chat, execute_task
+from .executor import execute_chat, execute_conversational, execute_task
 from .scheduler import TaskScheduler
 
 
@@ -243,6 +243,39 @@ class UpdateTaskRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Chat classifier — route conversational turns away from tool bridge
+# ---------------------------------------------------------------------------
+
+# Short messages matching these patterns skip the tool bridge entirely.
+# Conservative: false negatives (chat goes to tool bridge) are fine,
+# false positives (factual question skips tools) are bad.
+_CONVERSATIONAL_PATTERNS = re.compile(
+    r"^("
+    r"thanks?(\s+you)?|thank\s+you|thx|ty"
+    r"|you'?re\s+welcome"
+    r"|ok(ay)?|got\s+it|understood|perfect|great|nice|cool|awesome|sounds\s+good"
+    r"|hi|hey|hello|yo|sup|howdy|good\s+(morning|afternoon|evening|night)"
+    r"|bye|goodbye|see\s+you|later|good\s*night|take\s+care"
+    r"|yes|no|yep|nope|yeah|nah|sure|absolutely|definitely"
+    r"|please|sorry|my\s+bad|no\s+worries"
+    r"|what\s+do\s+you\s+mean|what\s+did\s+you\s+mean|can\s+you\s+explain"
+    r"|huh\??|really\??|seriously\??"
+    r"|lol|haha|ha|wow"
+    r"|never\s*mind|forget\s+it|nvm"
+    r")[\s?!.,]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_conversational(message: str) -> bool:
+    """Return True if message is a conversational turn that needs no tools."""
+    stripped = message.strip()
+    if len(stripped) > 100:
+        return False
+    return bool(_CONVERSATIONAL_PATTERNS.match(stripped))
+
+
+# ---------------------------------------------------------------------------
 # Chat routes
 # ---------------------------------------------------------------------------
 
@@ -303,15 +336,25 @@ async def chat(req: ChatRequest):
             "message": user_msg,
         })
 
-        # Call the OAP discovery service
+        # Route: conversational turns skip the tool bridge entirely
+        conversational = _is_conversational(req.message)
         try:
-            result = await execute_chat(
-                discovery_url=_discovery_url,
-                messages=llm_messages,
-                model=model,
-                timeout=_discovery_timeout,
-                debug=_debug_mode,
-            )
+            if conversational:
+                log.info("Conversational route: %r", req.message[:80])
+                result = await execute_conversational(
+                    discovery_url=_discovery_url,
+                    messages=llm_messages,
+                    model=model,
+                    timeout=_discovery_timeout,
+                )
+            else:
+                result = await execute_chat(
+                    discovery_url=_discovery_url,
+                    messages=llm_messages,
+                    model=model,
+                    timeout=_discovery_timeout,
+                    debug=_debug_mode,
+                )
         except Exception as exc:
             log.error("Chat execution failed: %s", exc, exc_info=True)
             yield _sse_event("error", {"message": "Execution failed"})
@@ -319,31 +362,32 @@ async def chat(req: ChatRequest):
             return
 
         # Log debug trace from tool bridge
-        raw = result.get("raw", {})
-        dbg = raw.get("oap_debug", {})
-        if dbg:
-            log.info(
-                "Tool bridge: fingerprint=%s cache=%s escalated=%s tools=%s",
-                dbg.get("experience_fingerprint"),
-                dbg.get("experience_cache"),
-                dbg.get("escalated"),
-                dbg.get("tools_discovered"),
-            )
-            for rd in dbg.get("rounds", []):
-                for te in rd.get("tool_executions", []):
-                    log.info(
-                        "  Round %d: %s(%s) → %s (%dms)",
-                        rd.get("round", "?"),
-                        te.get("tool"),
-                        json.dumps(te.get("arguments", {}), default=str)[:200],
-                        (te.get("result", "")[:200] or "(empty)"),
-                        te.get("duration_ms", 0),
-                    )
-                resp_msg = rd.get("ollama_response", {})
-                if resp_msg.get("content"):
-                    log.info("  Round %d LLM: %s", rd.get("round", "?"), resp_msg["content"][:300])
-        elif raw.get("oap_experience_cache"):
-            log.info("Tool bridge: cache=%s (debug not enabled)", raw["oap_experience_cache"])
+        if not conversational:
+            raw = result.get("raw", {})
+            dbg = raw.get("oap_debug", {})
+            if dbg:
+                log.info(
+                    "Tool bridge: fingerprint=%s cache=%s escalated=%s tools=%s",
+                    dbg.get("experience_fingerprint"),
+                    dbg.get("experience_cache"),
+                    dbg.get("escalated"),
+                    dbg.get("tools_discovered"),
+                )
+                for rd in dbg.get("rounds", []):
+                    for te in rd.get("tool_executions", []):
+                        log.info(
+                            "  Round %d: %s(%s) → %s (%dms)",
+                            rd.get("round", "?"),
+                            te.get("tool"),
+                            json.dumps(te.get("arguments", {}), default=str)[:200],
+                            (te.get("result", "")[:200] or "(empty)"),
+                            te.get("duration_ms", 0),
+                        )
+                    resp_msg = rd.get("ollama_response", {})
+                    if resp_msg.get("content"):
+                        log.info("  Round %d LLM: %s", rd.get("round", "?"), resp_msg["content"][:300])
+            elif raw.get("oap_experience_cache"):
+                log.info("Tool bridge: cache=%s (debug not enabled)", raw["oap_experience_cache"])
 
         # Emit each tool call
         for tc in result.get("tool_calls", []):

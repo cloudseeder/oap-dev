@@ -558,6 +558,33 @@ async def chat_proxy(req: ChatRequest) -> Any:
     """
     engine, store, ollama_cfg, bridge_cfg = _require_enabled()
 
+    # Fast path: when discovery is disabled, pass messages straight to Ollama
+    # without fingerprinting, tool injection, or system prompt rewriting.
+    if not req.oap_discover:
+        ollama_payload = {
+            "model": req.model,
+            "messages": [m.model_dump(exclude_none=True) for m in req.messages],
+            "stream": False,
+            "options": {"num_ctx": ollama_cfg.num_ctx},
+            "keep_alive": ollama_cfg.keep_alive,
+        }
+        async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
+            resp = await client.post(
+                f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
+                json=ollama_payload,
+            )
+            resp.raise_for_status()
+            ollama_resp = resp.json()
+        ollama_resp["oap_tools_injected"] = 0
+        ollama_resp["oap_round"] = 1
+        ollama_resp["oap_conversational"] = True
+        if req.stream:
+            return StreamingResponse(
+                _stream_ollama_response(ollama_resp),
+                media_type="application/x-ndjson",
+            )
+        return ollama_resp
+
     max_rounds = min(req.oap_max_rounds, bridge_cfg.max_rounds)
     tools: list[Tool] = []
     registry: dict[str, ToolRegistryEntry] = {}

@@ -77,6 +77,42 @@ async def execute_chat(
     }
 
 
+async def execute_conversational(
+    discovery_url: str,
+    messages: list[dict],
+    model: str = "qwen3:8b",
+    timeout: int = 300,
+) -> dict[str, Any]:
+    """Send a conversational (no-tool) chat request via the tool bridge.
+
+    Passes oap_discover=false so the tool bridge skips fingerprinting,
+    discovery, tool injection, and system prompt rewriting.
+    """
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "oap_discover": False,
+    }
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(f"{discovery_url}/v1/chat", json=payload)
+        resp.raise_for_status()
+        raw = resp.json()
+
+    content = ""
+    message = raw.get("message", {})
+    if isinstance(message, dict):
+        content = message.get("content", "")
+
+    return {
+        "content": content,
+        "tool_calls": [],
+        "experience_cache": None,
+        "raw": raw,
+    }
+
+
 async def execute_task(
     discovery_url: str,
     prompt: str,
