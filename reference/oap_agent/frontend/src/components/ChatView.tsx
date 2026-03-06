@@ -169,6 +169,10 @@ export default function ChatView() {
   const handleSend = useCallback(async (message: string, model: string) => {
     if (streaming) return
 
+    // Unlock browser autoplay during this user gesture so auto-speak works
+    // when the SSE stream completes (which is outside gesture scope).
+    if (autoSpeak) autoSpeakTTS.warmup()
+
     setError(null)
     setStreaming(true)
 

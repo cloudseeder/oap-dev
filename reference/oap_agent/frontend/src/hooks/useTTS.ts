@@ -47,7 +47,13 @@ function _isAnySpeaking(): boolean {
 
 export function useTTS(voice?: string) {
   const [speaking, setSpeaking] = useState(false)
+  // Persistent Audio element — created once so the autoplay privilege from
+  // the first user gesture (send button, mic click) is retained for all
+  // subsequent auto-speak calls without further interaction.
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  if (!audioRef.current && typeof Audio !== 'undefined') {
+    audioRef.current = new Audio()
+  }
   const abortRef = useRef<AbortController | null>(null)
   const blobUrlsRef = useRef<string[]>([])
 
@@ -56,6 +62,25 @@ export function useTTS(voice?: string) {
       URL.revokeObjectURL(url)
     }
     blobUrlsRef.current = []
+  }, [])
+
+  /** Call during a user gesture (click) to unlock autoplay for later auto-speak. */
+  const warmup = useCallback(() => {
+    if (!audioRef.current) return
+    // Play a tiny silent WAV to grant autoplay privilege to this Audio element.
+    // 44-byte WAV header with 0 data frames — plays instantly, no audible output.
+    const silent = new Uint8Array([
+      0x52,0x49,0x46,0x46, 0x24,0x00,0x00,0x00, 0x57,0x41,0x56,0x45,
+      0x66,0x6D,0x74,0x20, 0x10,0x00,0x00,0x00, 0x01,0x00,0x01,0x00,
+      0x44,0xAC,0x00,0x00, 0x88,0x58,0x01,0x00, 0x02,0x00,0x10,0x00,
+      0x64,0x61,0x74,0x61, 0x00,0x00,0x00,0x00,
+    ])
+    const blob = new Blob([silent], { type: 'audio/wav' })
+    const url = URL.createObjectURL(blob)
+    audioRef.current.src = url
+    audioRef.current.play().catch(() => {})
+    // Revoke after a tick
+    setTimeout(() => URL.revokeObjectURL(url), 100)
   }, [])
 
   const speak = useCallback(async (text: string) => {
@@ -114,11 +139,9 @@ export function useTTS(voice?: string) {
       // Start reading chunks in the background
       const readPromise = readChunks()
 
-      // Single Audio element — reuse across chunks so the user-gesture
-      // autoplay privilege is retained even when the tab is in the background
-      // (creating new Audio() per chunk loses the privilege).
-      const audio = new Audio()
-      audioRef.current = audio
+      // Reuse the persistent Audio element so autoplay privilege from any
+      // prior user gesture (send button, mic click) carries over.
+      const audio = audioRef.current!
 
       // Play chunks sequentially as they arrive
       let chunkIndex = 0
@@ -201,7 +224,7 @@ export function useTTS(voice?: string) {
     }
   }, [revokeAll])
 
-  return { speaking, speak, stop, supported: true }
+  return { speaking, speak, stop, warmup, supported: true }
 }
 
 // ---------------------------------------------------------------------------
