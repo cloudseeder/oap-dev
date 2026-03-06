@@ -70,6 +70,7 @@ export interface UserFact {
   created_at: string
   last_referenced: string
   reference_count: number
+  pinned: number
 }
 
 export function parseSSE(text: string): Array<{ event: string; data: any }> {

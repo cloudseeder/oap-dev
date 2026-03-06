@@ -323,8 +323,15 @@ async def chat(req: ChatRequest):
         facts = _db.get_all_facts()
         if facts:
             _db.touch_facts([f["id"] for f in facts])
-            fact_lines = "\n".join(f"- {f['fact']}" for f in facts)
-            persona_parts.append(f"About the user:\n{fact_lines}")
+            pinned = [f for f in facts if f.get("pinned")]
+            learned = [f for f in facts if not f.get("pinned")]
+            memory_parts = []
+            if pinned:
+                memory_parts.append("Core facts:\n" + "\n".join(f"- {f['fact']}" for f in pinned))
+            if learned:
+                memory_parts.append("Learned:\n" + "\n".join(f"- {f['fact']}" for f in learned))
+            if memory_parts:
+                persona_parts.append("About the user:\n" + "\n".join(memory_parts))
 
     if persona_parts:
         llm_messages.insert(0, {"role": "system", "content": "\n\n".join(persona_parts)})
@@ -745,6 +752,20 @@ async def update_memory(fact_id: str, req: UpdateFactRequest):
     if _db is None:
         raise HTTPException(status_code=503, detail="Service unavailable")
     if not _db.update_fact(fact_id, req.fact):
+        raise HTTPException(status_code=404, detail="Fact not found")
+    facts = _db.get_all_facts()
+    return {"facts": facts, "total": len(facts)}
+
+
+class PinFactRequest(BaseModel):
+    pinned: bool
+
+
+@app.patch("/v1/agent/memory/{fact_id}/pin")
+async def pin_memory(fact_id: str, req: PinFactRequest):
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if not _db.pin_fact(fact_id, req.pinned):
         raise HTTPException(status_code=404, detail="Fact not found")
     facts = _db.get_all_facts()
     return {"facts": facts, "total": len(facts)}

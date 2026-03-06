@@ -268,6 +268,20 @@ export default function SettingsView() {
     } catch {}
   }
 
+  async function handlePinFact(factId: string, pinned: boolean) {
+    try {
+      const res = await fetch(`/v1/agent/memory/${factId}/pin`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setFacts(data.facts || [])
+      }
+    } catch {}
+  }
+
   async function handleDeleteFact(factId: string) {
     try {
       const res = await fetch(`/v1/agent/memory/${factId}`, { method: 'DELETE' })
@@ -607,12 +621,14 @@ export default function SettingsView() {
               ) : (
                 <div className="space-y-2">
                   <p className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-400">
-                    {facts.length} fact{facts.length !== 1 && 's'} learned
+                    {facts.filter(f => f.pinned).length} pinned · {facts.filter(f => !f.pinned).length} learned
                   </p>
                   {facts.map((fact) => (
                     <div
                       key={fact.id}
-                      className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2"
+                      className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                        fact.pinned ? 'border-primary/30 bg-primary/5' : 'border-gray-100'
+                      }`}
                     >
                       {editingId === fact.id ? (
                         <input
@@ -654,6 +670,19 @@ export default function SettingsView() {
                           </>
                         ) : (
                           <>
+                            <button
+                              onClick={() => handlePinFact(fact.id, !fact.pinned)}
+                              className={fact.pinned ? 'text-primary hover:text-gray-400' : 'text-gray-400 hover:text-primary'}
+                              title={fact.pinned ? 'Unpin (allow eviction)' : 'Pin (keep forever)'}
+                            >
+                              <svg className="h-4 w-4" viewBox="0 0 24 24" fill={fact.pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2}>
+                                <path d="M12 2L12 22M12 2L8 6M12 2L16 6" strokeLinecap="round" strokeLinejoin="round" />
+                                {fact.pinned
+                                  ? <circle cx="12" cy="8" r="3" />
+                                  : <circle cx="12" cy="8" r="3" fill="none" />
+                                }
+                              </svg>
+                            </button>
                             <button
                               onClick={() => { setEditingId(fact.id); setEditText(fact.fact) }}
                               className="text-gray-400 hover:text-primary"

@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS user_facts (
     source_message  TEXT NOT NULL,
     created_at      TEXT NOT NULL,
     last_referenced TEXT NOT NULL,
-    reference_count INTEGER NOT NULL DEFAULT 1
+    reference_count INTEGER NOT NULL DEFAULT 1,
+    pinned          INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -89,7 +90,15 @@ class AgentDB:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self._seed_defaults()
+
+    def _migrate(self):
+        """Add columns that may be missing from older databases."""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(user_facts)").fetchall()}
+        if "pinned" not in cols:
+            self.conn.execute("ALTER TABLE user_facts ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+            self.conn.commit()
 
     def _seed_defaults(self):
         """Insert default settings, adding any missing keys to existing databases."""
@@ -459,14 +468,14 @@ class AgentDB:
     # --- User Facts ---
 
     def get_all_facts(self) -> list[dict]:
-        """Return all user facts ordered by reference_count DESC."""
+        """Return all user facts ordered by pinned DESC, reference_count DESC."""
         rows = self.conn.execute(
-            "SELECT * FROM user_facts ORDER BY reference_count DESC"
+            "SELECT * FROM user_facts ORDER BY pinned DESC, reference_count DESC"
         ).fetchall()
         return [dict(r) for r in rows]
 
     def add_facts(self, facts: list[str], source_message: str, max_facts: int = 50) -> int:
-        """Insert new facts with UNIQUE dedup, evict excess. Returns count added."""
+        """Insert new facts with UNIQUE dedup, evict excess unpinned. Returns count added."""
         import sqlite3 as _sqlite3
         now = _now()
         added = 0
@@ -478,7 +487,7 @@ class AgentDB:
                 try:
                     self.conn.execute(
                         "INSERT INTO user_facts (id, fact, source_message, created_at, "
-                        "last_referenced, reference_count) VALUES (?, ?, ?, ?, ?, 1)",
+                        "last_referenced, reference_count, pinned) VALUES (?, ?, ?, ?, ?, 1, 0)",
                         (_new_id("fact_"), fact, source_message[:500], now, now),
                     )
                     added += 1
@@ -486,12 +495,15 @@ class AgentDB:
                     pass  # duplicate fact
             if added:
                 self.conn.commit()
-                total = self.count_facts()
-                if total > max_facts:
-                    excess = total - max_facts
+                # Only evict unpinned facts
+                unpinned = self.conn.execute(
+                    "SELECT COUNT(*) FROM user_facts WHERE pinned = 0"
+                ).fetchone()[0]
+                if unpinned > max_facts:
+                    excess = unpinned - max_facts
                     self.conn.execute(
                         "DELETE FROM user_facts WHERE id IN ("
-                        "  SELECT id FROM user_facts "
+                        "  SELECT id FROM user_facts WHERE pinned = 0 "
                         "  ORDER BY reference_count ASC, last_referenced ASC "
                         "  LIMIT ?"
                         ")",
@@ -499,6 +511,16 @@ class AgentDB:
                     )
                     self.conn.commit()
         return added
+
+    def pin_fact(self, fact_id: str, pinned: bool = True) -> bool:
+        """Pin or unpin a user fact. Returns True if updated."""
+        with self._lock:
+            cur = self.conn.execute(
+                "UPDATE user_facts SET pinned = ? WHERE id = ?",
+                (1 if pinned else 0, fact_id),
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
 
     def update_fact(self, fact_id: str, new_text: str) -> bool:
         """Update fact text by ID. Returns True if updated."""
