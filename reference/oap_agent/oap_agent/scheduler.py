@@ -83,6 +83,15 @@ class TaskScheduler:
         )
         log.debug("Scheduled task %s (%s) with cron %s", task["id"], task["name"], task["schedule"])
 
+    def _build_prompt(self, task: dict) -> str:
+        """Prepend last-run timestamp to the task prompt for dedup."""
+        prompt = task["prompt"]
+        last_run = self._db.get_last_successful_run(task["id"])
+        if last_run and last_run.get("finished_at"):
+            prompt = f"[Only include new information since {last_run['finished_at']}]\n{prompt}"
+            log.debug("Injected last-run timestamp %s into task %s", last_run["finished_at"], task["id"])
+        return prompt
+
     async def _execute_task(self, task_id: str) -> None:
         """Called by the scheduler to run a task."""
         if self._db is None:
@@ -93,7 +102,8 @@ class TaskScheduler:
             log.warning("Scheduled task %s not found in DB", task_id)
             return
 
-        run = self._db.create_run(task_id, task["prompt"])
+        prompt = self._build_prompt(task)
+        run = self._db.create_run(task_id, prompt)
         run_id = run["id"]
 
         if self._semaphore:
@@ -114,7 +124,7 @@ class TaskScheduler:
             try:
                 result = await execute_task(
                     discovery_url=self._discovery_url,
-                    prompt=task["prompt"],
+                    prompt=prompt,
                     model=task.get("model", "qwen3:8b"),
                     timeout=120,
                     debug=True,

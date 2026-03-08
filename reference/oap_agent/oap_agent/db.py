@@ -402,6 +402,18 @@ class AgentDB:
             return None
         return self._decode_run(dict(row))
 
+    def get_last_successful_run(self, task_id: str) -> dict | None:
+        """Return the most recent successful run for a task, or None."""
+        row = self.conn.execute(
+            """SELECT * FROM task_runs
+               WHERE task_id = ? AND status = 'success'
+               ORDER BY finished_at DESC LIMIT 1""",
+            (task_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return self._decode_run(dict(row))
+
     def list_runs(self, task_id: str, page: int = 1, limit: int = 20) -> dict:
         page = max(1, page)
         limit = min(max(1, limit), 200)

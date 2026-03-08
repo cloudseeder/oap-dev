@@ -17,6 +17,23 @@ from .tool_models import ToolRegistryEntry
 
 log = logging.getLogger("oap.tool_executor")
 
+
+_cached_subprocess_env: dict[str, str] | None = None
+
+
+def _subprocess_env() -> dict[str, str]:
+    """Build environment for subprocesses, injecting TZ from config."""
+    global _cached_subprocess_env
+    if _cached_subprocess_env is None:
+        from .config import load_config
+        env = os.environ.copy()
+        tz = load_config().tool_bridge.timezone
+        if tz:
+            env["TZ"] = tz
+        _cached_subprocess_env = env
+    return _cached_subprocess_env
+
+
 _SUMMARIZE_SYSTEM = (
     "Condense this data while preserving its meaning and structure. "
     "For structured data (JSON, tables): keep item names and key values, drop boilerplate. "
@@ -363,6 +380,7 @@ async def _run_single(
         stdin=asyncio.subprocess.PIPE if stdin_bytes is not None else None,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=_subprocess_env(),
     )
     stdout, stderr = await asyncio.wait_for(
         proc.communicate(input=stdin_bytes), timeout=stdio_timeout,
@@ -383,6 +401,7 @@ async def _run_pipeline(
     current_input = stdin_bytes
     all_stderr: list[bytes] = []
 
+    env = _subprocess_env()
     for i, argv in enumerate(pipeline):
         is_last = i == len(pipeline) - 1
         proc = await asyncio.create_subprocess_exec(
@@ -390,6 +409,7 @@ async def _run_pipeline(
             stdin=asyncio.subprocess.PIPE if current_input is not None else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
         try:
             stdout, stderr = await asyncio.wait_for(

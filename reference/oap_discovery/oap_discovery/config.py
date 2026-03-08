@@ -81,6 +81,7 @@ class ToolBridgeConfig:
     ])
     danger_will_robinson: bool = False  # set True to DISABLE sandbox — you've been warned
     sandbox_dir: str = "/tmp/oap-sandbox"
+    timezone: str = "America/Los_Angeles"  # TZ for subprocess execution (date, etc.)
 
 
 @dataclass

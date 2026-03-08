@@ -557,14 +557,27 @@ async def trigger_task(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    run = _db.create_run(task_id, task["prompt"])
+    prompt = _build_task_prompt(task)
+    run = _db.create_run(task_id, prompt)
     run_id = run["id"]
 
-    asyncio.create_task(_run_task_background(task, run_id))
+    asyncio.create_task(_run_task_background(task, run_id, prompt))
     return {"run_id": run_id, "status": "accepted"}
 
 
-async def _run_task_background(task: dict, run_id: str) -> None:
+def _build_task_prompt(task: dict) -> str:
+    """Prepend last-run timestamp to the task prompt for dedup."""
+    prompt = task["prompt"]
+    if _db is None:
+        return prompt
+    last_run = _db.get_last_successful_run(task["id"])
+    if last_run and last_run.get("finished_at"):
+        prompt = f"[Only include new information since {last_run['finished_at']}]\n{prompt}"
+        log.debug("Injected last-run timestamp %s into task %s", last_run["finished_at"], task["id"])
+    return prompt
+
+
+async def _run_task_background(task: dict, run_id: str, prompt: str) -> None:
     task_id = task["id"]
     semaphore = _scheduler.semaphore if _scheduler else None
 
@@ -586,7 +599,7 @@ async def _run_task_background(task: dict, run_id: str) -> None:
         try:
             result = await execute_task(
                 discovery_url=_discovery_url,
-                prompt=task["prompt"],
+                prompt=prompt,
                 model=task.get("model", _discovery_model),
                 timeout=_discovery_timeout,
                 debug=True,

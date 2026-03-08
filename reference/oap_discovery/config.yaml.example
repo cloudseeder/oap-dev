@@ -47,6 +47,7 @@ tool_bridge:
   blocked_commands: [rm, rmdir, dd, mkfs, shutdown, reboot]
   # danger_will_robinson: true   # uncomment to DISABLE sandbox — you've been warned
   sandbox_dir: "/tmp/oap-sandbox"
+  timezone: "America/Los_Angeles"   # TZ for subprocess execution (date, etc.)
   # think_prefixes: [compute]    # fingerprint prefixes that get think=true for verification
   # escalate_prefixes: [compute, search, query]  # fingerprint prefixes routed to big LLM for final answer
 

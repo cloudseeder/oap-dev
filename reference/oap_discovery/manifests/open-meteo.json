@@ -21,8 +21,8 @@
   },
   "invoke": {
     "method": "GET",
-    "url": "https://api.open-meteo.com/v1/forecast"
+    "url": "https://api.open-meteo.com/v1/forecast?temperature_unit=fahrenheit&wind_speed_unit=mph"
   },
   "tags": ["weather", "forecast", "temperature", "climate"],
-  "usage": "GET /v1/forecast?latitude=45.52&longitude=-122.68&current=temperature_2m,wind_speed_10m&temperature_unit=fahrenheit → current Portland weather"
+  "usage": "GET /v1/forecast?latitude=45.52&longitude=-122.68&current=temperature_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph → current Portland weather"
 }

@@ -207,11 +207,13 @@ async def _invoke_stdio(
             argv.append(os.path.expanduser(str(v)))
 
     try:
+        from .tool_executor import _subprocess_env
         proc = await asyncio.create_subprocess_exec(
             *wrap_argv(argv),
             stdin=asyncio.subprocess.PIPE if stdin_text else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=_subprocess_env(),
         )
 
         if stdin_text and not stdin_text.endswith('\n'):
