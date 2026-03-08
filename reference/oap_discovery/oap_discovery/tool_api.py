@@ -752,6 +752,8 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "For API/web data (news, weather, stocks, web services), use the discovered API "
         "tool (e.g. oap_mynewscast, oap_alpha_vantage) — do NOT try to curl APIs via oap_exec. "
         "API credentials are pre-configured — always call the tool, never say a key is needed. "
+        "You DO have access to personal data (reminders, calendar, etc.) through discovered tools. "
+        "NEVER say 'I don't have access' — if a relevant tool is available, CALL IT. "
         "For command-line tasks, use oap_exec. "
         "Write the command exactly as you would in a terminal. "
         "Use pipes (|) to chain commands for complex tasks. "
