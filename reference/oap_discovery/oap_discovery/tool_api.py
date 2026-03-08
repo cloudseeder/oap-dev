@@ -1225,6 +1225,12 @@ async def chat_proxy(req: ChatRequest) -> Any:
                                 "args": forced_args,
                                 "result_preview": force_result[:200],
                             })
+                        # Cache the force-invoke success so future queries hit experience
+                        if exp_fingerprint and exp_intent_domain:
+                            await _save_experience(
+                                exp_fingerprint, exp_intent_domain, last_user_msg,
+                                registry, {tool_name},
+                            )
                         # Signal to skip the continue and break the _attempt loop
                         _needs_retry = False
                     else:
