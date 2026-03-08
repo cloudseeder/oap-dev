@@ -27,8 +27,12 @@ MAX_RESPONSE_BYTES = 100 * 1024  # 100 KB
 ALLOWED_STDIO_PREFIXES = ("/usr/bin/", "/usr/local/bin/", "/bin/", "/opt/homebrew/bin/")
 
 
-def _validate_http_url(url: str) -> None:
-    """Check that an HTTP URL doesn't resolve to a private/loopback IP (SSRF protection)."""
+def _validate_http_url(url: str, *, allow_local: bool = False) -> None:
+    """Check that an HTTP URL doesn't resolve to a private/loopback IP (SSRF protection).
+
+    When allow_local is True, loopback addresses (127.0.0.0/8, ::1) are permitted.
+    This is used for local manifests that intentionally target localhost services.
+    """
     parsed = urlparse(url)
     hostname = parsed.hostname
     if not hostname:
@@ -39,6 +43,8 @@ def _validate_http_url(url: str) -> None:
         raise ValueError(f"Cannot resolve hostname: {hostname}")
     for _family, _type, _proto, _canonname, sockaddr in addrinfo:
         ip = ipaddress.ip_address(sockaddr[0])
+        if allow_local and ip.is_loopback:
+            continue
         if ip.is_private or ip.is_loopback or ip.is_link_local:
             raise ValueError(f"URL resolves to private IP: {ip}")
 
@@ -102,8 +108,11 @@ async def invoke_manifest(
             resolved_cmd, default_args, params, stdin_text, timeout=stdio_timeout
         )
     elif method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
+        # Allow loopback for local manifests (localhost services are intended targets)
+        parsed_host = urlparse(invoke_spec.url).hostname or ""
+        is_local = parsed_host in ("localhost", "127.0.0.1", "::1")
         try:
-            _validate_http_url(invoke_spec.url)
+            _validate_http_url(invoke_spec.url, allow_local=is_local)
         except ValueError as e:
             return InvocationResult(
                 status="failure", latency_ms=0, error=f"SSRF blocked: {e}"
