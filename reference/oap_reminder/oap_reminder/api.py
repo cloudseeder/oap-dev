@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import Response
 
 from .config import load_config
 from .db import ReminderDB
@@ -56,6 +59,74 @@ async def health():
         raise HTTPException(status_code=503, detail="Service unavailable")
     _, total = _db.list_all(limit=0)
     return {"status": "ok", "total": total}
+
+
+@app.get("/feed.ics")
+async def ical_feed():
+    """iCalendar feed of pending reminders for Apple/Google Calendar subscription."""
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+
+    reminders, _ = _db.list_all(status="pending", limit=500)
+    now = datetime.now().strftime("%Y%m%dT%H%M%S")
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//OAP//Reminder Service//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:OAP Reminders",
+    ]
+
+    for r in reminders:
+        uid = hashlib.md5(f"oap-reminder-{r['id']}".encode()).hexdigest()
+        # Build DTSTART from due_date + due_time
+        if r.get("due_date"):
+            date_str = r["due_date"].replace("-", "")
+            if r.get("due_time"):
+                time_str = r["due_time"].replace(":", "") + "00"
+                dtstart = f"DTSTART:{date_str}T{time_str}"
+                # 1-hour default duration for timed events
+                dtend_h = int(r["due_time"][:2]) + 1
+                dtend = f"DTEND:{date_str}T{dtend_h:02d}{r['due_time'][3:5]}00"
+            else:
+                dtstart = f"DTSTART;VALUE=DATE:{date_str}"
+                dtend = f"DTEND;VALUE=DATE:{date_str}"
+        else:
+            # No due date — use created_at
+            created = r.get("created_at", "").replace("-", "").replace(":", "").replace("T", "T")[:15]
+            dtstart = f"DTSTART:{created or now}"
+            dtend = f"DTEND:{created or now}"
+
+        summary = (r.get("title") or "Reminder").replace(",", "\\,").replace("\n", "\\n")
+        lines.append("BEGIN:VEVENT")
+        lines.append(f"UID:{uid}@oap-reminder")
+        lines.append(f"DTSTAMP:{now}")
+        lines.append(dtstart)
+        lines.append(dtend)
+        lines.append(f"SUMMARY:{summary}")
+        if r.get("notes"):
+            desc = r["notes"].replace(",", "\\,").replace("\n", "\\n")
+            lines.append(f"DESCRIPTION:{desc}")
+        if r.get("recurring"):
+            freq = r["recurring"].upper()
+            lines.append(f"RRULE:FREQ={freq}")
+        lines.append("BEGIN:VALARM")
+        lines.append("TRIGGER:-PT15M")
+        lines.append("ACTION:DISPLAY")
+        lines.append(f"DESCRIPTION:{summary}")
+        lines.append("END:VALARM")
+        lines.append("END:VEVENT")
+
+    lines.append("END:VCALENDAR")
+    ical = "\r\n".join(lines) + "\r\n"
+
+    return Response(
+        content=ical,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": "inline; filename=oap-reminders.ics"},
+    )
 
 
 @app.post("/api")
