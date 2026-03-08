@@ -53,6 +53,7 @@ reference/oap_discovery/manifests/*
 !reference/oap_discovery/manifests/alpha-vantage.json
 !reference/oap_discovery/manifests/newsapi-top-headlines.json
 !reference/oap_discovery/manifests/newsapi-everything.json
+!reference/oap_discovery/manifests/oap-reminder.json
 
 # claude code
 .claude/

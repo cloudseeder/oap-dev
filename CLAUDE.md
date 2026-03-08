@@ -135,6 +135,19 @@ Adoption tracker: crawls seed domains, stores results in SQLite, serves stats an
 - Config: `config.yaml` (SQLite path, crawler settings)
 - Key files: `db.py` (SQLite schema + CRUD), `crawler.py`, `api.py` (FastAPI)
 
+#### Reminder (`reference/oap_reminder/`)
+
+SQLite-backed reminder service for AI agents. Supports one-time and recurring reminders (daily, weekly, monthly, yearly).
+
+- Entry point: `oap-reminder-api` (:8304)
+- Config: `config.yaml` (SQLite path, host, port). DB path resolved relative to config file directory; defaults to `$HOME/oap_reminder.db` without config.
+- Schema: `id`, `title`, `notes`, `created_at`, `due_date`, `due_time`, `recurring`, `status`, `completed_at`
+- Key files: `db.py` (SQLite CRUD + recurrence + cleanup), `models.py` (Pydantic validation), `api.py` (FastAPI), `config.py`
+- API: `POST /reminders`, `GET /reminders`, `GET /reminders/due`, `GET/PATCH/DELETE /reminders/{id}`, `POST /reminders/{id}/complete`, `POST /reminders/cleanup`
+- Recurring: completing a recurring reminder auto-creates the next occurrence with the computed due date
+- Cleanup: `POST /reminders/cleanup?older_than_days=30` or `oap-reminder-api --cleanup 30` (for cron)
+- Manifest: `reference/oap_discovery/manifests/oap-reminder.json`
+
 ### Infrastructure
 
 ```
@@ -145,8 +158,9 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
 │  ├─ Spec docs       │◄── Tunnel ──► │  Trust API (:8301)           │
 │  ├─ /playground     │               │  Dashboard API (:8302)       │
 │  ├─ /discover       │               │  Manifest (self-contained :8303)│
-│  ├─ /trust          │               │  Crawler (cron)              │
-│  ├─ /dashboard      │               │  ChromaDB (local dir)        │
+│  ├─ /trust          │               │  Reminder API (:8304)        │
+│  ├─ /dashboard      │               │  Crawler (cron)              │
+│  │                  │               │  ChromaDB (local dir)        │
 │  └─ /api/* (proxy)  │               │  SQLite (*.db)               │
 └─────────────────────┘               └──────────────────────────────┘
 ```
@@ -216,6 +230,7 @@ pip install -e reference/oap_trust
 pip install -e reference/oap_dashboard
 pip install -e reference/oap_mcp
 pip install -e reference/oap_agent
+pip install -e reference/oap_reminder
 ```
 
 ## Key Design Principles

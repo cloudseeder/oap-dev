@@ -1,0 +1,26 @@
+{
+  "oap": "1.0",
+  "name": "oap-reminder",
+  "description": "Create, list, complete, and manage personal reminders with due dates and recurrence. Use for requests like 'remind me to call the dentist Friday', 'what reminders are due today', 'show my overdue reminders', 'set a weekly reminder to check backups'. Supports one-time and recurring reminders (daily, weekly, monthly, yearly).",
+  "input": {
+    "format": "application/json",
+    "description": "JSON body for creating reminders. Required: 'title'. Optional: 'notes', 'due_date' (YYYY-MM-DD), 'due_time' (HH:MM), 'recurring' ('daily', 'weekly', 'monthly', 'yearly').",
+    "parameters": {
+      "title": {"type": "string", "description": "What to be reminded about", "required": true},
+      "notes": {"type": "string", "description": "Additional details or context", "required": false},
+      "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format", "required": false},
+      "due_time": {"type": "string", "description": "Due time in HH:MM format (24-hour)", "required": false},
+      "recurring": {"type": "string", "description": "Recurrence: 'daily', 'weekly', 'monthly', or 'yearly'", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "JSON reminder object with id, title, notes, due_date, due_time, recurring, status (pending/completed), created_at, completed_at."
+  },
+  "invoke": {
+    "method": "POST",
+    "url": "http://localhost:8304/reminders"
+  },
+  "tags": ["reminder", "todo", "schedule", "recurring"],
+  "usage": "POST /reminders {\"title\": \"Call dentist\", \"due_date\": \"2026-03-10\", \"due_time\": \"09:00\"} → creates a reminder"
+}
