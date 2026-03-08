@@ -58,6 +58,67 @@ async def health():
     return {"status": "ok", "total": total}
 
 
+@app.post("/api")
+async def dispatch(body: dict):
+    """Single-endpoint dispatcher for LLM tool calls.
+
+    Accepts {"action": "...", ...params} and routes to the right operation.
+    """
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+
+    action = (body.pop("action", None) or body.pop("function", None) or "create").lower().strip()
+    log.info("Dispatch action=%r params=%r", action, {k: v for k, v in body.items() if k != "notes"})
+
+    if action in ("create", "add", "set", "new"):
+        validated = ReminderCreate(**body)
+        return _db.create(
+            title=validated.title,
+            notes=validated.notes,
+            due_date=validated.due_date,
+            due_time=validated.due_time,
+            recurring=validated.recurring,
+        )
+    elif action in ("list", "list_all", "show", "all"):
+        reminders, total = _db.list_all(
+            status=body.get("status"),
+            limit=int(body.get("limit", 50)),
+        )
+        return {"reminders": reminders, "total": total}
+    elif action in ("due", "due_today", "overdue", "upcoming", "today"):
+        reminders = _db.list_due(before=body.get("before"))
+        return {"reminders": reminders, "total": len(reminders)}
+    elif action in ("complete", "done", "finish"):
+        rid = body.get("id") or body.get("reminder_id")
+        if not rid:
+            raise HTTPException(status_code=400, detail="'id' required for complete")
+        result = _db.complete(int(rid))
+        if not result:
+            raise HTTPException(status_code=404, detail="Reminder not found")
+        return result
+    elif action in ("delete", "remove", "cancel"):
+        rid = body.get("id") or body.get("reminder_id")
+        if not rid:
+            raise HTTPException(status_code=400, detail="'id' required for delete")
+        if not _db.delete(int(rid)):
+            raise HTTPException(status_code=404, detail="Reminder not found")
+        return {"deleted": int(rid)}
+    elif action in ("get", "fetch", "find"):
+        rid = body.get("id") or body.get("reminder_id")
+        if not rid:
+            raise HTTPException(status_code=400, detail="'id' required for get")
+        reminder = _db.get(int(rid))
+        if not reminder:
+            raise HTTPException(status_code=404, detail="Reminder not found")
+        return reminder
+    elif action in ("cleanup", "purge"):
+        days = int(body.get("older_than_days", 30))
+        deleted = _db.cleanup_completed(days)
+        return {"deleted": deleted, "older_than_days": days}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}. Use: create, list, due, complete, delete, get, cleanup")
+
+
 @app.post("/reminders", status_code=201)
 async def create_reminder(body: ReminderCreate):
     if _db is None:

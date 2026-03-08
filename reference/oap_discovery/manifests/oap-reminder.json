@@ -1,26 +1,29 @@
 {
   "oap": "1.0",
   "name": "oap-reminder",
-  "description": "Create, list, complete, and manage personal reminders with due dates and recurrence. Use for requests like 'remind me to call the dentist Friday', 'what reminders are due today', 'show my overdue reminders', 'set a weekly reminder to check backups'. Supports one-time and recurring reminders (daily, weekly, monthly, yearly).",
+  "description": "Create, list, complete, and manage personal reminders with due dates and recurrence. Use for requests like 'remind me to call the dentist Friday', 'what reminders are due today', 'show my overdue reminders', 'mark reminder 3 as done', 'set a weekly reminder to check backups'. Supports one-time and recurring reminders (daily, weekly, monthly, yearly).",
   "input": {
     "format": "application/json",
-    "description": "JSON body for creating reminders. Required: 'title'. Optional: 'notes', 'due_date' (YYYY-MM-DD), 'due_time' (HH:MM), 'recurring' ('daily', 'weekly', 'monthly', 'yearly').",
+    "description": "JSON with 'action' to select operation and additional parameters. Actions: 'create' (new reminder), 'due' (due/overdue today), 'list' (all reminders), 'complete' (mark done by id), 'delete' (remove by id), 'get' (fetch by id), 'cleanup' (purge old completed).",
     "parameters": {
-      "title": {"type": "string", "description": "What to be reminded about", "required": true},
+      "action": {"type": "string", "description": "Operation: 'create', 'due', 'list', 'complete', 'delete', 'get', 'cleanup'", "required": true},
+      "title": {"type": "string", "description": "Reminder title (required for create)", "required": false},
       "notes": {"type": "string", "description": "Additional details or context", "required": false},
-      "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format", "required": false},
-      "due_time": {"type": "string", "description": "Due time in HH:MM format (24-hour)", "required": false},
-      "recurring": {"type": "string", "description": "Recurrence: 'daily', 'weekly', 'monthly', or 'yearly'", "required": false}
+      "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format (or 'today', 'tomorrow')", "required": false},
+      "due_time": {"type": "string", "description": "Due time in HH:MM format or '5 PM' style", "required": false},
+      "recurring": {"type": "string", "description": "Recurrence: 'daily', 'weekly', 'monthly', or 'yearly'", "required": false},
+      "id": {"type": "integer", "description": "Reminder ID (for complete, delete, get)", "required": false},
+      "status": {"type": "string", "description": "Filter by status for list: 'pending' or 'completed'", "required": false}
     }
   },
   "output": {
     "format": "application/json",
-    "description": "JSON reminder object with id, title, notes, due_date, due_time, recurring, status (pending/completed), created_at, completed_at."
+    "description": "JSON reminder object with id, title, notes, due_date, due_time, recurring, status (pending/completed), created_at, completed_at. List/due actions return {reminders: [...], total: N}."
   },
   "invoke": {
     "method": "POST",
-    "url": "http://localhost:8304/reminders"
+    "url": "http://localhost:8304/api"
   },
   "tags": ["reminder", "todo", "schedule", "recurring"],
-  "usage": "POST /reminders {\"title\": \"Call dentist\", \"due_date\": \"2026-03-10\", \"due_time\": \"09:00\"} → creates a reminder"
+  "usage": "POST /api {\"action\": \"create\", \"title\": \"Call dentist\", \"due_date\": \"2026-03-10\", \"due_time\": \"09:00\"} → creates reminder; POST /api {\"action\": \"due\"} → list today's reminders; POST /api {\"action\": \"complete\", \"id\": 1} → mark done"
 }
