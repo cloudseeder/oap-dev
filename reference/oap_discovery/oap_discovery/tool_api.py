@@ -1127,6 +1127,103 @@ async def chat_proxy(req: ChatRequest) -> Any:
             if EXEC_TOOL.function.name not in registry:
                 tools.insert(0, EXEC_TOOL)
                 registry[EXEC_TOOL.function.name] = EXEC_REGISTRY_ENTRY
+            # On second no-tool-call failure, try force-invoking the top
+            # discovered tool.  Small LLMs sometimes refuse to call tools for
+            # personal data queries ("I can't access your reminders") despite
+            # having the tool available.  Rather than retry with the same prompt,
+            # construct a synthetic tool call using the LLM to map the user's
+            # intent to tool arguments.
+            non_exec_tools = [
+                (name, entry) for name, entry in registry.items()
+                if name != EXEC_TOOL.function.name
+            ]
+            if _attempt > 0 and non_exec_tools:
+                tool_name, tool_entry = non_exec_tools[0]
+                log.warning(
+                    "Model refused tools twice — force-invoking %s via LLM argument extraction",
+                    tool_name,
+                )
+                # Ask the small LLM to extract tool arguments from the user query
+                tool_desc = tool_entry.tool.function.description or ""
+                param_schema = tool_entry.tool.function.parameters
+                param_desc = ""
+                if param_schema and param_schema.properties:
+                    param_desc = ", ".join(
+                        f"{k}: {v.description or v.type}"
+                        for k, v in param_schema.properties.items()
+                    )
+                extract_prompt = (
+                    f"Extract arguments for the tool '{tool_name}' from this user request.\n"
+                    f"Tool: {tool_desc}\n"
+                    f"Parameters: {param_desc}\n"
+                    f"User request: {last_user_msg}\n"
+                    "Return ONLY a JSON object with the arguments. No explanation."
+                )
+                try:
+                    extract_resp = await _ollama.chat(
+                        model=req.model,
+                        messages=[{"role": "user", "content": extract_prompt}],
+                        stream=False,
+                        think=False,
+                        temperature=0,
+                        format="json",
+                        options={"num_ctx": ollama_cfg.num_ctx},
+                        keep_alive=ollama_cfg.keep_alive,
+                    )
+                    import json as _json
+                    raw_args = extract_resp.get("message", {}).get("content", "{}")
+                    # Strip think tags if present
+                    raw_args = _re.sub(r"<think>.*?</think>", "", raw_args, flags=_re.DOTALL).strip()
+                    forced_args = _json.loads(raw_args)
+                    log.info("Force-invoke %s with args: %s", tool_name, forced_args)
+
+                    # Execute the tool call directly
+                    force_result = await execute_tool_call(
+                        tool_name, forced_args, registry,
+                        http_timeout=bridge_cfg.http_timeout,
+                        stdio_timeout=bridge_cfg.stdio_timeout,
+                        credentials=load_credentials(bridge_cfg.credentials_file),
+                        ollama=_ollama,
+                        summarize_threshold=bridge_cfg.summarize_threshold,
+                        escalation_available=should_escalate and _escalation_cfg is not None,
+                    )
+                    if not force_result.startswith("Error:"):
+                        tool_exec_results.append(force_result)
+                        tools_executed = True
+                        # Build final response via escalation or small LLM
+                        if should_escalate and _escalation_cfg:
+                            from .escalation import escalate as _escalate
+                            escalated_text = await _escalate(
+                                last_user_msg, [force_result],
+                                _escalation_cfg, persona=caller_system,
+                            )
+                            if escalated_text:
+                                ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
+                                ollama_resp["oap_escalated"] = True
+                                log.info("Force-invoke + escalation succeeded for %s", tool_name)
+                        if not ollama_resp.get("oap_escalated"):
+                            ollama_resp["message"] = {
+                                "role": "assistant",
+                                "content": force_result[:4000],
+                            }
+                        ollama_resp["oap_force_invoked"] = tool_name
+                        if debug:
+                            debug_rounds.append({
+                                "round": "force_invoke",
+                                "tool": tool_name,
+                                "args": forced_args,
+                                "result_preview": force_result[:200],
+                            })
+                        # Signal to skip the continue and break the _attempt loop
+                        _needs_retry = False
+                    else:
+                        log.warning("Force-invoke returned error: %s", force_result[:200])
+                except Exception as exc:
+                    log.warning("Force-invoke of %s failed: %s", tool_name, exc)
+
+            if not _needs_retry:
+                break  # force-invoke succeeded — exit _attempt loop
+
             # Rebuild system prompt with retry usage hints
             usage_hint = ""
             if discovered_usage:
