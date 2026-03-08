@@ -847,17 +847,22 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 # likely hallucinating instead of using available tools.
                 # On cache hit: degrade and retry with full discovery.
                 # On cache miss: retry once (re-discover may find better tools).
-                if round_num == 0 and not tools_executed and tools and _attempt == 0:
-                    if exp_cache_hit:
+                if round_num == 0 and not tools_executed and tools:
+                    if exp_cache_hit and _attempt == 0:
                         log.warning(
                             "Cache hit but model made no tool calls — degrading cache entry and retrying"
                         )
                         if _experience_store and exp_id:
                             _experience_store.degrade_confidence(exp_id)
-                    else:
+                    elif _attempt == 0:
                         log.warning(
                             "Model made no tool calls despite %d tools available — retrying",
                             len(tools),
+                        )
+                    else:
+                        log.warning(
+                            "Model refused tool calls on attempt %d (%d tools available)",
+                            _attempt + 1, len(tools),
                         )
                     if debug:
                         debug_rounds.append({
