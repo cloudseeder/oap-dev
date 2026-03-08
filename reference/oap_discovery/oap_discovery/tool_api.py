@@ -1170,18 +1170,13 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     "Return ONLY a JSON object with the arguments. No explanation."
                 )
                 try:
-                    extract_resp = await _ollama.chat(
-                        model=req.model,
-                        messages=[{"role": "user", "content": extract_prompt}],
-                        stream=False,
+                    raw_args, _ = await _ollama.chat(
+                        extract_prompt,
                         think=False,
                         temperature=0,
                         format="json",
-                        options={"num_ctx": ollama_cfg.num_ctx},
-                        keep_alive=ollama_cfg.keep_alive,
                     )
                     import json as _json
-                    raw_args = extract_resp.get("message", {}).get("content", "{}")
                     # Strip think tags if present
                     raw_args = _re.sub(r"<think>.*?</think>", "", raw_args, flags=_re.DOTALL).strip()
                     forced_args = _json.loads(raw_args)
