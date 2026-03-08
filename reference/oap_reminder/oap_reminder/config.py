@@ -35,8 +35,8 @@ def load_config(path: str | None = None) -> Config:
         if not db_path.is_absolute():
             cfg.db_path = str(p.parent.resolve() / db_path)
     else:
-        # No config file — resolve against $HOME
+        # No config file — resolve against package directory
         db_path = Path(cfg.db_path)
         if not db_path.is_absolute():
-            cfg.db_path = str(Path.home() / cfg.db_path)
+            cfg.db_path = str(Path(__file__).resolve().parent.parent / db_path)
     return cfg
