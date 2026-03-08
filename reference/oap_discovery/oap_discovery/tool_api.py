@@ -1193,7 +1193,11 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         escalation_available=should_escalate and _escalation_cfg is not None,
                     )
                     if not force_result.startswith("Error:"):
-                        tool_exec_results.append(force_result)
+                        tool_exec_results.append({
+                            "tool": tool_name,
+                            "arguments": forced_args,
+                            "result": force_result,
+                        })
                         tools_executed = True
                         # Build final response via escalation or small LLM
                         if should_escalate and _escalation_cfg:
