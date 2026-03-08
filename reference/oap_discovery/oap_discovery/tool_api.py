@@ -1199,7 +1199,8 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         if should_escalate and _escalation_cfg:
                             from .escalation import escalate as _escalate
                             escalated_text = await _escalate(
-                                last_user_msg, [force_result],
+                                last_user_msg,
+                                [{"tool": tool_name, "arguments": forced_args, "result": force_result}],
                                 _escalation_cfg, persona=caller_system,
                             )
                             if escalated_text:
