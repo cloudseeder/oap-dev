@@ -1057,17 +1057,22 @@ async def chat_proxy(req: ChatRequest) -> Any:
         # Retry if tools were available but unused or errored on first attempt.
         # Cache hit: degrade confidence. Cache miss: re-discover (experience
         # hints may have polluted the tool set).
-        _needs_retry = _attempt == 0 and tools and (tools_had_errors or not tools_executed)
-        if _needs_retry and exp_cache_hit and _experience_store and exp_id:
+        _needs_retry = _attempt <= 1 and tools and (tools_had_errors or not tools_executed)
+        if _needs_retry and _attempt == 0 and exp_cache_hit and _experience_store and exp_id:
             reason = "produced errors" if tools_had_errors else "model skipped tool calls"
             new_conf = _experience_store.degrade_confidence(exp_id)
             log.warning(
                 "Cache hit %s — degraded %s confidence to %.2f, retrying with full discovery",
                 reason, exp_id, new_conf or 0.0,
             )
-        elif _needs_retry and not exp_cache_hit and not tools_executed:
+        elif _needs_retry and _attempt == 0 and not exp_cache_hit and not tools_executed:
             log.warning(
                 "Model skipped tool calls on cache miss (%d tools available) — retrying",
+                len(tools),
+            )
+        elif _needs_retry and _attempt == 1 and not tools_executed:
+            log.warning(
+                "Model refused tools on both attempts (%d tools available) — trying force-invoke",
                 len(tools),
             )
         else:
