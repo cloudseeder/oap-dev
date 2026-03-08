@@ -28,7 +28,7 @@ api:
   port: 8304
 ```
 
-Without a config file, the database defaults to `$HOME/oap_reminder.db`.
+Without a config file, the database defaults to the package directory.
 
 ## API
 
@@ -43,6 +43,8 @@ Without a config file, the database defaults to `$HOME/oap_reminder.db`.
 | `DELETE` | `/reminders/{id}` | Delete |
 | `POST` | `/reminders/cleanup` | Purge old completed reminders (`?older_than_days=30`) |
 | `GET` | `/health` | Health check |
+| `GET` | `/feed.ics` | iCalendar subscription feed |
+| `POST` | `/api` | Action-based dispatcher for LLM tool calls |
 
 ## Schema
 
@@ -69,6 +71,27 @@ curl http://localhost:8304/reminders/due
 # Complete
 curl -X POST http://localhost:8304/reminders/1/complete
 ```
+
+## iCalendar Feed
+
+Subscribe to pending reminders in Apple Calendar, Google Calendar, or any calendar app that supports `.ics` subscriptions.
+
+```
+http://<host>:8304/feed.ics
+```
+
+**Apple Calendar:** File → New Calendar Subscription → paste the URL.
+
+**Google Calendar:** Settings → Add calendar → From URL → paste the URL.
+
+The feed includes:
+
+- All pending reminders as `VEVENT` entries
+- `RRULE` for recurring reminders (daily, weekly, monthly, yearly)
+- `VALARM` with a 15-minute pre-event alert
+- Timed events get a 1-hour default duration; all-day reminders use `VALUE=DATE`
+
+The calendar auto-refreshes on the client's polling interval (typically every 5-15 minutes).
 
 ## Cleanup
 
