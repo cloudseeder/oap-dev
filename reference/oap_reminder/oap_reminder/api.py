@@ -32,6 +32,24 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="OAP Reminder Service", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def log_requests(request, call_next):
+    if request.method == "POST" and "/reminders" in request.url.path:
+        body = await request.body()
+        log.info("POST %s body=%s", request.url.path, body.decode(errors="replace")[:500])
+        # Reconstruct request with body (consumed by reading)
+        from starlette.requests import Request
+        from io import BytesIO
+
+        async def receive():
+            return {"type": "http.request", "body": body}
+        request = Request(request.scope, receive)
+    response = await call_next(request)
+    if request.method == "POST" and "/reminders" in request.url.path and response.status_code >= 400:
+        log.warning("POST %s → %d", request.url.path, response.status_code)
+    return response
+
+
 @app.get("/health")
 async def health():
     if _db is None:
@@ -44,6 +62,8 @@ async def health():
 async def create_reminder(body: ReminderCreate):
     if _db is None:
         raise HTTPException(status_code=503, detail="Service unavailable")
+    log.info("Create reminder: title=%r due_date=%r due_time=%r recurring=%r",
+             body.title, body.due_date, body.due_time, body.recurring)
     reminder = _db.create(
         title=body.title,
         notes=body.notes,
