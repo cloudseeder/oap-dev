@@ -1199,8 +1199,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
                             "result": force_result,
                         })
                         tools_executed = True
-                        # Build final response via escalation or small LLM
-                        if should_escalate and _escalation_cfg:
+                        # Force-invoke always escalates — the small LLM already
+                        # refused to engage, so the big LLM must format the response.
+                        if _escalation_cfg:
                             from .escalation import escalate as _escalate
                             escalated_text = await _escalate(
                                 last_user_msg,
