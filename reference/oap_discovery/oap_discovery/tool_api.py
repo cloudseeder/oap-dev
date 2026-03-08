@@ -282,7 +282,9 @@ async def _get_similar_experience_tools(
     if len(fp_parts) < 2:
         return [], {}
 
-    prefix = ".".join(fp_parts[:2])
+    # Use 3-part prefix for tighter matching (e.g. query.system.date_time
+    # instead of query.system which is too broad)
+    prefix = ".".join(fp_parts[:min(3, len(fp_parts))])
     similar = _experience_store.find_similar(intent_domain, prefix)
 
     tools: list[Tool] = []
@@ -839,21 +841,28 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         })
                     break
 
-                # Cache hit but model skipped tool calls on round 1 — likely
-                # hallucinating an answer instead of using the tool.  Degrade
-                # the cache entry and retry with full discovery.
-                if exp_cache_hit and round_num == 0 and not tools_executed and tools and _attempt == 0:
-                    log.warning(
-                        "Cache hit but model made no tool calls — degrading cache entry and retrying"
-                    )
-                    if _experience_store and exp_id:
-                        _experience_store.degrade_confidence(exp_id)
+                # Model skipped tool calls on round 1 despite having tools —
+                # likely hallucinating instead of using available tools.
+                # On cache hit: degrade and retry with full discovery.
+                # On cache miss: retry once (re-discover may find better tools).
+                if round_num == 0 and not tools_executed and tools and _attempt == 0:
+                    if exp_cache_hit:
+                        log.warning(
+                            "Cache hit but model made no tool calls — degrading cache entry and retrying"
+                        )
+                        if _experience_store and exp_id:
+                            _experience_store.degrade_confidence(exp_id)
+                    else:
+                        log.warning(
+                            "Model made no tool calls despite %d tools available — retrying",
+                            len(tools),
+                        )
                     if debug:
                         debug_rounds.append({
                             "round": round_num + 1,
                             "ollama_response": resp_message,
                             "tool_executions": [],
-                            "note": "no_tool_calls_on_cache_hit",
+                            "note": "no_tool_calls_on_cache_hit" if exp_cache_hit else "no_tool_calls_on_miss",
                         })
                     break
 
@@ -1043,17 +1052,26 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 break
 
         # Inner loop finished (max rounds reached or broke out).
-        # If this was a cache hit and tools had errors (or model skipped
-        # tool calls entirely), degrade and retry with full discovery.
-        if exp_cache_hit and (tools_had_errors or not tools_executed) and _attempt == 0 and _experience_store and exp_id:
+        # Retry if tools were available but unused or errored on first attempt.
+        # Cache hit: degrade confidence. Cache miss: re-discover (experience
+        # hints may have polluted the tool set).
+        _needs_retry = _attempt == 0 and tools and (tools_had_errors or not tools_executed)
+        if _needs_retry and exp_cache_hit and _experience_store and exp_id:
             reason = "produced errors" if tools_had_errors else "model skipped tool calls"
             new_conf = _experience_store.degrade_confidence(exp_id)
             log.warning(
                 "Cache hit %s — degraded %s confidence to %.2f, retrying with full discovery",
-                reason,
-                exp_id,
-                new_conf or 0.0,
+                reason, exp_id, new_conf or 0.0,
             )
+        elif _needs_retry and not exp_cache_hit and not tools_executed:
+            log.warning(
+                "Model skipped tool calls on cache miss (%d tools available) — retrying",
+                len(tools),
+            )
+        else:
+            _needs_retry = False
+
+        if _needs_retry:
             # Reset state for retry with full discovery
             exp_cache_hit = False
             exp_cache_status = "degraded"
