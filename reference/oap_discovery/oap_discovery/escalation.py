@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timezone
 
 import httpx
 
@@ -20,8 +21,8 @@ log = logging.getLogger("oap.escalation")
 _BASE_SYSTEM_PROMPT = (
     "Answer the user's question using ONLY the tool execution results below. "
     "FACTUAL ACCURACY IS MANDATORY — never embellish, exaggerate, or infer data "
-    "that is not in the results. If a date says March 7 and today is March 8, "
-    "that is 1 day ago, not 2. If a tool returned an error or was not called, "
+    "that is not in the results. Use the provided current date for all date "
+    "calculations — never guess today's date. If a tool returned an error or was not called, "
     "say so — never pretend an action succeeded when it didn't. "
     "Verify all arithmetic, dates, and calculations before responding. "
     "FORMAT: Use short plain text or simple markdown lists. No tables, no emoji "
@@ -84,8 +85,9 @@ async def escalate(
             f"{system_prompt}"
         )
 
+    today = datetime.now(timezone.utc).strftime("%A, %B %-d, %Y")
     formatted_results = _format_tool_results(tool_results)
-    user_content = f"{user_message}\n\n--- Tool execution results ---\n{formatted_results}"
+    user_content = f"Today is {today}.\n\n{user_message}\n\n--- Tool execution results ---\n{formatted_results}"
 
     try:
         if config.provider == "anthropic":
