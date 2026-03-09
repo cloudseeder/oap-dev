@@ -721,12 +721,26 @@ async def chat_proxy(req: ChatRequest) -> Any:
     session_blacklist: set[str] = set()
     discovered_usage: list[str] = []
 
-    # Extract last user message (used for discovery and summarization)
+    # Extract last user message (used for discovery and summarization).
+    # When the message is short and looks like a follow-up ("correct it",
+    # "yes please", "do that"), prepend the previous user message so
+    # fingerprinting and discovery have enough context.
     last_user_msg = ""
+    _prev_user_msg = ""
     for msg in reversed(req.messages):
         if msg.role == "user" and msg.content:
-            last_user_msg = msg.content
-            break
+            if not last_user_msg:
+                last_user_msg = msg.content
+            else:
+                _prev_user_msg = msg.content
+                break
+    _FOLLOWUP_RE = _re.compile(
+        r'^(please\s+)?(correct|fix|update|change|delete|remove|yes|do|ok|sure|confirm)\b',
+        _re.I,
+    )
+    if last_user_msg and _prev_user_msg and len(last_user_msg) < 60 and _FOLLOWUP_RE.search(last_user_msg):
+        last_user_msg = f"{_prev_user_msg}\n\nFollow-up: {last_user_msg}"
+        log.info("Expanded follow-up message with prior context: %r", last_user_msg[:120])
 
     # Always fingerprint when experience engine is available (needed for failure hints
     # even with --no-cache)
