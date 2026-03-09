@@ -1002,10 +1002,11 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 "model": req.model,
                 "messages": messages,
                 "stream": False,
-                "think": allow_think,
                 "options": {"num_ctx": ollama_cfg.num_ctx},
                 "keep_alive": ollama_cfg.keep_alive,
             }
+            if not req.model.endswith("-cloud") and "-cloud" not in req.model:
+                ollama_payload["think"] = allow_think
             if tools:
                 ollama_payload["tools"] = [t.model_dump() for t in tools]
 
@@ -1585,10 +1586,11 @@ async def chat_proxy(req: ChatRequest) -> Any:
                     "model": req.model,
                     "messages": messages,  # already has truncated tool result appended
                     "stream": False,
-                    "think": False,
                     "options": {"num_ctx": ollama_cfg.num_ctx},
                     "keep_alive": ollama_cfg.keep_alive,
                 }
+                if not req.model.endswith("-cloud") and "-cloud" not in req.model:
+                    fallback_payload["think"] = False
                 async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
                     fb_resp = await client.post(
                         f"{ollama_cfg.base_url.rstrip('/')}/api/chat",

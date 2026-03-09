@@ -12,6 +12,11 @@ from .config import OllamaConfig
 log = logging.getLogger("oap.ollama")
 
 
+def _is_cloud_model(model: str) -> bool:
+    """Cloud models don't support the 'think' parameter."""
+    return "-cloud" in model or model.endswith("cloud")
+
+
 @dataclass
 class OllamaMetrics:
     """Telemetry extracted from an Ollama response."""
@@ -99,7 +104,7 @@ class OllamaClient:
             "options": {"num_ctx": self._cfg.num_ctx},
             "keep_alive": self._cfg.keep_alive,
         }
-        if think is not None:
+        if think is not None and not _is_cloud_model(self._cfg.generate_model):
             payload["think"] = think
         if format is not None:
             payload["format"] = format
@@ -159,7 +164,7 @@ class OllamaClient:
             "options": options,
             "keep_alive": self._cfg.keep_alive,
         }
-        if think is not None:
+        if think is not None and not _is_cloud_model(self._cfg.generate_model):
             payload["think"] = think
         if format is not None:
             payload["format"] = format
