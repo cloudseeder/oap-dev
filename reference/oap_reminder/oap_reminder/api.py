@@ -202,17 +202,17 @@ async def dispatch(body: dict):
                 rid = found["id"]
         if not rid:
             raise HTTPException(status_code=400, detail="'id' or 'title' required for update")
-        # Remove non-update keys before passing to ReminderUpdate
-        update_fields = {k: v for k, v in body.items()
-                         if k not in ("id", "reminder_id", "title") or k == "title" and body.get("new_title")}
-        # Support "new_title" to rename without conflicting with title lookup
-        if "new_title" in body:
-            update_fields["title"] = body["new_title"]
-            update_fields.pop("new_title", None)
-        if not update_fields:
-            raise HTTPException(status_code=400, detail="No fields to update")
-        validated = ReminderUpdate(**update_fields)
-        fields = validated.model_dump(exclude_unset=True)
+        # Pass body through ReminderUpdate (normalize_aliases handles renaming)
+        # then extract only known fields the model explicitly set.
+        _UPDATE_FIELDS = {"title", "notes", "due_date", "due_time", "recurring", "status"}
+        try:
+            validated = ReminderUpdate(**body)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        fields = {k: v for k, v in validated.model_dump(exclude_unset=True).items()
+                  if k in _UPDATE_FIELDS}
+        # Remove lookup key — "title" was used to find the reminder, not rename it
+        fields.pop("title", None)
         if not fields:
             raise HTTPException(status_code=400, detail="No fields to update")
         reminder = _db.update(int(rid), **fields)

@@ -127,6 +127,8 @@ class ReminderCreate(BaseModel):
     @field_validator("recurring")
     @classmethod
     def validate_recurring(cls, v: str | None) -> str | None:
+        if v and v.lower() in ("none", "null", ""):
+            return None
         if v and v not in _RECURRING_VALUES:
             raise ValueError(f"recurring must be one of {_RECURRING_VALUES}")
         return v
@@ -182,6 +184,8 @@ class ReminderUpdate(BaseModel):
     @field_validator("recurring")
     @classmethod
     def validate_recurring(cls, v: str | None) -> str | None:
+        if v and v.lower() in ("none", "null", ""):
+            return None
         if v and v not in _RECURRING_VALUES:
             raise ValueError(f"recurring must be one of {_RECURRING_VALUES}")
         return v
