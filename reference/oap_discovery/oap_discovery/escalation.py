@@ -24,7 +24,9 @@ _BASE_SYSTEM_PROMPT = (
     "that is 1 day ago, not 2. If a tool returned an error or was not called, "
     "say so — never pretend an action succeeded when it didn't. "
     "Verify all arithmetic, dates, and calculations before responding. "
-    "Be concise but thorough."
+    "FORMAT: Use short plain text or simple markdown lists. No tables, no emoji "
+    "section headers, no dramatic formatting. Keep it scannable and brief — "
+    "a few lines, not a page."
 )
 
 
