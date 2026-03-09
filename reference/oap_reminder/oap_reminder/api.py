@@ -161,23 +161,35 @@ async def dispatch(body: dict):
         return {"reminders": reminders, "total": len(reminders)}
     elif action in ("complete", "done", "finish"):
         rid = body.get("id") or body.get("reminder_id")
+        if not rid and body.get("title"):
+            found = _db.find_by_title(body["title"])
+            if found:
+                rid = found["id"]
         if not rid:
-            raise HTTPException(status_code=400, detail="'id' required for complete")
+            raise HTTPException(status_code=400, detail="'id' or 'title' required for complete")
         result = _db.complete(int(rid))
         if not result:
             raise HTTPException(status_code=404, detail="Reminder not found")
         return result
     elif action in ("delete", "remove", "cancel"):
         rid = body.get("id") or body.get("reminder_id")
+        if not rid and body.get("title"):
+            found = _db.find_by_title(body["title"])
+            if found:
+                rid = found["id"]
         if not rid:
-            raise HTTPException(status_code=400, detail="'id' required for delete")
+            raise HTTPException(status_code=400, detail="'id' or 'title' required for delete")
         if not _db.delete(int(rid)):
             raise HTTPException(status_code=404, detail="Reminder not found")
         return {"deleted": int(rid)}
     elif action in ("get", "fetch", "find"):
         rid = body.get("id") or body.get("reminder_id")
+        if not rid and body.get("title"):
+            found = _db.find_by_title(body["title"])
+            if found:
+                rid = found["id"]
         if not rid:
-            raise HTTPException(status_code=400, detail="'id' required for get")
+            raise HTTPException(status_code=400, detail="'id' or 'title' required for get")
         reminder = _db.get(int(rid))
         if not reminder:
             raise HTTPException(status_code=404, detail="Reminder not found")

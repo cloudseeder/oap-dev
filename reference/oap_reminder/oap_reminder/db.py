@@ -92,6 +92,14 @@ class ReminderDB:
         ).fetchone()
         return dict(row) if row else None
 
+    def find_by_title(self, title: str, status: str = "pending") -> dict | None:
+        """Find a reminder by case-insensitive title substring match."""
+        row = self.conn.execute(
+            "SELECT * FROM reminders WHERE title LIKE ? AND status = ? ORDER BY id DESC LIMIT 1",
+            (f"%{title}%", status),
+        ).fetchone()
+        return dict(row) if row else None
+
     def update(self, reminder_id: int, **fields) -> dict | None:
         if not fields:
             return self.get(reminder_id)
