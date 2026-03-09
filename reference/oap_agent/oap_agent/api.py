@@ -404,6 +404,8 @@ async def chat(req: ChatRequest):
         metadata: dict = {}
         if result.get("experience_cache"):
             metadata["experience_cache"] = result["experience_cache"]
+        if result.get("escalation_usage"):
+            metadata["escalation_usage"] = result["escalation_usage"]
 
         assistant_msg = _db.add_message(
             conv_id,
@@ -412,6 +414,18 @@ async def chat(req: ChatRequest):
             tool_calls=result["tool_calls"] or None,
             metadata=metadata or None,
         )
+
+        # Record escalation LLM usage
+        if result.get("escalation_usage"):
+            eu = result["escalation_usage"]
+            _db.record_llm_usage(
+                provider=eu["provider"],
+                model=eu["model"],
+                input_tokens=eu["input_tokens"],
+                output_tokens=eu["output_tokens"],
+                conversation_id=conv_id,
+                message_id=assistant_msg["id"],
+            )
 
         # Fire-and-forget: extract user memory from this turn
         if settings.get("memory_enabled") == "true" and result["content"]:
@@ -701,6 +715,18 @@ async def health():
     conversations = _db.list_conversations()["total"]
     tasks = len(_db.list_tasks())
     return {"status": "ok", "conversations": conversations, "tasks": tasks}
+
+
+# ---------------------------------------------------------------------------
+# Usage routes
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/agent/usage")
+async def get_usage(days: int = 30):
+    """Get LLM usage summary."""
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    return _db.get_usage_summary(min(max(1, days), 365))
 
 
 # ---------------------------------------------------------------------------

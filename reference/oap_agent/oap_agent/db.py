@@ -70,6 +70,20 @@ CREATE TABLE IF NOT EXISTS user_facts (
     reference_count INTEGER NOT NULL DEFAULT 1,
     pinned          INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id              TEXT PRIMARY KEY,
+    conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+    message_id      TEXT,
+    provider        TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    input_tokens    INTEGER NOT NULL DEFAULT 0,
+    output_tokens   INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_usage_conversation ON llm_usage(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_created ON llm_usage(created_at);
 """
 
 
@@ -476,6 +490,76 @@ class AgentDB:
                 (key, value),
             )
             self.conn.commit()
+
+    # --- LLM Usage ---
+
+    def record_llm_usage(
+        self,
+        provider: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        conversation_id: str | None = None,
+        message_id: str | None = None,
+    ) -> dict:
+        usage_id = _new_id("usage_")
+        now = _now()
+        with self._lock:
+            self.conn.execute(
+                """INSERT INTO llm_usage
+                   (id, conversation_id, message_id, provider, model, input_tokens, output_tokens, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (usage_id, conversation_id, message_id, provider, model, input_tokens, output_tokens, now),
+            )
+            self.conn.commit()
+        return {
+            "id": usage_id,
+            "provider": provider,
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "created_at": now,
+        }
+
+    def get_usage_summary(self, days: int = 30) -> dict:
+        """Get aggregated usage stats for the last N days."""
+        from datetime import datetime, timedelta
+        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+
+        rows = self.conn.execute(
+            """SELECT provider, model,
+                      COUNT(*) as requests,
+                      SUM(input_tokens) as total_input,
+                      SUM(output_tokens) as total_output
+               FROM llm_usage
+               WHERE created_at >= ?
+               GROUP BY provider, model
+               ORDER BY total_output DESC""",
+            (cutoff,),
+        ).fetchall()
+
+        total_input = 0
+        total_output = 0
+        by_model: list[dict] = []
+        for r in rows:
+            entry = {
+                "provider": r["provider"],
+                "model": r["model"],
+                "requests": r["requests"],
+                "input_tokens": r["total_input"],
+                "output_tokens": r["total_output"],
+            }
+            by_model.append(entry)
+            total_input += r["total_input"]
+            total_output += r["total_output"]
+
+        return {
+            "period_days": days,
+            "total_requests": sum(m["requests"] for m in by_model),
+            "total_input_tokens": total_input,
+            "total_output_tokens": total_output,
+            "by_model": by_model,
+        }
 
     # --- User Facts ---
 

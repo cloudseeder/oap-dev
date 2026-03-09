@@ -64,10 +64,10 @@ async def escalate(
     tool_results: list[dict],
     config: EscalationConfig,
     persona: str = "",
-) -> str | None:
+) -> dict | None:
     """Send tool results to a big LLM for final reasoning.
 
-    Returns the response text, or None on any failure (timeout, auth, network).
+    Returns a dict with text and usage, or None on any failure (timeout, auth, network).
     Failures are logged but never raised — the caller falls back to the small
     LLM's response.
     """
@@ -105,7 +105,7 @@ async def _call_openai(
     api_key: str,
     config: EscalationConfig,
     system_prompt: str = "",
-) -> str | None:
+) -> dict | None:
     """Call an OpenAI-compatible chat completions endpoint."""
     base_url = config.base_url or "https://api.openai.com/v1"
     url = f"{base_url.rstrip('/')}/chat/completions"
@@ -129,7 +129,14 @@ async def _call_openai(
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        usage = data.get("usage", {})
+        return {
+            "text": data["choices"][0]["message"]["content"],
+            "model": config.model,
+            "provider": "openai",
+            "input_tokens": usage.get("prompt_tokens", 0),
+            "output_tokens": usage.get("completion_tokens", 0),
+        }
 
 
 async def _call_anthropic(
@@ -137,7 +144,7 @@ async def _call_anthropic(
     api_key: str,
     config: EscalationConfig,
     system_prompt: str = "",
-) -> str | None:
+) -> dict | None:
     """Call the Anthropic Messages API."""
     base_url = config.base_url or "https://api.anthropic.com"
     url = f"{base_url.rstrip('/')}/v1/messages"
@@ -162,8 +169,19 @@ async def _call_anthropic(
         )
         resp.raise_for_status()
         data = resp.json()
+        usage = data.get("usage", {})
         # Anthropic returns content as a list of blocks
+        text = None
         for block in data.get("content", []):
             if block.get("type") == "text":
-                return block["text"]
-        return None
+                text = block["text"]
+                break
+        if text is None:
+            return None
+        return {
+            "text": text,
+            "model": config.model,
+            "provider": "anthropic",
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        }

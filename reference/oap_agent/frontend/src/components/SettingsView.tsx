@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import type { AgentSettings, UserFact } from '@/lib/types'
+import type { AgentSettings, LLMUsageSummary, UserFact } from '@/lib/types'
 import { useVoices, useTTS } from '@/hooks/useTTS'
 import PersonaAvatar from './PersonaAvatar'
 
@@ -53,6 +53,18 @@ const PERSONALITY_PRESETS = [
   },
 ]
 
+function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const rates: Record<string, [number, number]> = {
+    'claude-sonnet-4-6': [3, 15],
+    'claude-3-5-sonnet-latest': [3, 15],
+    'claude-3-5-sonnet-20241022': [3, 15],
+    'gpt-4o': [2.5, 10],
+    'gpt-4o-mini': [0.15, 0.6],
+  }
+  const [inputRate, outputRate] = rates[model] || [3, 15]
+  return (inputTokens / 1_000_000) * inputRate + (outputTokens / 1_000_000) * outputRate
+}
+
 function PersonaVoicePreview({ voice }: { voice: string }) {
   const { speaking, speak, stop } = useTTS(voice || undefined)
   return (
@@ -97,6 +109,7 @@ export default function SettingsView() {
   const [voiceTtsVoice, setVoiceTtsVoice] = useState('')
   const [voiceWakeWord, setVoiceWakeWord] = useState('')
   const voices = useVoices()
+  const [usage, setUsage] = useState<LLMUsageSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -108,9 +121,10 @@ export default function SettingsView() {
     setLoading(true)
     setError(null)
     try {
-      const [settingsRes, memoryRes] = await Promise.all([
+      const [settingsRes, memoryRes, usageRes] = await Promise.all([
         fetch('/v1/agent/settings'),
         fetch('/v1/agent/memory'),
+        fetch('/v1/agent/usage'),
       ])
       if (settingsRes.ok) {
         const s = await settingsRes.json()
@@ -127,6 +141,9 @@ export default function SettingsView() {
       if (memoryRes.ok) {
         const m = await memoryRes.json()
         setFacts(m.facts || [])
+      }
+      if (usageRes.ok) {
+        setUsage(await usageRes.json())
       }
     } catch {
       setError('Failed to load settings')
@@ -552,6 +569,61 @@ export default function SettingsView() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* LLM Usage section */}
+        <div className="mb-8 rounded-xl border border-gray-200 bg-white p-6">
+          <h2 className="mb-1 text-lg font-medium text-gray-900">LLM Usage</h2>
+          <p className="mb-4 text-sm text-gray-500">
+            Token usage and estimated costs for escalation to external LLMs (last 30 days).
+          </p>
+          {usage && usage.total_requests > 0 ? (
+            <>
+              <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">
+                  <p className="text-xs text-gray-400">Requests</p>
+                  <p className="mt-1 text-lg font-semibold text-gray-900">{usage.total_requests.toLocaleString()}</p>
+                </div>
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">
+                  <p className="text-xs text-gray-400">Input tokens</p>
+                  <p className="mt-1 text-lg font-semibold text-gray-900">{usage.total_input_tokens.toLocaleString()}</p>
+                </div>
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">
+                  <p className="text-xs text-gray-400">Output tokens</p>
+                  <p className="mt-1 text-lg font-semibold text-gray-900">{usage.total_output_tokens.toLocaleString()}</p>
+                </div>
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">
+                  <p className="text-xs text-gray-400">Est. cost</p>
+                  <p className="mt-1 text-lg font-semibold text-gray-900">
+                    ${usage.by_model.reduce((sum, m) => sum + estimateCost(m.model, m.input_tokens, m.output_tokens), 0).toFixed(4)}
+                  </p>
+                </div>
+              </div>
+              {usage.by_model.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-400">By model</p>
+                  <div className="space-y-2">
+                    {usage.by_model.map((m) => (
+                      <div key={`${m.provider}/${m.model}`} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-800">{m.model}</span>
+                          <span className="ml-2 text-xs text-gray-400">{m.provider}</span>
+                        </div>
+                        <div className="text-right text-xs text-gray-500">
+                          <span>{m.input_tokens.toLocaleString()} in / {m.output_tokens.toLocaleString()} out</span>
+                          <span className="ml-3 font-medium text-gray-700">${estimateCost(m.model, m.input_tokens, m.output_tokens).toFixed(4)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">
+              No escalation usage recorded yet. Usage is tracked when tasks are routed to an external LLM.
+            </p>
+          )}
         </div>
 
         {/* Memory section */}

@@ -41,6 +41,7 @@ async def execute_chat(
     content = ""
     tool_calls: list[dict] = []
     experience_cache: str | None = None
+    escalation_usage: dict | None = None
 
     # Extract content from Ollama-style response
     message = raw.get("message", {})
@@ -60,6 +61,8 @@ async def execute_chat(
                 })
         experience_cache = dbg.get("experience_cache")
 
+    escalation_usage = raw.get("oap_escalation_usage")
+
     # When the LLM spent all rounds on tool calls with no text summary,
     # use the last tool result as the response content
     if not content.strip() and tool_calls:
@@ -73,6 +76,7 @@ async def execute_chat(
         "content": content,
         "tool_calls": tool_calls,
         "experience_cache": experience_cache,
+        "escalation_usage": escalation_usage,
         "raw": raw,
     }
 

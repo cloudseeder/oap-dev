@@ -63,6 +63,20 @@ export interface AgentSettings {
   [key: string]: string  // dynamic keys like persona_voice_kai
 }
 
+export interface LLMUsageSummary {
+  period_days: number
+  total_requests: number
+  total_input_tokens: number
+  total_output_tokens: number
+  by_model: {
+    provider: string
+    model: string
+    requests: number
+    input_tokens: number
+    output_tokens: number
+  }[]
+}
+
 export interface UserFact {
   id: string
   fact: string

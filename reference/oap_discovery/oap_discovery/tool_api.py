@@ -595,14 +595,20 @@ async def _try_force_invoke(
             # refused to engage, so the big LLM must format the response.
             if escalation_cfg:
                 from .escalation import escalate as _escalate
-                escalated_text = await _escalate(
+                escalation_result = await _escalate(
                     last_user_msg,
                     [{"tool": tool_name, "arguments": forced_args, "result": force_result}],
                     escalation_cfg, persona=caller_system,
                 )
-                if escalated_text:
-                    ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
+                if escalation_result:
+                    ollama_resp["message"] = {"role": "assistant", "content": escalation_result["text"]}
                     ollama_resp["oap_escalated"] = True
+                    ollama_resp["oap_escalation_usage"] = {
+                        "model": escalation_result["model"],
+                        "provider": escalation_result["provider"],
+                        "input_tokens": escalation_result["input_tokens"],
+                        "output_tokens": escalation_result["output_tokens"],
+                    }
                     log.info("Force-invoke + escalation succeeded for %s", tool_name)
             if not ollama_resp.get("oap_escalated"):
                 ollama_resp["message"] = {
@@ -1077,10 +1083,16 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 # Escalate final reasoning to big LLM if configured
                 if should_escalate:
                     from .escalation import escalate as _escalate
-                    escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg, persona=caller_system)
-                    if escalated_text:
-                        ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
+                    escalation_result = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg, persona=caller_system)
+                    if escalation_result:
+                        ollama_resp["message"] = {"role": "assistant", "content": escalation_result["text"]}
                         ollama_resp["oap_escalated"] = True
+                        ollama_resp["oap_escalation_usage"] = {
+                            "model": escalation_result["model"],
+                            "provider": escalation_result["provider"],
+                            "input_tokens": escalation_result["input_tokens"],
+                            "output_tokens": escalation_result["output_tokens"],
+                        }
                         log.info("Escalated final reasoning to %s/%s", _escalation_cfg.provider, _escalation_cfg.model)
                 if debug:
                     debug_rounds.append({
@@ -1554,10 +1566,16 @@ async def chat_proxy(req: ChatRequest) -> Any:
     # Escalate final reasoning to big LLM if configured
     if should_escalate:
         from .escalation import escalate as _escalate
-        escalated_text = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg, persona=caller_system)
-        if escalated_text:
-            ollama_resp["message"] = {"role": "assistant", "content": escalated_text}
+        escalation_result = await _escalate(last_user_msg, tool_exec_results, _escalation_cfg, persona=caller_system)
+        if escalation_result:
+            ollama_resp["message"] = {"role": "assistant", "content": escalation_result["text"]}
             ollama_resp["oap_escalated"] = True
+            ollama_resp["oap_escalation_usage"] = {
+                "model": escalation_result["model"],
+                "provider": escalation_result["provider"],
+                "input_tokens": escalation_result["input_tokens"],
+                "output_tokens": escalation_result["output_tokens"],
+            }
             log.info("Escalated final reasoning to %s/%s", _escalation_cfg.provider, _escalation_cfg.model)
         else:
             # Escalation failed — fall back to small LLM with truncated tool result
