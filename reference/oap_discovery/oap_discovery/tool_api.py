@@ -260,6 +260,32 @@ async def _check_experience_cache(
             _experience_store.touch(exp.id)
             return [entry.tool], {entry.tool.function.name: entry}, fingerprint, intent_domain, exp.id
 
+    # Prefix fallback — the 3rd fingerprint part is volatile (e.g.
+    # query.reminder.list_today vs query.reminder.due_today), so try
+    # a 2-part prefix match when exact match misses.
+    fp_parts = fingerprint.split(".")
+    if len(fp_parts) >= 2:
+        prefix = ".".join(fp_parts[:2])
+        prefix_matches = _experience_store.find_successes_by_prefix(prefix, limit=1)
+        for exp in prefix_matches:
+            if exp.discovery.confidence >= threshold:
+                if exp.discovery.manifest_matched == "builtin/exec":
+                    entry = EXEC_REGISTRY_ENTRY
+                else:
+                    manifest = store.get_manifest(exp.discovery.manifest_matched)
+                    if manifest is None:
+                        continue
+                    entry = manifest_to_tool(exp.discovery.manifest_matched, manifest)
+                log.info(
+                    "Experience cache prefix hit: %s (via %s) → %s (confidence=%.2f, used %d times)",
+                    fingerprint, exp.intent_fingerprint,
+                    exp.discovery.manifest_matched,
+                    exp.discovery.confidence,
+                    exp.use_count,
+                )
+                _experience_store.touch(exp.id)
+                return [entry.tool], {entry.tool.function.name: entry}, fingerprint, intent_domain, exp.id
+
     # Cache miss — return fingerprint for later caching
     log.info("Experience cache miss for fingerprint=%s", fingerprint)
     return [], {}, fingerprint, intent_domain, None
