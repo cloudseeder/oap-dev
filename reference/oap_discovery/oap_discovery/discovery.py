@@ -111,9 +111,18 @@ def _extract_search_query(task: str) -> str:
     # Detect inline JSON/structured data in original task
     has_json_data = '{"' in first_line or '[{' in first_line
 
-    # Add domain hint based on data type
+    # Add domain hint based on data type — but only for text-processing
+    # queries.  Non-text queries (reminders, weather, calendar, API calls)
+    # are poisoned by the "in text" suffix which biases vector search
+    # toward CLI text tools instead of the correct service manifest.
+    _SERVICE_VERBS = re.compile(
+        r'\b(remind|reminder|schedule|calendar|weather|forecast|news|search'
+        r'|create|delete|complete|list|fetch|check|show|get|set|update)\b', re.I,
+    )
     if has_json_data and not re.search(r'\bjson\b', cleaned, re.I):
         cleaned += " JSON"
+    elif _SERVICE_VERBS.search(cleaned):
+        pass  # service/action query — don't append "in text"
     elif not re.search(r'\b(lines?|text|string|pattern|file)\b', cleaned, re.I):
         cleaned += " in text"
 
