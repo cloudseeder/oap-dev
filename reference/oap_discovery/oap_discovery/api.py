@@ -25,7 +25,7 @@ from . import experience_api
 from . import openapi_server
 from . import tool_api
 from .experience_engine import ExperienceEngine
-from .experience_store import ExperienceStore
+from .experience_store import ExperienceStore, ExperienceVectorStore
 from .models import (
     DiscoverRequest,
     DiscoverResponse,
@@ -43,6 +43,7 @@ _engine: DiscoveryEngine | None = None
 _cfg: Config | None = None
 _fts_store: FTSStore | None = None
 _experience_store: ExperienceStore | None = None
+_experience_vectors: ExperienceVectorStore | None = None
 
 
 def verify_backend_token(x_backend_token: str | None = Header(None)) -> None:
@@ -120,7 +121,7 @@ async def _crawl_seed_domains() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _store, _ollama, _engine, _cfg, _fts_store, _experience_store
+    global _store, _ollama, _engine, _cfg, _fts_store, _experience_store, _experience_vectors
 
     config_path = _find_config()
     _cfg = load_config(config_path)
@@ -189,16 +190,37 @@ async def lifespan(app: FastAPI):
         exp_engine = ExperienceEngine(_engine, _ollama, _experience_store, _cfg.experience)
         experience_api._experience_engine = exp_engine
         experience_api._experience_store = _experience_store
-        log.info(
-            "Procedural memory enabled — %d experience records",
-            _experience_store.count(),
-        )
+        exp_count = _experience_store.count()
+        log.info("Procedural memory enabled — %d experience records", exp_count)
+
+        # Vector similarity store (ChromaDB) for experience cache lookup
+        chromadb_path = str(Path(_cfg.chromadb.path) / "experience_vectors")
+        _experience_vectors = ExperienceVectorStore(chromadb_path)
+        experience_api._experience_vectors = _experience_vectors
+        vec_count = _experience_vectors.count()
+        log.info("Experience vector store — %d embeddings", vec_count)
+
+        # Backfill: if vector store is empty but SQLite has records, embed all
+        if vec_count == 0 and exp_count > 0:
+            log.info("Backfilling %d experience embeddings...", exp_count)
+            all_records = _experience_store.list_all(page=1, limit=exp_count)
+            backfilled = 0
+            for rec in all_records["records"]:
+                try:
+                    embedding, _ = await _ollama.embed_document(rec.intent.raw)
+                    _experience_vectors.upsert(rec.id, rec.intent.raw, embedding)
+                    backfilled += 1
+                except Exception:
+                    log.warning("Backfill embed failed for %s", rec.id)
+            log.info("Backfilled %d/%d experience embeddings", backfilled, exp_count)
+
         # Wire experience cache into tool bridge chat flow
         if _cfg.tool_bridge.enabled:
             tool_api._experience_engine = exp_engine
             tool_api._experience_store = _experience_store
             tool_api._experience_cfg = _cfg.experience
-            log.info("Experience cache wired into tool bridge")
+            tool_api._experience_vectors = _experience_vectors
+            log.info("Experience cache wired into tool bridge (vector + fingerprint)")
 
     # Prune experience store at startup
     if _experience_store is not None:

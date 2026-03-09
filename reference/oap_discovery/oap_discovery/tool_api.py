@@ -56,6 +56,7 @@ _ollama: OllamaClient | None = None
 _experience_engine: ExperienceEngine | None = None
 _experience_store: ExperienceStore | None = None
 _experience_cfg: ExperienceConfig | None = None
+_experience_vectors: Any = None  # ExperienceVectorStore, set by api.py
 
 # Escalation config — set by api.py during lifespan
 _escalation_cfg: EscalationConfig | None = None
@@ -226,24 +227,74 @@ async def _check_experience_cache(
     On cache miss, tools/registry are empty but fingerprint is still returned
     for caching after successful execution.
 
-    If fingerprint/intent_domain are provided, skips re-fingerprinting.
+    Uses vector embedding similarity (fast, ~50ms) for cache lookup.
+    Falls back to fingerprint-based lookup if vectors unavailable.
+    Fingerprinting (~1.5s LLM call) is deferred to cache miss only.
     """
     if _experience_engine is None or _experience_store is None or _experience_cfg is None:
         return [], {}, None, None, None
 
+    conf_threshold = _experience_cfg.confidence_threshold
+
+    # ── Vector similarity lookup (primary path) ──
+    if _experience_vectors is not None and _ollama is not None:
+        try:
+            query_embedding, _ = await _ollama.embed_query(task)
+        except Exception:
+            log.warning("Embedding failed for experience cache lookup")
+            query_embedding = None
+
+        if query_embedding is not None:
+            hits = _experience_vectors.search(query_embedding, n_results=3)
+            dist_threshold = _experience_cfg.vector_similarity_threshold
+
+            for hit in hits:
+                if hit["distance"] > dist_threshold:
+                    break  # sorted by distance — no better matches ahead
+
+                exp = _experience_store.get(hit["experience_id"])
+                if exp is None:
+                    continue  # stale vector entry
+
+                if exp.discovery.confidence >= conf_threshold and exp.outcome.status == "success":
+                    if exp.discovery.manifest_matched == "builtin/exec":
+                        entry = EXEC_REGISTRY_ENTRY
+                    else:
+                        manifest = store.get_manifest(exp.discovery.manifest_matched)
+                        if manifest is None:
+                            continue
+                        entry = manifest_to_tool(exp.discovery.manifest_matched, manifest)
+                    log.info(
+                        "Experience vector hit: %s → %s (distance=%.3f, confidence=%.2f, used %d times)",
+                        hit["experience_id"],
+                        exp.discovery.manifest_matched,
+                        hit["distance"],
+                        exp.discovery.confidence,
+                        exp.use_count,
+                    )
+                    _experience_store.touch(exp.id)
+                    # Reuse fingerprint from the cached record (skip LLM fingerprinting)
+                    fp = exp.intent.fingerprint
+                    dom = exp.intent.domain
+                    return [entry.tool], {entry.tool.function.name: entry}, fp, dom, exp.id
+
+            # Vector miss — log nearest distance for tuning
+            nearest = hits[0]["distance"] if hits else 999
+            log.info("Experience vector miss (nearest=%.3f, threshold=%.3f)", nearest, dist_threshold)
+
+    # ── Fingerprint-based fallback ──
+    # Only reached when vectors unavailable or vector miss.
+    # Fingerprint is still needed for hints, failure tracking, and blacklisting.
     if fingerprint is None:
         fingerprint, intent_domain = await _experience_engine.fingerprint_intent(task)
     if fingerprint is None:
         return [], {}, None, None, None
 
+    # Try exact fingerprint match (fast SQLite lookup)
     matches = _experience_store.find_by_fingerprint(fingerprint)
-    threshold = _experience_cfg.confidence_threshold
-
     for exp in matches:
-        if exp.discovery.confidence >= threshold and exp.outcome.status == "success":
-            # Cache hit — load manifest and convert to tool
+        if exp.discovery.confidence >= conf_threshold and exp.outcome.status == "success":
             if exp.discovery.manifest_matched == "builtin/exec":
-                # oap_exec is synthetic — not in ManifestStore
                 entry = EXEC_REGISTRY_ENTRY
             else:
                 manifest = store.get_manifest(exp.discovery.manifest_matched)
@@ -251,7 +302,7 @@ async def _check_experience_cache(
                     continue
                 entry = manifest_to_tool(exp.discovery.manifest_matched, manifest)
             log.info(
-                "Experience cache hit: %s → %s (confidence=%.2f, used %d times)",
+                "Experience fingerprint hit: %s → %s (confidence=%.2f, used %d times)",
                 fingerprint,
                 exp.discovery.manifest_matched,
                 exp.discovery.confidence,
@@ -260,33 +311,7 @@ async def _check_experience_cache(
             _experience_store.touch(exp.id)
             return [entry.tool], {entry.tool.function.name: entry}, fingerprint, intent_domain, exp.id
 
-    # Prefix fallback — the 3rd fingerprint part is volatile (e.g.
-    # query.reminder.list_today vs query.reminder.due_today), so try
-    # a 2-part prefix match when exact match misses.
-    fp_parts = fingerprint.split(".")
-    if len(fp_parts) >= 2:
-        prefix = ".".join(fp_parts[:2])
-        prefix_matches = _experience_store.find_successes_by_prefix(prefix, limit=1)
-        for exp in prefix_matches:
-            if exp.discovery.confidence >= threshold:
-                if exp.discovery.manifest_matched == "builtin/exec":
-                    entry = EXEC_REGISTRY_ENTRY
-                else:
-                    manifest = store.get_manifest(exp.discovery.manifest_matched)
-                    if manifest is None:
-                        continue
-                    entry = manifest_to_tool(exp.discovery.manifest_matched, manifest)
-                log.info(
-                    "Experience cache prefix hit: %s (via %s) → %s (confidence=%.2f, used %d times)",
-                    fingerprint, exp.intent_fingerprint,
-                    exp.discovery.manifest_matched,
-                    exp.discovery.confidence,
-                    exp.use_count,
-                )
-                _experience_store.touch(exp.id)
-                return [entry.tool], {entry.tool.function.name: entry}, fingerprint, intent_domain, exp.id
-
-    # Cache miss — return fingerprint for later caching
+    # Cache miss
     log.info("Experience cache miss for fingerprint=%s", fingerprint)
     return [], {}, fingerprint, intent_domain, None
 
@@ -401,6 +426,15 @@ async def _save_experience(
     _experience_store.save(record)
     log.info("Cached experience: %s → %s (fingerprint=%s)", exp_id, manifest_domain, fingerprint)
 
+    # Embed task text and upsert into vector store
+    if _experience_vectors is not None and _ollama is not None:
+        try:
+            embedding, _ = await _ollama.embed_document(task)
+            _experience_vectors.upsert(exp_id, task, embedding)
+            log.debug("Upserted experience vector: %s", exp_id)
+        except Exception:
+            log.warning("Failed to upsert experience vector: %s", exp_id, exc_info=True)
+
 
 async def _save_failure_experience(
     fingerprint: str,
@@ -474,6 +508,15 @@ async def _save_failure_experience(
         "Cached failure experience: %s → %s (%d corrections, fingerprint=%s)",
         exp_id, manifest_domain, len(corrections), fingerprint,
     )
+
+    # Embed task text and upsert into vector store
+    if _experience_vectors is not None and _ollama is not None:
+        try:
+            embedding, _ = await _ollama.embed_document(task)
+            _experience_vectors.upsert(exp_id, task, embedding)
+            log.debug("Upserted failure experience vector: %s", exp_id)
+        except Exception:
+            log.warning("Failed to upsert failure experience vector: %s", exp_id, exc_info=True)
 
 
 async def _try_force_invoke(

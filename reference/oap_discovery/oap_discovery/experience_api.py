@@ -10,13 +10,14 @@ from .experience_models import (
     ExperienceInvokeResponse,
     ExperienceRecord,
 )
-from .experience_store import ExperienceStore
+from .experience_store import ExperienceStore, ExperienceVectorStore
 
 router = APIRouter(prefix="/v1/experience", tags=["procedural-memory"])
 
 # Set by api.py during lifespan initialization
 _experience_engine: ExperienceEngine | None = None
 _experience_store: ExperienceStore | None = None
+_experience_vectors: ExperienceVectorStore | None = None
 
 
 def _require_enabled() -> tuple[ExperienceEngine, ExperienceStore]:
@@ -67,6 +68,8 @@ async def delete_record(experience_id: str) -> dict:
     deleted = store.delete(experience_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Record not found: {experience_id}")
+    if _experience_vectors is not None:
+        _experience_vectors.delete(experience_id)
     return {"deleted": experience_id}
 
 
@@ -77,7 +80,15 @@ async def clear_failures(
 ) -> dict:
     """Delete failure records for a fingerprint, optionally filtered by tool domain."""
     _, store = _require_enabled()
+    # Collect IDs before deleting so we can cascade to vector store
+    failure_records = store.find_failures_by_fingerprint(fingerprint, limit=1000)
+    if tool:
+        failure_ids = [r.id for r in failure_records if r.discovery.manifest_matched == tool]
+    else:
+        failure_ids = [r.id for r in failure_records]
     deleted = store.delete_failures(fingerprint, tool)
+    if _experience_vectors is not None and failure_ids:
+        _experience_vectors.delete_many(failure_ids)
     return {"deleted": deleted, "fingerprint": fingerprint, "tool": tool}
 
 

@@ -1,11 +1,14 @@
-"""SQLite store for procedural memory experience records."""
+"""SQLite + ChromaDB store for procedural memory experience records."""
 
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
+
+import chromadb
 
 from .experience_models import (
     CorrectionEntry,
@@ -381,3 +384,69 @@ class ExperienceStore:
             ),
             corrections=[CorrectionEntry(**c) for c in corrections_data],
         )
+
+
+log_vec = logging.getLogger("oap.experience_vectors")
+
+
+class ExperienceVectorStore:
+    """ChromaDB vector store for experience embedding similarity search."""
+
+    def __init__(self, chromadb_path: str, collection_name: str = "experience_vectors") -> None:
+        self._client = chromadb.PersistentClient(path=chromadb_path)
+        self._collection = self._client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
+
+    def upsert(self, experience_id: str, task_text: str, embedding: list[float]) -> None:
+        """Store an experience embedding."""
+        self._collection.upsert(
+            ids=[experience_id],
+            embeddings=[embedding],
+            documents=[task_text],
+        )
+
+    def search(self, query_embedding: list[float], n_results: int = 3) -> list[dict]:
+        """Find similar experiences by embedding.
+
+        Returns [{experience_id, distance, task_text}, ...] sorted by distance (ascending).
+        Distance is cosine distance: 0=identical, 1=orthogonal, 2=opposite.
+        """
+        count = self._collection.count()
+        if count == 0:
+            return []
+        results = self._collection.query(
+            query_embeddings=[query_embedding],
+            n_results=min(n_results, count),
+            include=["distances", "documents"],
+        )
+        if not results["ids"] or not results["ids"][0]:
+            return []
+        hits = []
+        for i, eid in enumerate(results["ids"][0]):
+            hits.append({
+                "experience_id": eid,
+                "distance": results["distances"][0][i],
+                "task_text": results["documents"][0][i] if results["documents"] else "",
+            })
+        return hits
+
+    def delete(self, experience_id: str) -> None:
+        """Remove an experience embedding."""
+        try:
+            self._collection.delete(ids=[experience_id])
+        except Exception:
+            pass
+
+    def delete_many(self, experience_ids: list[str]) -> None:
+        """Remove multiple experience embeddings."""
+        if not experience_ids:
+            return
+        try:
+            self._collection.delete(ids=experience_ids)
+        except Exception:
+            pass
+
+    def count(self) -> int:
+        return self._collection.count()

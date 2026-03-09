@@ -51,6 +51,7 @@ class ExperienceConfig:
     invoke_timeout: int = 30
     stdio_timeout: int = 10
     blacklist_threshold: int = 5
+    vector_similarity_threshold: float = 0.25  # cosine distance: 0=identical, lower=more similar
 
 
 @dataclass
