@@ -485,11 +485,14 @@ async def _try_force_invoke(
             f"{k}: {v.description or v.type}"
             for k, v in param_schema.properties.items()
         )
+    today = datetime.now().strftime("%Y-%m-%d")
     extract_prompt = (
         f"Extract arguments for the tool '{tool_name}' from this user request.\n"
         f"Tool: {tool_desc}\n"
         f"Parameters: {param_desc}\n"
+        f"Today's date: {today}\n"
         f"User request: {last_user_msg}\n"
+        "Convert relative dates ('the 14th', 'next Friday', 'tomorrow') to YYYY-MM-DD.\n"
         "Return ONLY a JSON object with the arguments. No explanation."
     )
     try:
