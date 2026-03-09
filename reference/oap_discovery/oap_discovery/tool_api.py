@@ -562,6 +562,7 @@ async def _try_force_invoke(
         f"Today's date: {today}\n"
         f"User request: {last_user_msg}\n"
         "Convert relative dates ('the 14th', 'next Friday', 'tomorrow') to YYYY-MM-DD.\n"
+        "If the user wants to REMOVE or CLEAR a field (e.g. 'no due date'), set it to null.\n"
         "Return ONLY a JSON object with the arguments. No explanation."
     )
     try:
@@ -1281,20 +1282,16 @@ async def chat_proxy(req: ChatRequest) -> Any:
             )
         elif _needs_retry and _attempt == 0 and not exp_cache_hit and not tools_executed:
             log.warning(
-                "Model skipped tool calls on cache miss (%d tools available) — retrying",
+                "Model skipped tool calls on cache miss (%d tools available) — skipping to force-invoke",
                 len(tools),
             )
-        elif _needs_retry and _attempt == 1 and not tools_executed:
-            log.warning(
-                "Model refused tools on both attempts (%d tools available) — trying force-invoke",
-                len(tools),
-            )
+            _force_invoke_now = True
         else:
             _needs_retry = False
 
-        # ── Force-invoke shortcut on cache hit + model refusal ──
-        # The model consistently refuses personal data tools.  On cache hit,
-        # we already know the right tool — skip rediscovery entirely.
+        # ── Force-invoke shortcut on model refusal ──
+        # The model consistently refuses personal data tools.  Skip
+        # rediscovery — force-invoke the top discovered tool directly.
         if _force_invoke_now:
             non_exec_tools = [
                 (name, entry) for name, entry in registry.items()

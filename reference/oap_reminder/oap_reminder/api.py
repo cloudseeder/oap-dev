@@ -194,6 +194,31 @@ async def dispatch(body: dict):
         if not reminder:
             raise HTTPException(status_code=404, detail="Reminder not found")
         return reminder
+    elif action in ("update", "edit", "modify", "change", "patch"):
+        rid = body.get("id") or body.get("reminder_id")
+        if not rid and body.get("title"):
+            found = _db.find_by_title(body["title"])
+            if found:
+                rid = found["id"]
+        if not rid:
+            raise HTTPException(status_code=400, detail="'id' or 'title' required for update")
+        # Remove non-update keys before passing to ReminderUpdate
+        update_fields = {k: v for k, v in body.items()
+                         if k not in ("id", "reminder_id", "title") or k == "title" and body.get("new_title")}
+        # Support "new_title" to rename without conflicting with title lookup
+        if "new_title" in body:
+            update_fields["title"] = body["new_title"]
+            update_fields.pop("new_title", None)
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        validated = ReminderUpdate(**update_fields)
+        fields = validated.model_dump(exclude_unset=True)
+        if not fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        reminder = _db.update(int(rid), **fields)
+        if not reminder:
+            raise HTTPException(status_code=404, detail="Reminder not found")
+        return reminder
     elif action in ("cleanup", "purge"):
         days = int(body.get("older_than_days", 30))
         deleted = _db.cleanup_completed(days)
