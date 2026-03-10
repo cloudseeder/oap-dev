@@ -158,6 +158,7 @@ class TaskScheduler:
                         "run_id": run_id,
                         "status": "success",
                         "duration_ms": duration_ms,
+                        "task_name": task["name"],
                     })
                     # Notify frontend of new notification
                     await self._event_bus.publish("notification_new", {
