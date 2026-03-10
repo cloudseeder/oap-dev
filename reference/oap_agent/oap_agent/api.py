@@ -278,9 +278,21 @@ _GREETING_RE = re.compile(
     re.IGNORECASE,
 )
 
+_NOTIF_QUERY_RE = re.compile(
+    r"^(what'?s\s+new|any\s+(notifications?|updates?|news)|"
+    r"what\s+did\s+i\s+miss|catch\s+me\s+up|"
+    r"(show|get|read|check)\s+(my\s+)?(notifications?|updates?)|"
+    r"anything\s+new|briefing|brief\s+me)[\s?!.,]*$",
+    re.IGNORECASE,
+)
+
 
 def _is_greeting(message: str) -> bool:
     return bool(_GREETING_RE.match(message.strip()))
+
+
+def _is_notification_query(message: str) -> bool:
+    return bool(_NOTIF_QUERY_RE.match(message.strip()))
 
 
 def _build_briefing_context() -> str:
@@ -366,9 +378,10 @@ async def chat(req: ChatRequest):
     if persona_parts:
         llm_messages.insert(0, {"role": "system", "content": "\n\n".join(persona_parts)})
 
-    # Greeting briefing — inject reminders + task summaries on first message
+    # Greeting or notification query — inject pending notifications as context
     is_first_message = len(history) <= 1  # Only the greeting itself
     greeting = _is_greeting(req.message) and is_first_message
+    notif_query = _is_notification_query(req.message)
 
     async def stream_response():
         nonlocal llm_messages
@@ -379,26 +392,37 @@ async def chat(req: ChatRequest):
             "message": user_msg,
         })
 
-        # Greeting briefing: inject pending notifications as context
-        if greeting:
+        # Inject pending notifications as context for greetings or direct queries
+        if greeting or notif_query:
             briefing = _build_briefing_context()
             from datetime import datetime, timezone
             _db.set_setting("last_greeting_at", datetime.now(timezone.utc).isoformat())
             if briefing:
                 from datetime import date
-                briefing_prompt = (
-                    f"The user just greeted you. Today is {date.today().isoformat()}. "
-                    "Give a warm greeting, then provide a concise briefing based on pending notifications below. "
-                    "Summarize naturally — highlight what's important or actionable. Skip items with no new data.\n\n"
-                    + briefing
-                )
+                if greeting:
+                    briefing_prompt = (
+                        f"The user just greeted you. Today is {date.today().isoformat()}. "
+                        "Give a warm greeting, then provide a concise briefing based on pending notifications below. "
+                        "Summarize naturally — highlight what's important or actionable. Skip items with no new data.\n\n"
+                        + briefing
+                    )
+                else:
+                    briefing_prompt = (
+                        f"The user is asking about their notifications. Today is {date.today().isoformat()}. "
+                        "Present these pending notifications clearly and concisely. "
+                        "Highlight what's important or actionable.\n\n"
+                        + briefing
+                    )
                 llm_messages.append({"role": "system", "content": briefing_prompt})
-                log.info("Greeting briefing injected (%d chars)", len(briefing))
+                log.info("Briefing injected (%s, %d chars)", "greeting" if greeting else "query", len(briefing))
                 # Dismiss presented notifications so they don't repeat
                 _db.dismiss_all_notifications()
+            elif notif_query:
+                # No notifications — tell the user explicitly
+                llm_messages.append({"role": "system", "content": "The user is asking about notifications. There are no pending notifications — let them know they're all caught up."})
 
         # Route: conversational turns skip the tool bridge entirely
-        conversational = _is_conversational(req.message)
+        conversational = _is_conversational(req.message) or notif_query
         try:
             if conversational:
                 log.info("Conversational route: %r", req.message[:80])
