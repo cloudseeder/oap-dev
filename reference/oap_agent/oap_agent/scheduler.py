@@ -139,12 +139,30 @@ class TaskScheduler:
                 )
                 log.info("Task run %s completed in %dms", run_id, duration_ms)
 
+                # Create notification from task result
+                content = result.get("content", "")
+                if content.strip():
+                    snippet = content[:200] + ("..." if len(content) > 200 else "")
+                    self._db.add_notification(
+                        type="task_result",
+                        title=task["name"],
+                        body=snippet,
+                        source="scheduler",
+                        task_id=task_id,
+                        run_id=run_id,
+                    )
+
                 if self._event_bus:
                     await self._event_bus.publish("task_run_finished", {
                         "task_id": task_id,
                         "run_id": run_id,
                         "status": "success",
                         "duration_ms": duration_ms,
+                    })
+                    # Notify frontend of new notification
+                    await self._event_bus.publish("notification_new", {
+                        "task_name": task["name"],
+                        "count": self._db.count_pending_notifications(),
                     })
 
             except Exception as exc:

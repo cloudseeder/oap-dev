@@ -16,12 +16,16 @@ interface AgentEventContextValue {
   lastEvent: AgentEvent | null
   taskNotifications: TaskNotification[]
   dismissNotification: (id: string) => void
+  notificationCount: number
+  refreshNotificationCount: () => void
 }
 
 const AgentEventContext = createContext<AgentEventContextValue>({
   lastEvent: null,
   taskNotifications: [],
   dismissNotification: () => {},
+  notificationCount: 0,
+  refreshNotificationCount: () => {},
 })
 
 export function useAgentEvents() {
@@ -31,7 +35,16 @@ export function useAgentEvents() {
 export default function AgentEventProvider({ children }: { children: React.ReactNode }) {
   const [lastEvent, setLastEvent] = useState<AgentEvent | null>(null)
   const [taskNotifications, setTaskNotifications] = useState<TaskNotification[]>([])
+  const [notificationCount, setNotificationCount] = useState(0)
   const esRef = useRef<EventSource | null>(null)
+
+  // Fetch initial notification count
+  useEffect(() => {
+    fetch('/v1/agent/notifications/count')
+      .then((r) => r.json())
+      .then((data) => setNotificationCount(data.count ?? 0))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     function connect() {
@@ -67,6 +80,13 @@ export default function AgentEventProvider({ children }: { children: React.React
         } catch {}
       })
 
+      es.addEventListener('notification_new', (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          setNotificationCount(data.count ?? 0)
+        } catch {}
+      })
+
       es.onerror = () => {
         es.close()
         setTimeout(connect, 5000)
@@ -83,8 +103,15 @@ export default function AgentEventProvider({ children }: { children: React.React
     setTaskNotifications((prev) => prev.filter((n) => n.id !== id))
   }
 
+  function refreshNotificationCount() {
+    fetch('/v1/agent/notifications/count')
+      .then((r) => r.json())
+      .then((data) => setNotificationCount(data.count ?? 0))
+      .catch(() => {})
+  }
+
   return (
-    <AgentEventContext.Provider value={{ lastEvent, taskNotifications, dismissNotification }}>
+    <AgentEventContext.Provider value={{ lastEvent, taskNotifications, dismissNotification, notificationCount, refreshNotificationCount }}>
       {children}
       {taskNotifications.length > 0 && (
         <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">

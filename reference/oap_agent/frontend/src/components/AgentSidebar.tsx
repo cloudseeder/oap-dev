@@ -4,6 +4,7 @@ import type { Conversation } from '@/lib/types'
 import PersonaAvatar from './PersonaAvatar'
 import { useAnySpeaking } from '@/hooks/useTTS'
 import { useAvatarState } from '@/hooks/useAvatarState'
+import { useAgentEvents } from './AgentEventProvider'
 
 export default function AgentSidebar() {
   const { pathname } = useLocation()
@@ -11,6 +12,7 @@ export default function AgentSidebar() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const anySpeaking = useAnySpeaking()
   const { state: avatar } = useAvatarState()
+  const { notificationCount } = useAgentEvents()
 
   useEffect(() => {
     fetch('/v1/agent/conversations')
@@ -73,16 +75,22 @@ export default function AgentSidebar() {
       </nav>
 
       {/* Persona avatar */}
-      <div className="flex justify-center py-2 shrink-0">
+      <div className="relative flex justify-center py-2 shrink-0">
         <PersonaAvatar
           persona={avatar.persona}
           speaking={anySpeaking}
           recording={avatar.recording}
           streaming={avatar.streaming}
           attentive={avatar.attentive}
+          hasNotifications={notificationCount > 0}
           size={200}
           audioLevelRef={avatar.audioLevelRef}
         />
+        {notificationCount > 0 && (
+          <span className="absolute top-2 right-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white shadow-md">
+            {notificationCount > 99 ? '99+' : notificationCount}
+          </span>
+        )}
       </div>
 
       <div className="border-t border-gray-700 p-2">

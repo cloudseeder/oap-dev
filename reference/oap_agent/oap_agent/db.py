@@ -84,6 +84,21 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 
 CREATE INDEX IF NOT EXISTS idx_llm_usage_conversation ON llm_usage(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_created ON llm_usage(created_at);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id         TEXT PRIMARY KEY,
+    type       TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    body       TEXT NOT NULL DEFAULT '',
+    source     TEXT,
+    task_id    TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    run_id     TEXT,
+    priority   INTEGER NOT NULL DEFAULT 0,
+    dismissed  INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_pending ON notifications(dismissed, created_at);
 """
 
 
@@ -666,3 +681,74 @@ class AgentDB:
     def count_facts(self) -> int:
         """Total number of stored user facts."""
         return self.conn.execute("SELECT COUNT(*) FROM user_facts").fetchone()[0]
+
+    # --- Notifications ---
+
+    def add_notification(
+        self,
+        type: str,
+        title: str,
+        body: str = "",
+        source: str | None = None,
+        task_id: str | None = None,
+        run_id: str | None = None,
+        priority: int = 0,
+    ) -> dict:
+        """Create a notification. Returns the notification dict."""
+        nid = _new_id("notif_")
+        now = _now()
+        with self._lock:
+            self.conn.execute(
+                """INSERT INTO notifications
+                   (id, type, title, body, source, task_id, run_id, priority, dismissed, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
+                (nid, type, title, body, source, task_id, run_id, priority, now),
+            )
+            self.conn.commit()
+        return {
+            "id": nid, "type": type, "title": title, "body": body,
+            "source": source, "task_id": task_id, "run_id": run_id,
+            "priority": priority, "dismissed": False, "created_at": now,
+        }
+
+    def get_pending_notifications(self, limit: int = 50) -> list[dict]:
+        """Return undismissed notifications, newest first."""
+        rows = self.conn.execute(
+            "SELECT * FROM notifications WHERE dismissed = 0 ORDER BY priority DESC, created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [self._decode_notification(dict(r)) for r in rows]
+
+    def count_pending_notifications(self) -> int:
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM notifications WHERE dismissed = 0"
+        ).fetchone()[0]
+
+    def dismiss_notification(self, notif_id: str) -> bool:
+        with self._lock:
+            cur = self.conn.execute(
+                "UPDATE notifications SET dismissed = 1 WHERE id = ?", (notif_id,)
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def dismiss_all_notifications(self) -> int:
+        with self._lock:
+            cur = self.conn.execute("UPDATE notifications SET dismissed = 1 WHERE dismissed = 0")
+            self.conn.commit()
+        return cur.rowcount
+
+    def cleanup_notifications(self, days: int = 7) -> int:
+        """Delete dismissed notifications older than N days."""
+        from datetime import timedelta
+        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+        with self._lock:
+            cur = self.conn.execute(
+                "DELETE FROM notifications WHERE dismissed = 1 AND created_at < ?", (cutoff,)
+            )
+            self.conn.commit()
+        return cur.rowcount
+
+    def _decode_notification(self, row: dict) -> dict:
+        row["dismissed"] = bool(row.get("dismissed"))
+        return row

@@ -7,6 +7,7 @@ import ChatInput from './ChatInput'
 import { useTTS, useAnySpeaking } from '@/hooks/useTTS'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 import { useAvatarState } from '@/hooks/useAvatarState'
+import { useAgentEvents } from './AgentEventProvider'
 
 export default function ChatView() {
   const navigate = useNavigate()
@@ -52,6 +53,7 @@ export default function ChatView() {
 
   // Push avatar-relevant state up to shared context for sidebar
   const { update: updateAvatar } = useAvatarState()
+  const { refreshNotificationCount } = useAgentEvents()
 
   // Available models — fetched from backend (Ollama)
   const [models, setModels] = useState<string[]>([])
@@ -328,8 +330,10 @@ export default function ChatView() {
       }
     } finally {
       setStreaming(false)
+      // Refresh notification count — greeting may have dismissed notifications
+      refreshNotificationCount()
     }
-  }, [conversationId, messages.length, navigate, streaming])
+  }, [conversationId, messages.length, navigate, streaming, refreshNotificationCount])
 
   // Keep handleSendRef current
   useEffect(() => {

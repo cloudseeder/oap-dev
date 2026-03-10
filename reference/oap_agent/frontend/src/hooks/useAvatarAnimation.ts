@@ -24,6 +24,7 @@ interface AnimationInput {
   recording: boolean
   streaming: boolean
   attentive: boolean
+  hasNotifications?: boolean
   /** Real-time audio level 0–1 from mic analyser (recording) */
   audioLevelRef?: MutableRefObject<number>
 }
@@ -57,10 +58,17 @@ export function useAvatarAnimation(input: AnimationInput, style: PersonaStyle): 
 
       switch (mode) {
         case 'idle':
-          // No halo at all — just gentle shape breathing
+          // Gentle shape breathing
           scale = 1 + 0.015 * Math.sin(t * style.idleSpeed * 2)
-          glowRadius = 0
-          glowAlpha = 0
+          if (input.hasNotifications) {
+            // Soft slow pulse — "I have something to tell you"
+            const pulse = 0.5 + 0.5 * Math.sin(t * 1.2)
+            glowRadius = 0.3 + pulse * 0.4
+            glowAlpha = 0.15 + pulse * 0.2
+          } else {
+            glowRadius = 0
+            glowAlpha = 0
+          }
           break
 
         case 'speaking': {

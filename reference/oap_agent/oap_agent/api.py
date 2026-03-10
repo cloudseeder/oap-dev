@@ -284,39 +284,25 @@ def _is_greeting(message: str) -> bool:
 
 
 def _build_briefing_context() -> str:
-    """Summarize recent task results since the user's last greeting."""
+    """Build briefing from pending notifications."""
     if not _db:
         return ""
 
-    from datetime import datetime, timedelta, timezone
+    notifications = _db.get_pending_notifications(limit=20)
+    log.info("Briefing: %d pending notification(s)", len(notifications))
 
-    # Determine cutoff: last greeting or 24h fallback
-    settings = _db.get_settings()
-    last_greeting = settings.get("last_greeting_at")
-    if last_greeting:
-        cutoff = last_greeting
-    else:
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-
-    runs = _db.get_recent_successful_runs(cutoff)
-    log.info("Briefing: %d successful run(s) since %s", len(runs), cutoff[:19])
-
-    if not runs:
+    if not notifications:
         return ""
 
     parts: list[str] = []
-    for run in runs:
-        name = run.get("task_name", "Unknown task")
-        response = run.get("response", "")
-        if not response:
-            continue
-        summary = response[:800]
-        if len(response) > 800:
-            summary += "..."
-        parts.append(f"Task \"{name}\" ({run.get('finished_at', 'unknown')}):\n{summary}")
+    for n in notifications:
+        entry = f"- [{n['type']}] {n['title']}"
+        if n.get("body"):
+            entry += f": {n['body']}"
+        parts.append(entry)
 
-    log.info("Briefing context: %d task result(s), %d chars", len(parts), sum(len(p) for p in parts))
-    return "\n\n".join(parts)
+    log.info("Briefing context: %d notification(s), %d chars", len(parts), sum(len(p) for p in parts))
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +379,7 @@ async def chat(req: ChatRequest):
             "message": user_msg,
         })
 
-        # Greeting briefing: summarize recent task results
+        # Greeting briefing: inject pending notifications as context
         if greeting:
             briefing = _build_briefing_context()
             from datetime import datetime, timezone
@@ -402,13 +388,14 @@ async def chat(req: ChatRequest):
                 from datetime import date
                 briefing_prompt = (
                     f"The user just greeted you. Today is {date.today().isoformat()}. "
-                    "Give a warm greeting, then provide a concise briefing of their recent scheduled task results below. "
-                    "Summarize naturally — highlight what's important or actionable. If a task reported no new data, "
-                    "mention it briefly.\n\n"
+                    "Give a warm greeting, then provide a concise briefing based on pending notifications below. "
+                    "Summarize naturally — highlight what's important or actionable. Skip items with no new data.\n\n"
                     + briefing
                 )
                 llm_messages.append({"role": "system", "content": briefing_prompt})
                 log.info("Greeting briefing injected (%d chars)", len(briefing))
+                # Dismiss presented notifications so they don't repeat
+                _db.dismiss_all_notifications()
 
         # Route: conversational turns skip the tool bridge entirely
         conversational = _is_conversational(req.message)
@@ -794,6 +781,46 @@ async def health():
     conversations = _db.list_conversations()["total"]
     tasks = len(_db.list_tasks())
     return {"status": "ok", "conversations": conversations, "tasks": tasks}
+
+
+# ---------------------------------------------------------------------------
+# Notification routes
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/agent/notifications")
+async def get_notifications(limit: int = 50):
+    """Get pending (undismissed) notifications."""
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    return {
+        "notifications": _db.get_pending_notifications(min(max(1, limit), 200)),
+        "count": _db.count_pending_notifications(),
+    }
+
+
+@app.post("/v1/agent/notifications/{notif_id}/dismiss")
+async def dismiss_notification(notif_id: str):
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if not _db.dismiss_notification(notif_id):
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"dismissed": True}
+
+
+@app.post("/v1/agent/notifications/dismiss-all")
+async def dismiss_all_notifications():
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    count = _db.dismiss_all_notifications()
+    return {"dismissed": count}
+
+
+@app.get("/v1/agent/notifications/count")
+async def notification_count():
+    """Lightweight endpoint for badge polling."""
+    if _db is None:
+        return {"count": 0}
+    return {"count": _db.count_pending_notifications()}
 
 
 @app.get("/v1/agent/models")
