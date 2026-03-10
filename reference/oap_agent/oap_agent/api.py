@@ -273,6 +273,73 @@ def _is_conversational(message: str) -> bool:
     return bool(_CONVERSATIONAL_PATTERNS.match(stripped))
 
 
+_GREETING_RE = re.compile(
+    r"^(hi|hey|hello|yo|sup|howdy|good\s+(morning|afternoon|evening))[\s?!.,]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_greeting(message: str) -> bool:
+    return bool(_GREETING_RE.match(message.strip()))
+
+
+async def _build_briefing_context() -> str:
+    """Fetch due reminders and recent task results for a greeting briefing."""
+    parts: list[str] = []
+
+    # Fetch due reminders from reminder service
+    try:
+        from datetime import date
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get("http://localhost:8304/reminders/due")
+            if resp.status_code == 200:
+                reminders = resp.json()
+                if reminders:
+                    lines = []
+                    for r in reminders:
+                        line = f"- {r['title']}"
+                        if r.get("due_date"):
+                            line += f" (due {r['due_date']}"
+                            if r.get("due_time"):
+                                line += f" {r['due_time']}"
+                            line += ")"
+                        if r.get("notes"):
+                            line += f" — {r['notes']}"
+                        lines.append(line)
+                    parts.append(f"Open reminders ({len(reminders)}):\n" + "\n".join(lines))
+            # Also get pending reminders without due dates
+            resp2 = await client.get("http://localhost:8304/reminders", params={"status": "pending"})
+            if resp2.status_code == 200:
+                all_pending = resp2.json()
+                if isinstance(all_pending, dict):
+                    all_pending = all_pending.get("reminders", [])
+                due_ids = {r["id"] for r in reminders} if reminders else set()
+                undated = [r for r in all_pending if r["id"] not in due_ids and not r.get("due_date")]
+                if undated:
+                    lines = [f"- {r['title']}" + (f" — {r['notes']}" if r.get("notes") else "") for r in undated]
+                    parts.append(f"Reminders (no due date):\n" + "\n".join(lines))
+    except Exception as exc:
+        log.debug("Failed to fetch reminders for briefing: %s", exc)
+
+    # Fetch recent task results
+    if _db:
+        tasks = _db.list_tasks()
+        for task in tasks:
+            if not task.get("enabled"):
+                continue
+            runs = _db.list_runs(task["id"], page=1, limit=1)
+            if runs["runs"]:
+                last = runs["runs"][0]
+                if last.get("status") == "success" and last.get("response"):
+                    # Truncate long responses
+                    summary = last["response"][:500]
+                    if len(last["response"]) > 500:
+                        summary += "..."
+                    parts.append(f"Task \"{task['name']}\" (last run {last.get('finished_at', 'unknown')}):\n{summary}")
+
+    return "\n\n".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Chat routes
 # ---------------------------------------------------------------------------
@@ -334,12 +401,32 @@ async def chat(req: ChatRequest):
     if persona_parts:
         llm_messages.insert(0, {"role": "system", "content": "\n\n".join(persona_parts)})
 
+    # Greeting briefing — inject reminders + task summaries on first message
+    is_first_message = len(history) <= 1  # Only the greeting itself
+    greeting = _is_greeting(req.message) and is_first_message
+
     async def stream_response():
+        nonlocal llm_messages
+
         # Emit user message saved event
         yield _sse_event("message_saved", {
             "conversation_id": conv_id,
             "message": user_msg,
         })
+
+        # Greeting briefing: fetch context and inject into system message
+        if greeting:
+            briefing = await _build_briefing_context()
+            if briefing:
+                from datetime import date
+                briefing_prompt = (
+                    f"The user just greeted you. Today is {date.today().isoformat()}. "
+                    "Give a warm greeting, then provide a concise briefing of their reminders and recent task results below. "
+                    "Summarize naturally — don't just dump raw data. Highlight what's important or time-sensitive.\n\n"
+                    + briefing
+                )
+                llm_messages.append({"role": "system", "content": briefing_prompt})
+                log.info("Greeting briefing injected (%d chars)", len(briefing))
 
         # Route: conversational turns skip the tool bridge entirely
         conversational = _is_conversational(req.message)
