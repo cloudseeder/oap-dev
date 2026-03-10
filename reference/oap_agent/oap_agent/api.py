@@ -402,15 +402,18 @@ async def chat(req: ChatRequest):
                 if greeting:
                     briefing_prompt = (
                         f"The user just greeted you. Today is {date.today().isoformat()}. "
-                        "Give a warm greeting, then provide a concise briefing based on pending notifications below. "
-                        "Summarize naturally — highlight what's important or actionable. Skip items with no new data.\n\n"
+                        "Give a warm greeting, then summarize ONLY the notifications listed below. "
+                        "Do NOT invent, fabricate, or add any information not explicitly present in the notifications. "
+                        "If a notification is unclear, say so rather than guessing. "
+                        "Keep it concise.\n\n"
                         + briefing
                     )
                 else:
                     briefing_prompt = (
                         f"The user is asking about their notifications. Today is {date.today().isoformat()}. "
-                        "Present these pending notifications clearly and concisely. "
-                        "Highlight what's important or actionable.\n\n"
+                        "Present ONLY the notifications listed below. "
+                        "Do NOT invent, fabricate, or add any information not present in the notifications. "
+                        "If there's nothing actionable, say so.\n\n"
                         + briefing
                     )
                 llm_messages.append({"role": "system", "content": briefing_prompt})
