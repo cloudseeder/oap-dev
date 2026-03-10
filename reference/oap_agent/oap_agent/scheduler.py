@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import TYPE_CHECKING
 
@@ -92,6 +93,20 @@ class TaskScheduler:
             log.debug("Injected last-run timestamp %s into task %s", last_run["finished_at"], task["id"])
         return prompt
 
+    _NO_NEWS_RE = re.compile(
+        r"(no\s+new\s+(email|message|notification|update|result|item)|"
+        r"nothing\s+new|no\s+updates?|no\s+results?\s+found|"
+        r"all\s+caught\s+up|no\s+changes?|"
+        r"0\s+(new\s+)?(email|message|notification|unread))",
+        re.IGNORECASE,
+    )
+
+    def _is_empty_result(self, content: str) -> bool:
+        """Return True if the task output indicates nothing new/actionable."""
+        # Check the first 300 chars for "no new" patterns
+        head = content[:300]
+        return bool(self._NO_NEWS_RE.search(head))
+
     async def _execute_task(self, task_id: str) -> None:
         """Called by the scheduler to run a task."""
         if self._db is None:
@@ -139,9 +154,10 @@ class TaskScheduler:
                 )
                 log.info("Task run %s completed in %dms", run_id, duration_ms)
 
-                # Create notification from task result
+                # Create notification from task result — skip empty/no-news results
                 content = result.get("content", "")
-                if content.strip():
+                has_news = content.strip() and not self._is_empty_result(content)
+                if has_news:
                     snippet = content[:200] + ("..." if len(content) > 200 else "")
                     self._db.add_notification(
                         type="task_result",
@@ -151,6 +167,8 @@ class TaskScheduler:
                         task_id=task_id,
                         run_id=run_id,
                     )
+                else:
+                    log.info("Task %s produced no-news result — skipping notification", task["name"])
 
                 if self._event_bus:
                     await self._event_bus.publish("task_run_finished", {
@@ -160,11 +178,11 @@ class TaskScheduler:
                         "duration_ms": duration_ms,
                         "task_name": task["name"],
                     })
-                    # Notify frontend of new notification
-                    await self._event_bus.publish("notification_new", {
-                        "task_name": task["name"],
-                        "count": self._db.count_pending_notifications(),
-                    })
+                    if has_news:
+                        await self._event_bus.publish("notification_new", {
+                            "task_name": task["name"],
+                            "count": self._db.count_pending_notifications(),
+                        })
 
             except Exception as exc:
                 duration_ms = int((time.monotonic() - started) * 1000)
