@@ -446,6 +446,18 @@ class AgentDB:
             "limit": limit,
         }
 
+    def get_recent_successful_runs(self, since: str) -> list[dict]:
+        """Return successful task runs finished after *since* (ISO timestamp)."""
+        rows = self.conn.execute(
+            """SELECT tr.*, t.name AS task_name
+               FROM task_runs tr
+               JOIN tasks t ON t.id = tr.task_id
+               WHERE tr.status = 'success' AND tr.finished_at >= ? AND t.enabled = 1
+               ORDER BY tr.finished_at DESC""",
+            (since,),
+        ).fetchall()
+        return [self._decode_run(dict(r)) for r in rows]
+
     def cleanup_old_runs(self, max_per_task: int = 100) -> int:
         """Delete task runs beyond the newest *max_per_task* per task.
 

@@ -283,54 +283,39 @@ def _is_greeting(message: str) -> bool:
     return bool(_GREETING_RE.match(message.strip()))
 
 
-async def _build_briefing_context() -> str:
-    """Fetch all pending reminders and recent task results for a greeting briefing."""
+def _build_briefing_context() -> str:
+    """Summarize recent task results since the user's last greeting."""
+    if not _db:
+        return ""
+
+    from datetime import datetime, timedelta, timezone
+
+    # Determine cutoff: last greeting or 24h fallback
+    settings = _db.get_settings()
+    last_greeting = settings.get("last_greeting_at")
+    if last_greeting:
+        cutoff = last_greeting
+    else:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+
+    runs = _db.get_recent_successful_runs(cutoff)
+    log.info("Briefing: %d successful run(s) since %s", len(runs), cutoff[:19])
+
+    if not runs:
+        return ""
+
     parts: list[str] = []
+    for run in runs:
+        name = run.get("task_name", "Unknown task")
+        response = run.get("response", "")
+        if not response:
+            continue
+        summary = response[:800]
+        if len(response) > 800:
+            summary += "..."
+        parts.append(f"Task \"{name}\" ({run.get('finished_at', 'unknown')}):\n{summary}")
 
-    # Fetch all pending reminders from reminder service
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get("http://localhost:8304/reminders", params={"status": "pending", "limit": 50})
-            if resp.status_code == 200:
-                data = resp.json()
-                reminders = data.get("reminders", []) if isinstance(data, dict) else data
-                if reminders:
-                    lines = []
-                    for r in reminders:
-                        line = f"- {r['title']}"
-                        if r.get("due_date"):
-                            line += f" (due {r['due_date']}"
-                            if r.get("due_time"):
-                                line += f" {r['due_time']}"
-                            line += ")"
-                        if r.get("notes"):
-                            line += f" — {r['notes']}"
-                        if r.get("recurring"):
-                            line += f" [recurring {r['recurring']}]"
-                        lines.append(line)
-                    parts.append(f"Pending reminders ({len(reminders)}):\n" + "\n".join(lines))
-    except Exception as exc:
-        log.warning("Failed to fetch reminders for briefing: %s", exc)
-
-    # Fetch recent task results
-    if _db:
-        tasks = _db.list_tasks()
-        log.info("Briefing: %d task(s) found", len(tasks))
-        for task in tasks:
-            if not task.get("enabled"):
-                log.info("Briefing: skipping disabled task %r", task.get("name"))
-                continue
-            last = _db.get_last_successful_run(task["id"])
-            if last and last.get("response"):
-                log.info("Briefing: task %r has successful run from %s", task.get("name"), last.get("finished_at"))
-                summary = last["response"][:500]
-                if len(last["response"]) > 500:
-                    summary += "..."
-                parts.append(f"Task \"{task['name']}\" (last run {last.get('finished_at', 'unknown')}):\n{summary}")
-            else:
-                log.info("Briefing: task %r has no successful runs", task.get("name"))
-
-    log.info("Briefing context: %d section(s), %d chars", len(parts), sum(len(p) for p in parts))
+    log.info("Briefing context: %d task result(s), %d chars", len(parts), sum(len(p) for p in parts))
     return "\n\n".join(parts)
 
 
@@ -408,15 +393,18 @@ async def chat(req: ChatRequest):
             "message": user_msg,
         })
 
-        # Greeting briefing: fetch context and inject into system message
+        # Greeting briefing: summarize recent task results
         if greeting:
-            briefing = await _build_briefing_context()
+            briefing = _build_briefing_context()
+            from datetime import datetime, timezone
+            _db.set_setting("last_greeting_at", datetime.now(timezone.utc).isoformat())
             if briefing:
                 from datetime import date
                 briefing_prompt = (
                     f"The user just greeted you. Today is {date.today().isoformat()}. "
-                    "Give a warm greeting, then provide a concise briefing of their reminders and recent task results below. "
-                    "Summarize naturally — don't just dump raw data. Highlight what's important or time-sensitive.\n\n"
+                    "Give a warm greeting, then provide a concise briefing of their recent scheduled task results below. "
+                    "Summarize naturally — highlight what's important or actionable. If a task reported no new data, "
+                    "mention it briefly.\n\n"
                     + briefing
                 )
                 llm_messages.append({"role": "system", "content": briefing_prompt})
