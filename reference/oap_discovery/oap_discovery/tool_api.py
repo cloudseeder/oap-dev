@@ -996,6 +996,10 @@ async def chat_proxy(req: ChatRequest) -> Any:
         *original_messages,
     ]
 
+    # Token accounting across all rounds
+    total_tokens_in = 0
+    total_tokens_out = 0
+
     for _attempt in range(3):
         for round_num in range(max_rounds):
             ollama_payload: dict[str, Any] = {
@@ -1028,6 +1032,18 @@ async def chat_proxy(req: ChatRequest) -> Any:
             except httpx.HTTPError as e:
                 log.exception("Ollama request failed")
                 raise HTTPException(status_code=502, detail=f"Ollama request failed: {type(e).__name__}: {e}")
+
+            # Log token usage for chat round
+            _r_model = ollama_resp.get("model", req.model)
+            _r_tokens_in = ollama_resp.get("prompt_eval_count", 0)
+            _r_tokens_out = ollama_resp.get("eval_count", 0)
+            _r_ms = ollama_resp.get("total_duration", 0) / 1_000_000
+            total_tokens_in += _r_tokens_in
+            total_tokens_out += _r_tokens_out
+            log.info(
+                "chat round=%d model=%s tokens_in=%d tokens_out=%d ms=%.0f",
+                round_num + 1, _r_model, _r_tokens_in, _r_tokens_out, _r_ms,
+            )
 
             # Check for tool calls
             resp_message = ollama_resp.get("message", {})
@@ -1095,6 +1111,12 @@ async def chat_proxy(req: ChatRequest) -> Any:
                             "output_tokens": escalation_result["output_tokens"],
                         }
                         log.info("Escalated final reasoning to %s/%s", _escalation_cfg.provider, _escalation_cfg.model)
+                ollama_resp["oap_usage"] = {
+                    "model": req.model,
+                    "tokens_in": total_tokens_in,
+                    "tokens_out": total_tokens_out,
+                    "rounds": round_num + 1,
+                }
                 if debug:
                     debug_rounds.append({
                         "round": round_num + 1,

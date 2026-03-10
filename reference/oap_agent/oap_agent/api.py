@@ -404,6 +404,8 @@ async def chat(req: ChatRequest):
             metadata["experience_cache"] = result["experience_cache"]
         if result.get("escalation_usage"):
             metadata["escalation_usage"] = result["escalation_usage"]
+        if result.get("chat_usage"):
+            metadata["chat_usage"] = result["chat_usage"]
 
         assistant_msg = _db.add_message(
             conv_id,
@@ -413,7 +415,17 @@ async def chat(req: ChatRequest):
             metadata=metadata or None,
         )
 
-        # Record escalation LLM usage
+        # Record LLM usage — chat model (Ollama) + escalation (big LLM)
+        if result.get("chat_usage"):
+            cu = result["chat_usage"]
+            _db.record_llm_usage(
+                provider="ollama",
+                model=cu["model"],
+                input_tokens=cu["tokens_in"],
+                output_tokens=cu["tokens_out"],
+                conversation_id=conv_id,
+                message_id=assistant_msg["id"],
+            )
         if result.get("escalation_usage"):
             eu = result["escalation_usage"]
             _db.record_llm_usage(

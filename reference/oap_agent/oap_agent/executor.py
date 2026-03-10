@@ -62,6 +62,7 @@ async def execute_chat(
         experience_cache = dbg.get("experience_cache")
 
     escalation_usage = raw.get("oap_escalation_usage")
+    chat_usage = raw.get("oap_usage")
 
     # When the LLM spent all rounds on tool calls with no text summary,
     # use the last tool result as the response content
@@ -77,6 +78,7 @@ async def execute_chat(
         "tool_calls": tool_calls,
         "experience_cache": experience_cache,
         "escalation_usage": escalation_usage,
+        "chat_usage": chat_usage,
         "raw": raw,
     }
 

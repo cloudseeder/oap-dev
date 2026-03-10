@@ -53,7 +53,9 @@ const PERSONALITY_PRESETS = [
   },
 ]
 
-function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+function estimateCost(provider: string, model: string, inputTokens: number, outputTokens: number): number {
+  // Ollama models (local or cloud) are free
+  if (provider === 'ollama') return 0
   const rates: Record<string, [number, number]> = {
     'claude-sonnet-4-6': [3, 15],
     'claude-3-5-sonnet-latest': [3, 15],
@@ -595,7 +597,7 @@ export default function SettingsView() {
                 <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">
                   <p className="text-xs text-gray-400">Est. cost</p>
                   <p className="mt-1 text-lg font-semibold text-gray-900">
-                    ${usage.by_model.reduce((sum, m) => sum + estimateCost(m.model, m.input_tokens, m.output_tokens), 0).toFixed(4)}
+                    ${usage.by_model.reduce((sum, m) => sum + estimateCost(m.provider, m.model, m.input_tokens, m.output_tokens), 0).toFixed(4)}
                   </p>
                 </div>
               </div>
@@ -611,7 +613,7 @@ export default function SettingsView() {
                         </div>
                         <div className="text-right text-xs text-gray-500">
                           <span>{m.input_tokens.toLocaleString()} in / {m.output_tokens.toLocaleString()} out</span>
-                          <span className="ml-3 font-medium text-gray-700">${estimateCost(m.model, m.input_tokens, m.output_tokens).toFixed(4)}</span>
+                          <span className="ml-3 font-medium text-gray-700">${estimateCost(m.provider, m.model, m.input_tokens, m.output_tokens).toFixed(4)}</span>
                         </div>
                       </div>
                     ))}
