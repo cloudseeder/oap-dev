@@ -7,6 +7,7 @@ interface DisplayState {
   streaming: boolean
   speaking: boolean
   persona: string
+  hasNotifications: boolean
 }
 
 export default function AvatarDisplay() {
@@ -19,6 +20,7 @@ export default function AvatarDisplay() {
     streaming: false,
     speaking: false,
     persona: '',
+    hasNotifications: false,
   })
   const [size, setSize] = useState(() => Math.min(window.innerWidth, window.innerHeight))
 
@@ -48,6 +50,7 @@ export default function AvatarDisplay() {
         streaming: d.streaming ?? prev.streaming,
         speaking: d.speaking ?? prev.speaking,
         persona: personaOverride ?? d.persona ?? prev.persona,
+        hasNotifications: d.hasNotifications ?? prev.hasNotifications,
       }))
     }
     return () => ch.close()
@@ -91,6 +94,7 @@ export default function AvatarDisplay() {
         speaking={state.speaking}
         recording={state.recording}
         streaming={state.streaming}
+        hasNotifications={state.hasNotifications}
         size={size}
       />
     </div>

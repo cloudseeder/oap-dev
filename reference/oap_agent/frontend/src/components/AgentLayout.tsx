@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router'
 import AgentSidebar from './AgentSidebar'
-import AgentEventProvider from './AgentEventProvider'
+import AgentEventProvider, { useAgentEvents } from './AgentEventProvider'
 import { AvatarStateContext, type AvatarState } from '@/hooks/useAvatarState'
 import { subscribeSpeaking } from '@/hooks/useTTS'
 
-export default function AgentLayout() {
+/** Inner component that can access AgentEventProvider context for broadcasting. */
+function AgentLayoutInner() {
   const [avatarState, setAvatarState] = useState<AvatarState>({
     recording: false,
     streaming: false,
@@ -18,6 +19,10 @@ export default function AgentLayout() {
   const update = useCallback((patch: Partial<AvatarState>) => {
     setAvatarState((prev) => ({ ...prev, ...patch }))
   }, [])
+
+  const { notificationCount } = useAgentEvents()
+  const notifRef = useRef(notificationCount)
+  notifRef.current = notificationCount
 
   // Broadcast avatar state to external display windows via BroadcastChannel.
   // Uses a raw TTS subscription instead of useAnySpeaking() so that speaking
@@ -32,6 +37,7 @@ export default function AgentLayout() {
       streaming: s.streaming,
       speaking: speakingRef.current,
       persona: s.persona,
+      hasNotifications: notifRef.current > 0,
     })
   }, [])
 
@@ -44,21 +50,27 @@ export default function AgentLayout() {
     return () => { unsub(); channelRef.current?.close(); channelRef.current = null }
   }, [broadcast])
 
-  // Re-broadcast when avatar state changes (recording/streaming/persona)
+  // Re-broadcast when avatar state or notification count changes
   useEffect(() => {
     broadcast()
-  }, [avatarState.recording, avatarState.streaming, avatarState.persona, broadcast])
+  }, [avatarState.recording, avatarState.streaming, avatarState.persona, notificationCount, broadcast])
 
   return (
+    <AvatarStateContext.Provider value={{ state: avatarState, update }}>
+      <div className="flex h-screen overflow-hidden bg-white">
+        <AgentSidebar />
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <Outlet />
+        </main>
+      </div>
+    </AvatarStateContext.Provider>
+  )
+}
+
+export default function AgentLayout() {
+  return (
     <AgentEventProvider>
-      <AvatarStateContext.Provider value={{ state: avatarState, update }}>
-        <div className="flex h-screen overflow-hidden bg-white">
-          <AgentSidebar />
-          <main className="flex flex-1 flex-col overflow-hidden">
-            <Outlet />
-          </main>
-        </div>
-      </AvatarStateContext.Provider>
+      <AgentLayoutInner />
     </AgentEventProvider>
   )
 }
