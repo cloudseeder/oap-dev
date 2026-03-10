@@ -11,6 +11,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 import uvicorn
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -37,12 +38,9 @@ _max_tasks: int = 20
 _voice_cfg = None  # VoiceConfig, set in lifespan
 _tts_enabled = False
 
-ALLOWED_MODELS = {"qwen3:14b", "qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"}
-
-
 def _validate_model(v: str | None) -> str | None:
-    if v is not None and v not in ALLOWED_MODELS:
-        raise ValueError(f"model must be one of: {', '.join(sorted(ALLOWED_MODELS))}")
+    if v is not None and len(v) > 100:
+        raise ValueError("model name too long")
     return v
 
 
@@ -715,6 +713,23 @@ async def health():
     conversations = _db.list_conversations()["total"]
     tasks = len(_db.list_tasks())
     return {"status": "ok", "conversations": conversations, "tasks": tasks}
+
+
+@app.get("/v1/agent/models")
+async def list_models():
+    """Fetch available models from Ollama via the discovery service."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{_discovery_url}/api/tags")
+            resp.raise_for_status()
+            data = resp.json()
+        models = sorted(
+            m["name"] for m in data.get("models", []) if "name" in m
+        )
+        return {"models": models, "default": _discovery_model}
+    except Exception as exc:
+        log.warning("Failed to fetch models from Ollama: %s", exc)
+        return {"models": [_discovery_model], "default": _discovery_model}
 
 
 # ---------------------------------------------------------------------------

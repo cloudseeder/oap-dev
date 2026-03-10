@@ -1,8 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { AgentTask } from '@/lib/types'
 import CronInput from './CronInput'
-
-const MODELS = ['qwen3:14b', 'qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
 
 interface TaskFormProps {
   task?: AgentTask
@@ -14,7 +12,20 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
   const [name, setName] = useState(task?.name || '')
   const [prompt, setPrompt] = useState(task?.prompt || '')
   const [schedule, setSchedule] = useState(task?.schedule || '')
-  const [model, setModel] = useState(task?.model || 'qwen3:14b')
+  const [models, setModels] = useState<string[]>([])
+  const [model, setModel] = useState(task?.model || '')
+
+  useEffect(() => {
+    fetch('/v1/agent/models')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data) {
+          setModels(data.models || [])
+          if (!model) setModel(task?.model || data.default || data.models?.[0] || '')
+        }
+      })
+      .catch(() => {})
+  }, [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -92,7 +103,7 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
           onChange={(e) => setModel(e.target.value)}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         >
-          {MODELS.map((m) => (
+          {models.map((m) => (
             <option key={m} value={m}>{m}</option>
           ))}
         </select>

@@ -1,11 +1,10 @@
 import { useRef, useState, useEffect, type MutableRefObject } from 'react'
 
-const MODELS = ['qwen3:14b', 'qwen3:8b', 'qwen3:4b', 'llama3.2:3b', 'mistral:7b']
-
 interface ChatInputProps {
   onSend: (message: string, model: string) => void
   disabled?: boolean
   defaultModel?: string
+  models?: string[]
   voiceEnabled?: boolean
   autoSend?: boolean
   recording?: boolean
@@ -24,7 +23,8 @@ interface ChatInputProps {
 export default function ChatInput({
   onSend,
   disabled,
-  defaultModel = 'qwen3:14b',
+  defaultModel = '',
+  models = [],
   voiceEnabled = false,
   autoSend = false,
   recording = false,
@@ -42,6 +42,11 @@ export default function ChatInput({
   const [value, setValue] = useState('')
   const [model, setModel] = useState(defaultModel)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Sync model when defaultModel changes (e.g. after models fetch)
+  useEffect(() => {
+    if (defaultModel && !model) setModel(defaultModel)
+  }, [defaultModel])
 
   // Notify parent of model changes
   useEffect(() => {
@@ -118,7 +123,7 @@ export default function ChatInput({
               disabled={disabled}
               className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600 focus:outline-none focus:border-primary disabled:opacity-50"
             >
-              {MODELS.map((m) => (
+              {models.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
