@@ -367,7 +367,7 @@ export default function ChatView() {
           )}
 
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} ttsEnabled={voiceEnabled} ttsAvailable={ttsAvailable} ttsVoice={ttsVoice} />
+            <ChatMessage key={msg.id} message={msg} ttsEnabled={ttsAvailable} ttsAvailable={ttsAvailable} ttsVoice={ttsVoice} />
           ))}
 
           {streaming && (
