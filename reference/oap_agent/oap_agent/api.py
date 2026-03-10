@@ -422,7 +422,7 @@ async def chat(req: ChatRequest):
                 llm_messages.append({"role": "system", "content": "The user is asking about notifications. There are no pending notifications — let them know they're all caught up."})
 
         # Route: conversational turns skip the tool bridge entirely
-        conversational = _is_conversational(req.message) or notif_query
+        conversational = _is_conversational(req.message) or greeting or notif_query
         try:
             if conversational:
                 log.info("Conversational route: %r", req.message[:80])
