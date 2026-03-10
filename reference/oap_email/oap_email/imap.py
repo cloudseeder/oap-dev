@@ -1,18 +1,18 @@
-"""Async IMAP scanner — fetch and parse messages from IMAP server."""
+"""IMAP scanner — fetch and parse messages from IMAP server."""
 
 from __future__ import annotations
 
+import asyncio
 import email
 import email.header
 import email.utils
 import hashlib
+import imaplib
 import logging
 import re
 from datetime import datetime, timezone
 from email.message import Message
 from typing import Any
-
-import aioimaplib
 
 from .config import IMAPConfig
 from .sanitize import sanitize_email_body
@@ -179,78 +179,73 @@ def parse_message(uid: int, folder: str, raw_bytes: bytes) -> dict[str, Any]:
     }
 
 
-async def scan_folder(
+def _scan_folder_sync(
     cfg: IMAPConfig,
     folder: str = "INBOX",
     since_uid: int = 0,
     limit: int = 50,
 ) -> list[dict]:
-    """Connect to IMAP, fetch messages newer than since_uid.
-
-    Returns parsed message dicts ready for DB upsert.
-    """
+    """Connect to IMAP, fetch messages newer than since_uid (sync version)."""
     if cfg.use_ssl:
-        client = aioimaplib.IMAP4_SSL(host=cfg.host, port=cfg.port)
+        conn = imaplib.IMAP4_SSL(cfg.host, cfg.port)
     else:
-        client = aioimaplib.IMAP4(host=cfg.host, port=cfg.port)
+        conn = imaplib.IMAP4(cfg.host, cfg.port)
 
     try:
-        await client.wait_hello_from_server()
-        await client.login(cfg.username, cfg.password)
-        await client.select(folder)
+        conn.login(cfg.username, cfg.password)
+        status, select_data = conn.select(folder, readonly=True)
+        if status != "OK":
+            log.error("IMAP SELECT %s failed: %s", folder, select_data)
+            return []
 
-        # Search for messages with UID > since_uid
+        msg_count = int(select_data[0])
+        log.info("IMAP %s: %d total messages", folder, msg_count)
+
+        if msg_count == 0:
+            return []
+
+        # Search for all messages (or by UID range for incremental)
         if since_uid > 0:
-            search_criteria = f"UID {since_uid + 1}:*"
+            status, data = conn.uid("SEARCH", None, f"UID {since_uid + 1}:*")
         else:
-            search_criteria = "ALL"
+            status, data = conn.uid("SEARCH", None, "ALL")
 
-        result = await client.uid_search(search_criteria)
-        # aioimaplib returns (status, [lines]) — UIDs are in the second element
-        if result.result != "OK" or not result.lines:
-            log.warning("IMAP search returned %s: %s", result.result, result.lines)
+        if status != "OK" or not data or not data[0]:
+            log.warning("IMAP SEARCH returned %s: %s", status, data)
             return []
 
-        # UIDs come as a space-separated string in the first line
-        uid_line = result.lines[0] if result.lines else ""
-        if not uid_line or not uid_line.strip():
-            return []
+        uid_list = data[0].split()
+        log.info("IMAP SEARCH found %d UID(s)", len(uid_list))
 
-        uids = uid_line.strip().split()
-        if not uids:
+        if not uid_list:
             return []
 
         # Take the most recent ones
-        uids = uids[-limit:]
+        uid_list = uid_list[-limit:]
 
         messages = []
-        for uid_bytes in uids:
+        for uid_bytes in uid_list:
             uid_str = uid_bytes.decode() if isinstance(uid_bytes, bytes) else str(uid_bytes)
             uid_val = int(uid_str)
 
-            # Skip UIDs we already have
             if uid_val <= since_uid:
                 continue
 
-            fetch_result = await client.uid("fetch", uid_str, "(RFC822 FLAGS)")
-            if fetch_result.result != "OK" or not fetch_result.lines:
+            # Fetch message
+            status, msg_data = conn.uid("FETCH", uid_str, "(RFC822 FLAGS)")
+            if status != "OK" or not msg_data:
                 continue
 
-            # aioimaplib returns lines as a list — find the one with message bytes
+            # Find the RFC822 body in the response
             raw_bytes = None
             flags_str = ""
-            for item in fetch_result.lines:
-                if isinstance(item, bytes) and len(item) > 100:
-                    raw_bytes = item
-                elif isinstance(item, str) and "FLAGS" in item:
-                    flags_str = item
-                elif isinstance(item, bytes):
-                    try:
-                        decoded = item.decode("ascii", errors="ignore")
-                        if "FLAGS" in decoded:
-                            flags_str = decoded
-                    except Exception:
-                        pass
+            for part in msg_data:
+                if isinstance(part, tuple) and len(part) == 2:
+                    header_line = part[0].decode("ascii", errors="ignore") if isinstance(part[0], bytes) else str(part[0])
+                    if b"RFC822" in part[0] if isinstance(part[0], bytes) else "RFC822" in header_line:
+                        raw_bytes = part[1]
+                        flags_str = header_line
+                        break
 
             if not raw_bytes:
                 continue
@@ -269,6 +264,16 @@ async def scan_folder(
 
     finally:
         try:
-            await client.logout()
+            conn.logout()
         except Exception:
             pass
+
+
+async def scan_folder(
+    cfg: IMAPConfig,
+    folder: str = "INBOX",
+    since_uid: int = 0,
+    limit: int = 50,
+) -> list[dict]:
+    """Async wrapper — runs sync IMAP in a thread to avoid blocking."""
+    return await asyncio.to_thread(_scan_folder_sync, cfg, folder, since_uid, limit)
