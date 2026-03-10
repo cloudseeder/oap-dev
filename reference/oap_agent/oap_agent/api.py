@@ -284,16 +284,16 @@ def _is_greeting(message: str) -> bool:
 
 
 async def _build_briefing_context() -> str:
-    """Fetch due reminders and recent task results for a greeting briefing."""
+    """Fetch all pending reminders and recent task results for a greeting briefing."""
     parts: list[str] = []
 
-    # Fetch due reminders from reminder service
+    # Fetch all pending reminders from reminder service
     try:
-        from datetime import date
         async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get("http://localhost:8304/reminders/due")
+            resp = await client.get("http://localhost:8304/reminders", params={"status": "pending", "limit": 50})
             if resp.status_code == 200:
-                reminders = resp.json()
+                data = resp.json()
+                reminders = data.get("reminders", []) if isinstance(data, dict) else data
                 if reminders:
                     lines = []
                     for r in reminders:
@@ -305,38 +305,33 @@ async def _build_briefing_context() -> str:
                             line += ")"
                         if r.get("notes"):
                             line += f" — {r['notes']}"
+                        if r.get("recurring"):
+                            line += f" [recurring {r['recurring']}]"
                         lines.append(line)
-                    parts.append(f"Open reminders ({len(reminders)}):\n" + "\n".join(lines))
-            # Also get pending reminders without due dates
-            resp2 = await client.get("http://localhost:8304/reminders", params={"status": "pending"})
-            if resp2.status_code == 200:
-                all_pending = resp2.json()
-                if isinstance(all_pending, dict):
-                    all_pending = all_pending.get("reminders", [])
-                due_ids = {r["id"] for r in reminders} if reminders else set()
-                undated = [r for r in all_pending if r["id"] not in due_ids and not r.get("due_date")]
-                if undated:
-                    lines = [f"- {r['title']}" + (f" — {r['notes']}" if r.get("notes") else "") for r in undated]
-                    parts.append(f"Reminders (no due date):\n" + "\n".join(lines))
+                    parts.append(f"Pending reminders ({len(reminders)}):\n" + "\n".join(lines))
     except Exception as exc:
-        log.debug("Failed to fetch reminders for briefing: %s", exc)
+        log.warning("Failed to fetch reminders for briefing: %s", exc)
 
     # Fetch recent task results
     if _db:
         tasks = _db.list_tasks()
         for task in tasks:
             if not task.get("enabled"):
+                log.debug("Briefing: skipping disabled task %r", task.get("name"))
                 continue
             runs = _db.list_runs(task["id"], page=1, limit=1)
             if runs["runs"]:
                 last = runs["runs"][0]
+                log.debug("Briefing: task %r last run status=%s", task.get("name"), last.get("status"))
                 if last.get("status") == "success" and last.get("response"):
-                    # Truncate long responses
                     summary = last["response"][:500]
                     if len(last["response"]) > 500:
                         summary += "..."
                     parts.append(f"Task \"{task['name']}\" (last run {last.get('finished_at', 'unknown')}):\n{summary}")
+            else:
+                log.debug("Briefing: task %r has no runs", task.get("name"))
 
+    log.info("Briefing context: %d section(s), %d chars", len(parts), sum(len(p) for p in parts))
     return "\n\n".join(parts)
 
 
