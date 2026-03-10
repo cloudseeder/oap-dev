@@ -315,21 +315,20 @@ async def _build_briefing_context() -> str:
     # Fetch recent task results
     if _db:
         tasks = _db.list_tasks()
+        log.info("Briefing: %d task(s) found", len(tasks))
         for task in tasks:
             if not task.get("enabled"):
-                log.debug("Briefing: skipping disabled task %r", task.get("name"))
+                log.info("Briefing: skipping disabled task %r", task.get("name"))
                 continue
-            runs = _db.list_runs(task["id"], page=1, limit=1)
-            if runs["runs"]:
-                last = runs["runs"][0]
-                log.debug("Briefing: task %r last run status=%s", task.get("name"), last.get("status"))
-                if last.get("status") == "success" and last.get("response"):
-                    summary = last["response"][:500]
-                    if len(last["response"]) > 500:
-                        summary += "..."
-                    parts.append(f"Task \"{task['name']}\" (last run {last.get('finished_at', 'unknown')}):\n{summary}")
+            last = _db.get_last_successful_run(task["id"])
+            if last and last.get("response"):
+                log.info("Briefing: task %r has successful run from %s", task.get("name"), last.get("finished_at"))
+                summary = last["response"][:500]
+                if len(last["response"]) > 500:
+                    summary += "..."
+                parts.append(f"Task \"{task['name']}\" (last run {last.get('finished_at', 'unknown')}):\n{summary}")
             else:
-                log.debug("Briefing: task %r has no runs", task.get("name"))
+                log.info("Briefing: task %r has no successful runs", task.get("name"))
 
     log.info("Briefing context: %d section(s), %d chars", len(parts), sum(len(p) for p in parts))
     return "\n\n".join(parts)
