@@ -8,6 +8,7 @@ interface DisplayState {
   speaking: boolean
   persona: string
   hasNotifications: boolean
+  notificationCount: number
 }
 
 export default function AvatarDisplay() {
@@ -21,6 +22,7 @@ export default function AvatarDisplay() {
     speaking: false,
     persona: '',
     hasNotifications: false,
+    notificationCount: 0,
   })
   const [size, setSize] = useState(() => Math.min(window.innerWidth, window.innerHeight))
 
@@ -51,6 +53,7 @@ export default function AvatarDisplay() {
         speaking: d.speaking ?? prev.speaking,
         persona: personaOverride ?? d.persona ?? prev.persona,
         hasNotifications: d.hasNotifications ?? prev.hasNotifications,
+        notificationCount: prev.notificationCount,
       }))
     }
     return () => ch.close()
@@ -58,10 +61,14 @@ export default function AvatarDisplay() {
 
   // Own SSE + fetch for notification count (works standalone without main app)
   useEffect(() => {
+    function applyCount(count: number) {
+      setState((prev) => ({ ...prev, hasNotifications: count > 0, notificationCount: count }))
+    }
+
     // Initial fetch
     fetch('/v1/agent/notifications/count')
       .then((r) => r.json())
-      .then((data) => setState((prev) => ({ ...prev, hasNotifications: (data.count ?? 0) > 0 })))
+      .then((data) => applyCount(data.count ?? 0))
       .catch(() => {})
 
     // SSE listener for real-time updates
@@ -69,16 +76,15 @@ export default function AvatarDisplay() {
     es.addEventListener('notification_new', (e) => {
       try {
         const data = JSON.parse(e.data)
-        setState((prev) => ({ ...prev, hasNotifications: (data.count ?? 0) > 0 }))
+        applyCount(data.count ?? 0)
       } catch {}
     })
     es.onerror = () => {
       es.close()
-      // Reconnect after delay
       setTimeout(() => {
         fetch('/v1/agent/notifications/count')
           .then((r) => r.json())
-          .then((data) => setState((prev) => ({ ...prev, hasNotifications: (data.count ?? 0) > 0 })))
+          .then((data) => applyCount(data.count ?? 0))
           .catch(() => {})
       }, 5000)
     }
@@ -113,9 +119,12 @@ export default function AvatarDisplay() {
     }
   }, [])
 
+  const badgeSize = Math.max(24, size * 0.1)
+  const badgeFontSize = Math.max(12, badgeSize * 0.55)
+
   return (
     <div
-      className="flex h-screen w-screen items-center justify-center bg-black"
+      className="relative flex h-screen w-screen items-center justify-center bg-black"
       style={mirror ? { transform: 'scaleX(-1)' } : undefined}
     >
       <PersonaAvatar
@@ -126,6 +135,20 @@ export default function AvatarDisplay() {
         hasNotifications={state.hasNotifications}
         size={size}
       />
+      {state.notificationCount > 0 && (
+        <span
+          className="absolute flex items-center justify-center rounded-full bg-red-500 font-bold text-white shadow-lg"
+          style={{
+            top: '8%',
+            right: '18%',
+            width: badgeSize,
+            height: badgeSize,
+            fontSize: badgeFontSize,
+          }}
+        >
+          {state.notificationCount > 99 ? '99+' : state.notificationCount}
+        </span>
+      )}
     </div>
   )
 }
