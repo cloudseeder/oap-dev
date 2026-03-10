@@ -56,6 +56,35 @@ export default function AvatarDisplay() {
     return () => ch.close()
   }, [personaOverride])
 
+  // Own SSE + fetch for notification count (works standalone without main app)
+  useEffect(() => {
+    // Initial fetch
+    fetch('/v1/agent/notifications/count')
+      .then((r) => r.json())
+      .then((data) => setState((prev) => ({ ...prev, hasNotifications: (data.count ?? 0) > 0 })))
+      .catch(() => {})
+
+    // SSE listener for real-time updates
+    const es = new EventSource('/v1/agent/events')
+    es.addEventListener('notification_new', (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        setState((prev) => ({ ...prev, hasNotifications: (data.count ?? 0) > 0 }))
+      } catch {}
+    })
+    es.onerror = () => {
+      es.close()
+      // Reconnect after delay
+      setTimeout(() => {
+        fetch('/v1/agent/notifications/count')
+          .then((r) => r.json())
+          .then((data) => setState((prev) => ({ ...prev, hasNotifications: (data.count ?? 0) > 0 })))
+          .catch(() => {})
+      }, 5000)
+    }
+    return () => es.close()
+  }, [])
+
   // Track viewport size
   const handleResize = useCallback(() => {
     setSize(Math.min(window.innerWidth, window.innerHeight))
