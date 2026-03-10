@@ -1,0 +1,248 @@
+"""FastAPI email scanner API — read-only IMAP access for AI agents."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+
+import uvicorn
+from fastapi import FastAPI, HTTPException, Query
+
+from .config import Config, load_config
+from .db import EmailDB
+from .imap import scan_folder
+from .models import DispatchRequest
+
+log = logging.getLogger("oap.email.api")
+
+_db: EmailDB | None = None
+_cfg: Config | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _db, _cfg
+    config_path = getattr(app, "_config_path", "config.yaml")
+    _cfg = load_config(config_path)
+    _db = EmailDB(_cfg.db_path)
+
+    if not _cfg.imap.host:
+        log.warning("No IMAP host configured — scan endpoints will fail")
+    else:
+        log.info("Email scanner ready — %s@%s folders=%s",
+                 _cfg.imap.username, _cfg.imap.host, _cfg.imap.folders)
+
+    yield
+
+    _db.close()
+    log.info("Email scanner stopped")
+
+
+app = FastAPI(title="OAP Email Scanner", version="0.1.0", lifespan=lifespan)
+
+
+# ---------------------------------------------------------------------------
+# Scan — fetch new messages from IMAP and cache
+# ---------------------------------------------------------------------------
+
+@app.post("/scan")
+async def scan():
+    """Scan configured IMAP folders for new messages. Caches to SQLite."""
+    if not _cfg or not _cfg.imap.host:
+        raise HTTPException(status_code=503, detail="IMAP not configured")
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+
+    total = 0
+    for folder in _cfg.imap.folders:
+        since_uid = _db.get_max_uid(folder)
+        try:
+            messages = await scan_folder(_cfg.imap, folder=folder, since_uid=since_uid)
+        except Exception as exc:
+            log.error("IMAP scan failed for %s: %s", folder, exc)
+            continue
+        for msg in messages:
+            _db.upsert_message(
+                id=msg["id"],
+                message_id=msg["message_id"],
+                thread_id=msg["thread_id"],
+                folder=msg["folder"],
+                from_name=msg["from_name"],
+                from_email=msg["from_email"],
+                to_addrs=msg["to_addrs"],
+                cc_addrs=msg["cc_addrs"],
+                subject=msg["subject"],
+                snippet=msg["snippet"],
+                body_text=msg["body_text"],
+                received_at=msg["received_at"],
+                is_read=msg["is_read"],
+                is_flagged=msg["is_flagged"],
+                has_attachments=msg["has_attachments"],
+                attachments=msg["attachments"],
+                uid=msg["uid"],
+            )
+        total += len(messages)
+
+    # Cleanup old messages
+    pruned = _db.cleanup(_cfg.max_cached)
+    if pruned:
+        log.info("Pruned %d old cached message(s)", pruned)
+
+    return {"scanned": total, "folders": _cfg.imap.folders}
+
+
+# ---------------------------------------------------------------------------
+# REST endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/messages")
+async def list_messages(
+    folder: str = "INBOX",
+    since: str | None = None,
+    unread: bool = False,
+    query: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+):
+    """List cached messages."""
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if since is None:
+        hours = _cfg.default_scan_hours if _cfg else 24
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    messages = _db.list_messages(folder=folder, since=since, unread=unread, query=query, limit=limit)
+    return {"messages": messages, "total": len(messages)}
+
+
+@app.get("/messages/{msg_id}")
+async def get_message(msg_id: str):
+    """Get a single cached message."""
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    msg = _db.get_message(msg_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return msg
+
+
+@app.get("/threads/{thread_id}")
+async def get_thread(thread_id: str):
+    """Get all messages in a thread."""
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    messages = _db.get_thread(thread_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    participants = {}
+    for m in messages:
+        key = m.get("from_email", "")
+        if key and key not in participants:
+            participants[key] = {"name": m.get("from_name", ""), "email": key}
+    return {
+        "thread_id": thread_id,
+        "subject": messages[0].get("subject", ""),
+        "participants": list(participants.values()),
+        "messages": messages,
+        "message_count": len(messages),
+    }
+
+
+@app.get("/summary")
+async def summary(since: str | None = None):
+    """Quick summary of recent email activity."""
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+
+    now = datetime.now(timezone.utc)
+    hours = _cfg.default_scan_hours if _cfg else 24
+    if since is None:
+        since = (now - timedelta(hours=hours)).isoformat()
+
+    messages = _db.list_messages(folder="INBOX", since=since, limit=100)
+    unread = _db.count_unread("INBOX")
+
+    senders = list(dict.fromkeys(
+        m.get("from_name") or m.get("from_email", "unknown") for m in messages
+    ))
+    subjects = list(dict.fromkeys(m.get("subject", "") for m in messages if m.get("subject")))
+
+    return {
+        "period_from": since,
+        "period_to": now.isoformat(),
+        "total_received": len(messages),
+        "unread_count": unread,
+        "senders": senders[:20],
+        "subjects": subjects[:20],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Dispatch — single endpoint for OAP tool bridge
+# ---------------------------------------------------------------------------
+
+@app.post("/api")
+async def dispatch(req: DispatchRequest):
+    """Single-endpoint dispatcher for OAP manifests."""
+    action = req.action.lower().strip()
+
+    if action == "scan":
+        return await scan()
+    elif action == "list":
+        return await list_messages(
+            folder=req.folder, since=req.since, unread=req.unread,
+            query=req.query, limit=req.limit,
+        )
+    elif action == "get":
+        if not req.id:
+            raise HTTPException(status_code=400, detail="id required for get action")
+        return await get_message(req.id)
+    elif action == "thread":
+        if not req.thread_id:
+            raise HTTPException(status_code=400, detail="thread_id required for thread action")
+        return await get_thread(req.thread_id)
+    elif action == "summary":
+        return await summary(since=req.since)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+async def health():
+    if not _db:
+        return {"status": "starting"}
+    total = _db.count_unread("INBOX")
+    return {
+        "status": "ok",
+        "imap_configured": bool(_cfg and _cfg.imap.host),
+        "unread_inbox": total,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(description="OAP email scanner API")
+    parser.add_argument("--config", default="config.yaml", help="Path to config.yaml")
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--port", type=int, default=None)
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
+    cfg = load_config(args.config)
+    host = args.host or cfg.host
+    port = args.port or cfg.port
+
+    app._config_path = args.config
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+if __name__ == "__main__":
+    main()

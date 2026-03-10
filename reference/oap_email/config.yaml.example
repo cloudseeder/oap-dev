@@ -1,0 +1,28 @@
+# OAP Email Scanner configuration
+#
+# Copy to config.yaml and fill in your IMAP credentials.
+# Password can also be set via OAP_EMAIL_PASSWORD env var.
+
+imap:
+  host: "imap.gmail.com"         # IMAP server hostname
+  port: 993                       # IMAP port (993 for SSL)
+  username: "you@gmail.com"       # Email address
+  password: "your-app-password"   # App password (not your login password)
+  use_ssl: true
+  folders:
+    - "INBOX"
+    # - "[Gmail]/Sent Mail"
+    # - "[Gmail]/Starred"
+
+database:
+  path: "oap_email.db"
+
+api:
+  host: "127.0.0.1"
+  port: 8305
+
+# Max messages to keep cached per folder
+max_cached: 500
+
+# Default scan window when no 'since' parameter provided (hours)
+default_scan_hours: 24

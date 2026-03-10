@@ -1,0 +1,28 @@
+{
+  "oap": "1.0",
+  "name": "oap-email",
+  "description": "Scan and search email via IMAP. Use for 'check my email', 'any new messages?', 'emails from Jane', 'email summary since yesterday', 'unread messages'. Returns sanitized plain text — no HTML, no raw MIME. Call 'scan' first to fetch new messages from the mail server, then 'list' or 'summary' to read them.",
+  "input": {
+    "format": "application/json",
+    "description": "JSON with 'action' to select operation. Actions: 'scan' (fetch new from IMAP), 'list' (cached messages), 'get' (single message by id), 'thread' (all messages in thread), 'summary' (activity overview).",
+    "parameters": {
+      "action": {"type": "string", "description": "Operation: 'scan', 'list', 'get', 'thread', 'summary'", "required": true},
+      "id": {"type": "string", "description": "Message ID (for get action)", "required": false},
+      "thread_id": {"type": "string", "description": "Thread ID (for thread action)", "required": false},
+      "since": {"type": "string", "description": "ISO 8601 timestamp — only messages after this time", "required": false},
+      "limit": {"type": "integer", "description": "Max results (1-100, default 20)", "required": false},
+      "unread": {"type": "boolean", "description": "Only unread messages (default false)", "required": false},
+      "folder": {"type": "string", "description": "IMAP folder (default INBOX)", "required": false},
+      "query": {"type": "string", "description": "Search subject, sender, or body text", "required": false}
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "Message objects with sanitized plain text bodies, sender/recipient info, thread IDs, and attachment metadata (no content). Summary returns counts, unique senders, and recent subjects."
+  },
+  "invoke": {
+    "method": "POST",
+    "url": "http://localhost:8305/api"
+  },
+  "tags": ["email", "inbox", "imap", "communication"]
+}

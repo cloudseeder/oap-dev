@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oap-email"
+version = "0.1.0"
+description = "OAP email scanner — read-only IMAP access for AI agents"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "aioimaplib>=2.0",
+    "bleach>=6.0",
+]
+
+[project.scripts]
+oap-email-api = "oap_email.api:main"
