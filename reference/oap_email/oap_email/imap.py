@@ -201,16 +201,22 @@ async def scan_folder(
 
         # Search for messages with UID > since_uid
         if since_uid > 0:
-            search_cmd = f"UID {since_uid + 1}:*"
+            search_criteria = f"UID {since_uid + 1}:*"
         else:
-            # First scan: get most recent messages
-            search_cmd = f"1:*"
+            search_criteria = "ALL"
 
-        _, data = await client.uid_search(search_cmd)
-        if not data or not data[0]:
+        result = await client.uid_search(search_criteria)
+        # aioimaplib returns (status, [lines]) — UIDs are in the second element
+        if result.result != "OK" or not result.lines:
+            log.warning("IMAP search returned %s: %s", result.result, result.lines)
             return []
 
-        uids = data[0].split()
+        # UIDs come as a space-separated string in the first line
+        uid_line = result.lines[0] if result.lines else ""
+        if not uid_line or not uid_line.strip():
+            return []
+
+        uids = uid_line.strip().split()
         if not uids:
             return []
 
@@ -226,18 +232,25 @@ async def scan_folder(
             if uid_val <= since_uid:
                 continue
 
-            _, msg_data = await client.uid("fetch", uid_str, "(RFC822 FLAGS)")
-            if not msg_data or len(msg_data) < 2:
+            fetch_result = await client.uid("fetch", uid_str, "(RFC822 FLAGS)")
+            if fetch_result.result != "OK" or not fetch_result.lines:
                 continue
 
-            # msg_data format: [(flags_line, raw_bytes), completion_line]
+            # aioimaplib returns lines as a list — find the one with message bytes
             raw_bytes = None
             flags_str = ""
-            for item in msg_data:
-                if isinstance(item, tuple) and len(item) == 2:
-                    flags_str = item[0].decode() if isinstance(item[0], bytes) else str(item[0])
-                    raw_bytes = item[1] if isinstance(item[1], bytes) else None
-                    break
+            for item in fetch_result.lines:
+                if isinstance(item, bytes) and len(item) > 100:
+                    raw_bytes = item
+                elif isinstance(item, str) and "FLAGS" in item:
+                    flags_str = item
+                elif isinstance(item, bytes):
+                    try:
+                        decoded = item.decode("ascii", errors="ignore")
+                        if "FLAGS" in decoded:
+                            flags_str = decoded
+                    except Exception:
+                        pass
 
             if not raw_bytes:
                 continue
