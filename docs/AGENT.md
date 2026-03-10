@@ -29,13 +29,15 @@ Browser → http://localhost:8303
   ├─ /chat/:id      → SPA client-side route
   ├─ /tasks         → SPA client-side route
   ├─ /tasks/:id     → SPA client-side route
+  ├─ /settings      → SPA client-side route
   └─ /v1/agent/*    → FastAPI backend (same server)
                        │
                        ├──POST /v1/chat──▶  oap_discovery (:8300)
                        │                      tool discovery + execution
                        │  SQLite (oap_agent.db)  experience / procedural memory
-                       │  APScheduler (cron)     Ollama (qwen3:8b)
-                       │  SSE event bus
+                       │  APScheduler (cron)     Ollama (qwen3:8b + nomic-embed-text)
+                       │  SSE event bus          Piper TTS, faster-whisper STT
+                       │  Notification queue
 ```
 
 Self-contained: one `oap-agent-api` command serves both the FastAPI API and the Vite SPA at `http://localhost:8303`. No Node runtime, no Vercel involvement, no proxy layer. Manifest's backend is a thin orchestrator — it calls `/v1/chat` on the discovery service for all LLM and tool work. It never talks to Ollama directly.
@@ -50,14 +52,18 @@ The agent service adds the stateful layer: conversation history, task definition
 
 ### Data Model
 
-Four SQLite tables, WAL journal mode, foreign keys enforced:
+SQLite tables, WAL journal mode, foreign keys enforced:
 
 - **conversations** — id, title, model, timestamps
 - **messages** — id, conversation_id (FK), role, content, tool_calls (JSON), metadata (JSON), seq (ordering)
 - **tasks** — id, name, prompt, schedule (cron expression), model, enabled flag, timestamps
 - **task_runs** — id, task_id (FK), status (running/success/error), prompt, response, tool_calls (JSON), error, duration_ms
+- **notifications** — id, type, title, body, source, task_id (FK), run_id, priority, dismissed, created_at
+- **agent_settings** — key/value pairs (persona, voice config, last_greeting_at, etc.)
+- **user_facts** — extracted facts about the user from conversation history
+- **llm_usage** — per-request token accounting (provider, model, tokens_in, tokens_out, cost)
 
-IDs are prefixed short UUIDs: `conv_`, `msg_`, `task_`, `run_`.
+IDs are prefixed short UUIDs: `conv_`, `msg_`, `task_`, `run_`, `notif_`.
 
 ### API Endpoints
 
@@ -80,8 +86,14 @@ All local-only on `:8303`. No authentication — Manifest is a local tool, not e
 - `POST /v1/agent/tasks/{id}/run` — trigger immediate execution
 - `GET /v1/agent/tasks/{id}/runs` — list runs (paginated)
 
+**Notifications:**
+- `GET /v1/agent/notifications` — list pending (undismissed) notifications
+- `GET /v1/agent/notifications/count` — pending count
+- `POST /v1/agent/notifications/{id}/dismiss` — dismiss one
+- `POST /v1/agent/notifications/dismiss-all` — dismiss all
+
 **Events + Health:**
-- `GET /v1/agent/events` — SSE stream for background task notifications (task_run_started, task_run_finished)
+- `GET /v1/agent/events` — SSE stream (task_run_started, task_run_finished, notification_new)
 - `GET /v1/agent/health` — health check
 
 ### Chat Flow
@@ -107,7 +119,77 @@ Task execution follows the same path as chat — single user message → `/v1/ch
 
 ### SSE Event Bus
 
-In-memory pub/sub: one `asyncio.Queue` (maxsize 100) per connected SSE client, capped at 50 subscribers. Emits `task_run_started` and `task_run_finished` events. Missed events when the browser is closed are acceptable — the user sees results on next visit via run history.
+In-memory pub/sub: one `asyncio.Queue` (maxsize 100) per connected SSE client, capped at 50 subscribers. Missed events when the browser is closed are acceptable — the user sees results on next visit via run history.
+
+Events:
+
+| Event | Payload | When |
+|-------|---------|------|
+| `task_run_started` | `{task_id, run_id, task_name}` | Scheduler begins executing a task |
+| `task_run_finished` | `{task_id, run_id, status, duration_ms, ?error, ?task_name}` | Task execution completes or fails |
+| `notification_new` | `{task_name, count}` | New notification created (count = total pending) |
+
+### Notification Queue
+
+Tasks produce results. Notifications make those results visible — surfaced in the greeting briefing, the avatar badge, and (future) ambient push channels like presence-triggered announcements.
+
+**Flow:**
+
+```
+Scheduler runs task
+  → task succeeds
+  → scheduler creates notification (type=task_result, title=task name, body=first 200 chars)
+  → EventBus publishes notification_new
+  → frontend SSE listener updates badge count
+  → user opens chat, says "good morning"
+  → greeting handler reads pending notifications, injects as system message context
+  → greeting handler dismisses all presented notifications
+  → LLM produces natural briefing from notification content
+  → frontend refreshes badge count (now 0)
+```
+
+**Notification schema:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | text | `notif_` + short UUID |
+| type | text | `task_result` (extensible: `email_summary`, `reminder_due`, etc.) |
+| title | text | Human-readable title (typically the task name) |
+| body | text | Content snippet (first 200 chars of task output) |
+| source | text | Producer identifier (`scheduler`, future: `email`, `reminder`) |
+| task_id | text | FK to tasks table (nullable) |
+| run_id | text | Associated task run (nullable) |
+| priority | int | 0 = normal, higher = more important (for future ordering) |
+| dismissed | int | 0 = pending, 1 = dismissed |
+| created_at | text | ISO 8601 timestamp |
+
+**Design decisions:**
+
+- **Notifications are the only briefing source.** The greeting handler doesn't call external APIs directly — it reads the notification queue. If you want reminders in the briefing, create a scheduled task that calls the reminder API. This keeps the agent thin and the data flow uniform.
+- **Dismissed after presentation.** The greeting handler dismisses all pending notifications after injecting them. This prevents the same results from appearing in the next greeting.
+- **Cleanup.** `cleanup_notifications(days=7)` deletes old dismissed notifications. Can be called from a maintenance cron or startup.
+- **Extensible type field.** Currently only `task_result`. Future producers (email scanner, reminder service, calendar) add new types without schema changes.
+
+### Greeting Briefing
+
+When a user opens a new conversation with a greeting ("hello", "good morning", "hey"), the agent produces a contextual briefing instead of a generic response.
+
+**Detection:** Regex match on the first message of a conversation. Patterns: hello, hey, hi, good morning/afternoon/evening, what's up, howdy, etc.
+
+**Injection:** Pending notifications are formatted as a bullet list and injected as a system message alongside the user's greeting. The LLM sees:
+
+```
+[system] You are Kai, a helpful personal AI assistant...
+[system] The user just greeted you. Today is 2026-03-10. Give a warm greeting,
+         then provide a concise briefing based on pending notifications below...
+         - [task_result] MyNewscast: Top stories: Portland weather...
+         - [task_result] Email Summary: 3 new messages from...
+[user]   Good morning!
+```
+
+The LLM produces a natural summary. After injection, all presented notifications are dismissed.
+
+**No notifications?** The greeting falls through to the normal conversational route — a simple friendly response with no briefing.
 
 ### Files
 
@@ -118,11 +200,14 @@ reference/oap_agent/
   oap_agent/
     __init__.py
     config.py             -- AgentConfig dataclass + YAML loader + URL validation
-    db.py                 -- AgentDB: SQLite schema + CRUD, thread-safe writes
+    db.py                 -- AgentDB: SQLite schema + CRUD + notifications, thread-safe writes
     executor.py           -- execute_chat(), execute_task() — calls /v1/chat on discovery service
-    scheduler.py          -- APScheduler setup, task loading, dynamic job management
+    scheduler.py          -- APScheduler setup, task loading, notification creation on completion
     events.py             -- EventBus class (asyncio.Queue per subscriber, 50 cap)
-    api.py                -- FastAPI app: routes, SSE streaming, Pydantic models, lifespan, StaticFiles mount, main()
+    memory.py             -- User fact extraction via fire-and-forget LLM call
+    transcribe.py         -- Whisper STT via faster-whisper (CTranslate2)
+    tts.py                -- Piper neural TTS — text to WAV
+    api.py                -- FastAPI app: routes, SSE, greeting briefing, notifications, voice, StaticFiles, main()
     static/               -- Built Vite SPA output (committed, no Node runtime needed)
   frontend/
     package.json          -- react 19, react-router 7, tailwindcss 4, vite 6
@@ -133,10 +218,14 @@ reference/oap_agent/
       main.tsx            -- React app with BrowserRouter
       App.tsx             -- React Router routes
       index.css           -- Tailwind CSS 4 with OAP theme
-      lib/types.ts        -- TypeScript types (Conversation, Message, ToolCall, AgentTask, TaskRun) + parseSSE()
+      lib/types.ts        -- TypeScript types (Conversation, Message, ToolCall, AgentTask, TaskRun, AgentSettings) + parseSSE()
+      lib/personaStyles.ts -- Persona visual styles (shape, color, animation parameters)
+      hooks/              -- useAvatarAnimation (idle/speaking/listening/thinking/attentive + notification pulse),
+                             useAvatarState, useVoiceRecorder, useTTS
       components/         -- AgentLayout, AgentSidebar, ChatView, ChatMessage, ChatInput,
-                             AgentEventProvider, TaskList, TaskDetail, TaskForm, TaskRunDetail,
-                             ToolCallCard, ExperienceBadge, CronInput
+                             AgentEventProvider (SSE + notification count), PersonaAvatar (canvas animation + badge),
+                             AvatarDisplay, TaskList, TaskDetail, TaskForm, TaskRunDetail,
+                             ToolCallCard, ExperienceBadge, CronInput, Markdown, SettingsView
 ```
 
 Entry point: `oap-agent-api` (installed via `pip install -e reference/oap_agent`).
@@ -160,9 +249,9 @@ All API calls go to `/v1/agent/*` directly (same origin, no proxy layer).
 ```
 frontend/src/components/
   AgentLayout.tsx          -- Full-height layout: sidebar + <Outlet> + EventProvider
-  AgentSidebar.tsx         -- Dark sidebar (bg-gray-900): conversation list, "New Chat" button, "Tasks" link
-  AgentEventProvider.tsx   -- React context wrapping EventSource for background task notifications
-  ChatView.tsx             -- Message list + input + SSE stream handling + auto-scroll
+  AgentSidebar.tsx         -- Dark sidebar: conversation list, persona avatar with notification badge, nav links
+  AgentEventProvider.tsx   -- React context: EventSource SSE, toast notifications, notification count tracking
+  ChatView.tsx             -- Message list + input + SSE stream handling + auto-scroll + notification refresh
   ChatMessage.tsx          -- Message bubble (user/assistant) with tool calls + experience badge
   ChatInput.tsx            -- Textarea + send + model selector
   ToolCallCard.tsx         -- Expandable: tool name, args, result, duration
@@ -190,19 +279,22 @@ Manifest's UI is a standalone app layout — full-height sidebar:
 ```
 ┌──────────────┬──────────────────────────────────────────┐
 │ [+] New Chat │                                          │
-│              │  [user] Find all log files > 100MB       │
+│              │  [user] Good morning!                    │
 │ Conversations│                                          │
-│ > Log files  │  [tool: oap_exec] find / -name '*.log'  │
-│   Data parse │    → /var/log/syslog.1 (145MB)    234ms │
-│              │                                          │
-│ ── Tasks ──  │  [assistant] Found 3 log files...       │
-│ > Health chk │  [cache: miss] [round: 1/3]             │
-│   Daily rpt  │                                          │
+│ > Log files  │  [assistant] Good morning! Here's your  │
+│   Data parse │  briefing:                               │
+│              │  • MyNewscast found 3 stories...         │
+│  ┌────────┐  │  • Email: 2 new from netgate.net         │
+│  │ ◉  (3) │  │                                          │
+│  │ avatar │  │                                          │
+│  └────────┘  │                                          │
 │              │ ┌────────────────────────────────────┐   │
-│              │ │ Type a message...         [Send] ▶ │   │
+│ Tasks  Settn │ │ Type a message...         [Send] ▶ │   │
 │              │ └────────────────────────────────────┘   │
 └──────────────┴──────────────────────────────────────────┘
 ```
+
+The persona avatar in the sidebar shows a red notification badge with the pending count. When notifications are pending and the avatar is idle, a gentle pulsing halo animation signals "I have something to tell you." The badge and halo clear when notifications are dismissed (either via greeting or manually).
 
 ## Known Limitations
 
@@ -217,7 +309,7 @@ The small LLM (qwen3:8b) runs with `num_ctx: 4096` (~12-16K chars) due to the Ma
 
 Manifest is designed for local use on the Mac Mini — no public exposure, no tunnel.
 
-- **Input validation**: Pydantic models with `max_length` constraints (32K for messages/prompts, 200 for names, 64 for IDs). Model allowlist (`qwen3:8b`, `qwen3:4b`, `llama3.2:3b`, `mistral:7b`). Cron validation rejects schedules more frequent than every 5 minutes. Max 20 tasks.
+- **Input validation**: Pydantic models with `max_length` constraints (32K for messages/prompts, 200 for names, 64 for IDs). Model names validated by length (max 100 chars), available models fetched dynamically from Ollama `/api/tags`. Cron validation rejects schedules more frequent than every 5 minutes. Max 20 tasks.
 - **SQL safety**: parameterized queries throughout, WAL journal mode, `threading.Lock` on all writes.
 - **Error sanitization**: generic error messages to SSE clients and API responses. Full details in server logs only.
 

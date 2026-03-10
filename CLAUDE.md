@@ -148,6 +148,16 @@ SQLite-backed reminder service for AI agents. Supports one-time and recurring re
 - Cleanup: `POST /reminders/cleanup?older_than_days=30` or `oap-reminder-api --cleanup 30` (for cron)
 - Manifest: `reference/oap_discovery/manifests/oap-reminder.json`
 
+#### Email Scanner (`reference/oap_email/`)
+
+Read-only IMAP email scanner for AI agents. Two-phase design: `POST /scan` fetches from IMAP and caches to SQLite, read endpoints query local cache. UID-based incremental scanning.
+
+- Entry point: `oap-email-api` (:8305)
+- Config: `config.yaml` (IMAP host/port/credentials, folders, SQLite path, default scan hours)
+- Key files: `config.py` (IMAPConfig + Config), `imap.py` (stdlib imaplib + asyncio.to_thread), `db.py` (SQLite message cache with upsert/search/thread grouping), `sanitize.py` (HTML→text + prompt injection filtering), `models.py` (Pydantic types), `api.py` (FastAPI + dispatch endpoint)
+- API: `POST /scan`, `GET /messages`, `GET /messages/{id}`, `GET /threads/{thread_id}`, `GET /summary`, `POST /api` (single-endpoint dispatcher for OAP manifests), `GET /health`
+- Manifest: `reference/oap_discovery/manifests/oap-email.json`
+
 ### Infrastructure
 
 ```
@@ -159,7 +169,8 @@ Vercel (free tier)                    Mac Mini (M4, 16GB)
 │  ├─ /playground     │               │  Dashboard API (:8302)       │
 │  ├─ /discover       │               │  Manifest (self-contained :8303)│
 │  ├─ /trust          │               │  Reminder API (:8304)        │
-│  ├─ /dashboard      │               │  Crawler (cron)              │
+│  ├─ /dashboard      │               │  Email Scanner (:8305)       │
+│  │                  │               │  Crawler (cron)              │
 │  │                  │               │  ChromaDB (local dir)        │
 │  └─ /api/* (proxy)  │               │  SQLite (*.db)               │
 └─────────────────────┘               └──────────────────────────────┘
@@ -181,12 +192,14 @@ Manifest — chat + autonomous task execution. Thin orchestrator that calls `/v1
 
 - Entry point: `oap-agent-api` (:8303) — serves both FastAPI backend and Vite SPA frontend
 - Config: `config.yaml` (host, port, SQLite path, discovery URL/model/timeout, debug flag, max_tasks)
-- Key files: `config.py`, `db.py` (SQLite: conversations, messages, tasks, task_runs, agent_settings, user_facts — WAL mode, foreign keys), `executor.py` (calls `/v1/chat` on discovery), `scheduler.py` (APScheduler 3.x), `events.py` (EventBus), `api.py` (FastAPI + SSE + StaticFiles mount), `memory.py` (user fact extraction via Ollama pass-through)
+- Key files: `config.py`, `db.py` (SQLite: conversations, messages, tasks, task_runs, notifications, agent_settings, user_facts, llm_usage — WAL mode, foreign keys), `executor.py` (calls `/v1/chat` on discovery), `scheduler.py` (APScheduler 3.x + notification creation), `events.py` (EventBus), `api.py` (FastAPI + SSE + greeting briefing + notifications + StaticFiles mount), `memory.py` (user fact extraction via Ollama pass-through)
 - **Frontend** (`frontend/`): Vite 6 + React 19 + React Router 7 + Tailwind CSS 4 SPA. Built output committed to `oap_agent/static/`. Dev: `cd frontend && npm run dev`. Build: `npm run build` outputs to `../oap_agent/static/`.
 - SPA routes: `/` (redirect to `/chat`), `/chat`, `/chat/:id`, `/tasks`, `/tasks/:id`, `/settings`
-- API routes: `/v1/agent/chat` (POST SSE), `/v1/agent/conversations` (CRUD), `/v1/agent/tasks` (CRUD), `/v1/agent/tasks/:id/run` (POST), `/v1/agent/tasks/:id/runs` (GET), `/v1/agent/settings` (GET/PATCH), `/v1/agent/memory` (GET), `/v1/agent/memory/:id` (DELETE), `/v1/agent/tts` (POST audio/wav), `/v1/agent/tts/voices` (GET), `/v1/agent/voice/status` (GET), `/v1/agent/events` (SSE), `/v1/agent/health` (GET)
+- API routes: `/v1/agent/chat` (POST SSE), `/v1/agent/conversations` (CRUD), `/v1/agent/tasks` (CRUD), `/v1/agent/tasks/:id/run` (POST), `/v1/agent/tasks/:id/runs` (GET), `/v1/agent/settings` (GET/PATCH), `/v1/agent/memory` (GET), `/v1/agent/memory/:id` (DELETE), `/v1/agent/models` (GET — dynamic from Ollama), `/v1/agent/notifications` (GET/dismiss/count), `/v1/agent/tts` (POST audio/wav), `/v1/agent/tts/voices` (GET), `/v1/agent/voice/status` (GET), `/v1/agent/transcribe` (POST), `/v1/agent/events` (SSE), `/v1/agent/health` (GET)
 - Task scheduling: APScheduler in-process, cron validation rejects intervals < 5 minutes, max 20 tasks
-- Input validation: model allowlist (`qwen3:8b`, `qwen3:4b`, `llama3.2:3b`, `mistral:7b`), `max_length` on all string fields
+- Input validation: model names validated by length (max 100 chars), available models fetched dynamically from Ollama `/api/tags`. `max_length` on all string fields
+- **Notification queue**: Tasks produce notifications on completion (type=`task_result`, body=first 200 chars). Notifications power the greeting briefing and avatar badge. SSE `notification_new` events update the frontend badge count in real-time. See `docs/AGENT.md` for full event model.
+- **Greeting briefing**: When the first message of a conversation is a greeting (hello, good morning, etc.), pending notifications are injected as system context and the LLM produces a natural briefing. Notifications are dismissed after presentation.
 - **Personality + user memory** (agent-owned, configured via Settings UI). Named persona is prepended as a system message to every `/v1/chat` call. User memory learns facts about the user from conversations via fire-and-forget LLM extraction (calls `/api/generate` on discovery's Ollama pass-through). Facts stored in `user_facts` table with UNIQUE dedup and LRU eviction. Settings stored in `agent_settings` table, seeded with defaults on first run. Key file: `memory.py`.
 - **Voice** (STT + TTS): Local-first voice input/output. STT via `faster-whisper` (CTranslate2) on the backend — mic → MediaRecorder WebM → `POST /v1/agent/transcribe` → text in chat input. TTS via Piper neural voices on the backend — `POST /v1/agent/tts` → WAV → `HTMLAudioElement` playback. Config: `voice.enabled` (default true), `voice.whisper_model` (tiny/base/small, default base), `voice.device` (auto/cpu/cuda), `voice.compute_type` (auto/int8/float16/float32), `voice.language` (null = auto-detect), `voice.tts_enabled` (default true), `voice.tts_model_path` (path to `.onnx` voice), `voice.tts_models_dir` (default `piper-voices`). Settings: `voice_input_enabled`, `voice_auto_send`, `voice_auto_speak` (persisted in `agent_settings`). Key files: `transcribe.py`, `tts.py`, `api.py` (transcribe + TTS endpoints), frontend hooks `useVoiceRecorder.ts` + `useTTS.ts`. See `docs/PIPER.md` for setup and voice model management.
 - See `docs/AGENT.md` for full architecture rationale and design decisions
