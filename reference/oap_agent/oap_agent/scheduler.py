@@ -101,6 +101,21 @@ class TaskScheduler:
         re.IGNORECASE,
     )
 
+    @staticmethod
+    def _extract_snippet(content: str, max_len: int = 120) -> str:
+        """Extract a concise one-line summary from task output."""
+        text = content.strip()
+        # Take the first sentence (period, exclamation, or question mark followed by space/end)
+        m = re.match(r"(.+?[.!?])(?:\s|$)", text, re.DOTALL)
+        line = m.group(1).strip() if m else text
+        # Collapse whitespace
+        line = re.sub(r"\s+", " ", line)
+        if len(line) <= max_len:
+            return line
+        # Truncate at last word boundary before max_len
+        truncated = line[:max_len].rsplit(" ", 1)[0]
+        return truncated + "…"
+
     def _is_empty_result(self, content: str) -> bool:
         """Return True if the task output indicates nothing new/actionable."""
         # Check the first 300 chars for "no new" patterns
@@ -158,7 +173,7 @@ class TaskScheduler:
                 content = result.get("content", "")
                 has_news = content.strip() and not self._is_empty_result(content)
                 if has_news:
-                    snippet = content[:200] + ("..." if len(content) > 200 else "")
+                    snippet = self._extract_snippet(content)
                     self._db.add_notification(
                         type="task_result",
                         title=task["name"],
