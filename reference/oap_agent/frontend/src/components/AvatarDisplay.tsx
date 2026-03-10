@@ -52,7 +52,8 @@ export default function AvatarDisplay() {
         streaming: d.streaming ?? prev.streaming,
         speaking: d.speaking ?? prev.speaking,
         persona: personaOverride ?? d.persona ?? prev.persona,
-        hasNotifications: d.hasNotifications ?? prev.hasNotifications,
+        // Notification state owned by our own SSE + fetch — don't accept from broadcast
+        hasNotifications: prev.hasNotifications,
         notificationCount: prev.notificationCount,
       }))
     }
@@ -88,7 +89,16 @@ export default function AvatarDisplay() {
           .catch(() => {})
       }, 5000)
     }
-    return () => es.close()
+
+    // Poll every 30s to catch dismissals (greeting clears notifications without SSE)
+    const poll = setInterval(() => {
+      fetch('/v1/agent/notifications/count')
+        .then((r) => r.json())
+        .then((data) => applyCount(data.count ?? 0))
+        .catch(() => {})
+    }, 30_000)
+
+    return () => { es.close(); clearInterval(poll) }
   }, [])
 
   // Track viewport size
