@@ -37,6 +37,7 @@ class VoiceConfig:
     tts_enabled: bool = True
     tts_model_path: str = ""          # path to .onnx voice file
     tts_models_dir: str = "piper-voices"  # dir to scan for available voices
+    tts_length_scale: float = 1.0     # speech speed: <1.0 = faster, >1.0 = slower
 
 
 @dataclass

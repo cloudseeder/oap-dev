@@ -14,18 +14,20 @@ log = logging.getLogger("oap.agent.tts")
 _voices: dict = {}  # name -> PiperVoice instance
 _default_voice: str = ""
 _models_dir: str = ""
+_length_scale: float = 1.0  # speech speed: <1.0 = faster, >1.0 = slower
 
 
-def init(model_path: str, models_dir: str = "") -> None:
+def init(model_path: str, models_dir: str = "", length_scale: float = 1.0) -> None:
     """Load the default Piper voice model. Call once at startup."""
-    global _default_voice, _models_dir
+    global _default_voice, _models_dir, _length_scale
     from piper.voice import PiperVoice
 
     name = Path(model_path).stem
     _voices[name] = PiperVoice.load(model_path)
     _default_voice = name
     _models_dir = models_dir
-    log.info("Piper voice loaded: %s", name)
+    _length_scale = max(0.3, min(3.0, length_scale))  # clamp to sane range
+    log.info("Piper voice loaded: %s (length_scale=%.2f)", name, _length_scale)
 
 
 def _get_voice(name: str | None = None):
@@ -50,6 +52,17 @@ def _get_voice(name: str | None = None):
 
     log.warning("Voice %r not found, falling back to default %r", name, _default_voice)
     return _voices[_default_voice]
+
+
+def _syn_config():
+    """Build a SynthesisConfig with the configured length_scale, or None for default."""
+    if _length_scale == 1.0:
+        return None
+    try:
+        from piper.voice import SynthesisConfig
+        return SynthesisConfig(length_scale=_length_scale)
+    except ImportError:
+        return None
 
 
 def _strip_markdown(text: str) -> str:
@@ -119,10 +132,13 @@ def synthesize_stream(text: str, voice: str | None = None):
     v = _get_voice(voice)
     text = _strip_markdown(text)
 
+    cfg = _syn_config()
+
     if hasattr(v, "synthesize_stream_raw"):
         # Native streaming — yields raw PCM per sentence
         sr = getattr(v.config, "sample_rate", 22050)
-        for pcm_bytes in v.synthesize_stream_raw(text):
+        kwargs = {"syn_config": cfg} if cfg else {}
+        for pcm_bytes in v.synthesize_stream_raw(text, **kwargs):
             if not pcm_bytes:
                 continue
             header = _make_wav_header(len(pcm_bytes), sample_rate=sr)
@@ -132,7 +148,10 @@ def synthesize_stream(text: str, voice: str | None = None):
         for sentence in _split_sentences(text):
             buf = io.BytesIO()
             wav_file = wave.open(buf, "wb")
-            v.synthesize_wav(sentence, wav_file)
+            if cfg:
+                v.synthesize_wav(sentence, wav_file, syn_config=cfg)
+            else:
+                v.synthesize_wav(sentence, wav_file)
             wav_file.close()
             data = buf.getvalue()
             if data:
@@ -143,9 +162,13 @@ def synthesize(text: str, voice: str | None = None) -> bytes:
     """Synthesize text to WAV bytes using the specified (or default) voice."""
     v = _get_voice(voice)
     text = _strip_markdown(text)
+    cfg = _syn_config()
     buf = io.BytesIO()
     wav_file = wave.open(buf, "wb")
-    v.synthesize_wav(text, wav_file)
+    if cfg:
+        v.synthesize_wav(text, wav_file, syn_config=cfg)
+    else:
+        v.synthesize_wav(text, wav_file)
     wav_file.close()
     data = buf.getvalue()
     log.info("Synthesized %d bytes for %d chars (voice=%s)", len(data), len(text), voice or _default_voice)

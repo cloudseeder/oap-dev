@@ -106,7 +106,7 @@ async def lifespan(app: FastAPI):
     if cfg.voice.enabled and cfg.voice.tts_enabled and cfg.voice.tts_model_path:
         try:
             from . import tts as _tts_module
-            _tts_module.init(cfg.voice.tts_model_path, cfg.voice.tts_models_dir)
+            _tts_module.init(cfg.voice.tts_model_path, cfg.voice.tts_models_dir, cfg.voice.tts_length_scale)
             _tts_enabled = True
             log.info("Piper TTS loaded — voice output ready")
         except Exception as exc:
