@@ -996,13 +996,20 @@ async def chat_proxy(req: ChatRequest) -> Any:
             + "\n".join(f"  {u}" for u in discovered_usage)
         )
 
-    # Date anchor as a separate system message right before user messages —
-    # cloud models lose it when buried in the long tool-calling system prompt.
-    date_anchor = {"role": "system", "content": f"Today's date: {_today}. When a user says 'yesterday' use the day BEFORE this date. The 'since' parameter means 'messages received after this timestamp'."}
+    # Inject today's date directly into the last user message so it's in the
+    # model's focal window when generating tool call arguments.  System-level
+    # date anchors get lost in the 4800-token tool-calling system prompt.
+    if original_messages:
+        for i in range(len(original_messages) - 1, -1, -1):
+            if original_messages[i].get("role") == "user":
+                original_messages[i] = {
+                    **original_messages[i],
+                    "content": original_messages[i].get("content", "") + f"\n[Today's date: {_today}]",
+                }
+                break
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_content + usage_hint},
-        date_anchor,
         *original_messages,
     ]
 
