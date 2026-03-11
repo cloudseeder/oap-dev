@@ -940,8 +940,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
 
     # Persona goes first — small LLMs follow the opening line most strongly
     persona_prefix = caller_system + " " if caller_system else ""
+    _today = datetime.now().strftime("%Y-%m-%d")
     system_content = (
-        f"{persona_prefix}You are a tool-calling assistant. Be brief. "
+        f"{persona_prefix}You are a tool-calling assistant. Today's date: {_today}. Be brief. "
         + "Use function calls to invoke tools — never write JSON in your response. "
         "Your training data is FROZEN and UNRELIABLE for facts, dates, current events, "
         "and real-world data. For ANY factual question you MUST call a tool — your answer "
