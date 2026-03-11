@@ -994,8 +994,13 @@ async def chat_proxy(req: ChatRequest) -> Any:
             + "\n".join(f"  {u}" for u in discovered_usage)
         )
 
+    # Date anchor as a separate system message right before user messages —
+    # cloud models lose it when buried in the long tool-calling system prompt.
+    date_anchor = {"role": "system", "content": f"Current date: {_today}. Use this for all relative date references (today, yesterday, this week, etc.)."}
+
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_content + usage_hint},
+        date_anchor,
         *original_messages,
     ]
 
