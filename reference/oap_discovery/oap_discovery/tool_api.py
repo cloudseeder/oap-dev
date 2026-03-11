@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio as _asyncio
 import json
 import logging
 import time
@@ -1016,24 +1017,32 @@ async def chat_proxy(req: ChatRequest) -> Any:
             if tools:
                 ollama_payload["tools"] = [t.model_dump() for t in tools]
 
-            # Forward to Ollama
-            try:
-                async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
-                    resp = await client.post(
-                        f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
-                        json=ollama_payload,
+            # Forward to Ollama (retry once on 503 — cloud models can
+            # leave Ollama briefly unavailable between rounds)
+            _max_retries = 2
+            for _attempt in range(_max_retries):
+                try:
+                    async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
+                        resp = await client.post(
+                            f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
+                            json=ollama_payload,
+                        )
+                        resp.raise_for_status()
+                        ollama_resp = resp.json()
+                    break  # success
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 503 and _attempt < _max_retries - 1:
+                        log.warning("Ollama 503 — retrying in 2s (attempt %d/%d)", _attempt + 1, _max_retries)
+                        await _asyncio.sleep(2)
+                        continue
+                    log.error("Ollama HTTP %d: %s", e.response.status_code, e.response.text[:500])
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Ollama returned HTTP {e.response.status_code}",
                     )
-                    resp.raise_for_status()
-                    ollama_resp = resp.json()
-            except httpx.HTTPStatusError as e:
-                log.error("Ollama HTTP %d: %s", e.response.status_code, e.response.text[:500])
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Ollama returned HTTP {e.response.status_code}",
-                )
-            except httpx.HTTPError as e:
-                log.exception("Ollama request failed")
-                raise HTTPException(status_code=502, detail=f"Ollama request failed: {type(e).__name__}: {e}")
+                except httpx.HTTPError as e:
+                    log.exception("Ollama request failed")
+                    raise HTTPException(status_code=502, detail=f"Ollama request failed: {type(e).__name__}: {e}")
 
             # Log token usage for chat round
             _r_model = ollama_resp.get("model", req.model)
