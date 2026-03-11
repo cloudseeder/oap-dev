@@ -13,7 +13,7 @@
       "limit": {"type": "integer", "description": "Max results (1-100, default 20)", "required": false},
       "unread": {"type": "boolean", "description": "Only unread messages (default false)", "required": false},
       "folder": {"type": "string", "description": "IMAP folder (default INBOX)", "required": false},
-      "query": {"type": "string", "description": "Search subject, sender, or body text", "required": false}
+      "query": {"type": "string", "description": "Search with OR support and field prefixes. Examples: 'Amy Brooks OR Keric Brooks', 'from:amy@netgate.net', 'from:Amy subject:car', 'subject:invoice'. Prefixes: from/sender, to, subject, body. Without prefix searches all fields.", "required": false}
     }
   },
   "output": {
