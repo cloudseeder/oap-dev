@@ -185,14 +185,20 @@ async def summary(since: str | None = None):
 async def dispatch(req: DispatchRequest):
     """Single-endpoint dispatcher for OAP manifests."""
     action = req.action.lower().strip()
+    log.info("Dispatch action=%s folder=%s query=%r since=%s limit=%d",
+             action, req.folder, req.query, req.since, req.limit)
 
     if action == "scan":
-        return await scan()
+        result = await scan()
+        log.info("Dispatch scan → %d message(s) scanned", result.get("scanned", 0))
+        return result
     elif action == "list":
-        return await list_messages(
+        result = await list_messages(
             folder=req.folder, since=req.since, unread=req.unread,
             query=req.query, limit=req.limit,
         )
+        log.info("Dispatch list → %d message(s)", result.get("total", 0))
+        return result
     elif action == "get":
         if not req.id:
             raise HTTPException(status_code=400, detail="id required for get action")
@@ -202,7 +208,10 @@ async def dispatch(req: DispatchRequest):
             raise HTTPException(status_code=400, detail="thread_id required for thread action")
         return await get_thread(req.thread_id)
     elif action == "summary":
-        return await summary(since=req.since)
+        result = await summary(since=req.since)
+        log.info("Dispatch summary → %d received, %d unread",
+                 result.get("total_received", 0), result.get("unread_count", 0))
+        return result
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 
