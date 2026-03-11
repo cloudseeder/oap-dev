@@ -395,10 +395,9 @@ async def chat(req: ChatRequest):
         # Inject pending notifications as context for greetings or direct queries
         if greeting or notif_query:
             briefing = _build_briefing_context()
-            from datetime import datetime, timezone
+            from datetime import date, datetime, timezone
             _db.set_setting("last_greeting_at", datetime.now(timezone.utc).isoformat())
             if briefing:
-                from datetime import date
                 if greeting:
                     briefing_prompt = (
                         f"The user just greeted you. Today is {date.today().isoformat()}. "
@@ -423,6 +422,13 @@ async def chat(req: ChatRequest):
             elif notif_query:
                 # No notifications — tell the user explicitly
                 llm_messages.append({"role": "system", "content": "The user is asking about notifications. There are no pending notifications — let them know they're all caught up."})
+            elif greeting:
+                # Greeting with no notifications — keep it simple
+                llm_messages.append({"role": "system", "content": (
+                    f"The user just greeted you. Today is {date.today().isoformat()}. "
+                    "Give a warm, brief greeting. You have NO notifications or updates to share. "
+                    "Do NOT invent any news, alerts, emails, or updates. Just say hello."
+                )})
 
         # Route: conversational turns skip the tool bridge entirely
         conversational = _is_conversational(req.message) or greeting or notif_query
