@@ -750,11 +750,12 @@ async def chat_proxy(req: ChatRequest) -> Any:
     # Fast path: when discovery is disabled, pass messages straight to Ollama
     # without fingerprinting, tool injection, or system prompt rewriting.
     if not req.oap_discover:
+        _is_cloud = "-cloud" in req.model
         ollama_payload = {
             "model": req.model,
             "messages": [m.model_dump(exclude_none=True) for m in req.messages],
             "stream": False,
-            "options": {"num_ctx": ollama_cfg.num_ctx},
+            "options": {"num_ctx": 32768 if _is_cloud else ollama_cfg.num_ctx},
             "keep_alive": ollama_cfg.keep_alive,
         }
         async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
@@ -1002,14 +1003,15 @@ async def chat_proxy(req: ChatRequest) -> Any:
 
     for _attempt in range(3):
         for round_num in range(max_rounds):
+            is_cloud = "-cloud" in req.model
             ollama_payload: dict[str, Any] = {
                 "model": req.model,
                 "messages": messages,
                 "stream": False,
-                "options": {"num_ctx": ollama_cfg.num_ctx},
+                "options": {"num_ctx": 32768 if is_cloud else ollama_cfg.num_ctx},
                 "keep_alive": ollama_cfg.keep_alive,
             }
-            if not req.model.endswith("-cloud") and "-cloud" not in req.model:
+            if not is_cloud:
                 ollama_payload["think"] = allow_think
             if tools:
                 ollama_payload["tools"] = [t.model_dump() for t in tools]
@@ -1607,14 +1609,15 @@ async def chat_proxy(req: ChatRequest) -> Any:
             # Escalation failed — fall back to small LLM with truncated tool result
             log.warning("Escalation failed — falling back to small LLM with truncated result")
             try:
+                _fb_cloud = "-cloud" in req.model
                 fallback_payload: dict[str, Any] = {
                     "model": req.model,
                     "messages": messages,  # already has truncated tool result appended
                     "stream": False,
-                    "options": {"num_ctx": ollama_cfg.num_ctx},
+                    "options": {"num_ctx": 32768 if _fb_cloud else ollama_cfg.num_ctx},
                     "keep_alive": ollama_cfg.keep_alive,
                 }
-                if not req.model.endswith("-cloud") and "-cloud" not in req.model:
+                if not _fb_cloud:
                     fallback_payload["think"] = False
                 async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
                     fb_resp = await client.post(
