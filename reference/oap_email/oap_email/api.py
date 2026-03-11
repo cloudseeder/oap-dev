@@ -31,8 +31,9 @@ async def lifespan(app: FastAPI):
     if not _cfg.imap.host:
         log.warning("No IMAP host configured — scan endpoints will fail")
     else:
-        log.info("Email scanner ready — %s@%s folders=%s",
-                 _cfg.imap.username, _cfg.imap.host, _cfg.imap.folders)
+        log.info("Email scanner ready — %s → %s:%d folders=%s",
+                 _cfg.imap.username, _cfg.imap.host, _cfg.imap.port,
+                 _cfg.imap.folders)
 
     yield
 
