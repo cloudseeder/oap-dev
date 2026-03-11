@@ -83,6 +83,7 @@ async def classify_uncategorized(cfg: ClassifierConfig, db) -> int:
         if category:
             db.set_category(row["id"], category)
             classified += 1
+            log.info("%-13s  %s — %s", category, row.get("from_email", "?"), row.get("subject", "")[:60])
 
     log.info("Classified %d/%d message(s)", classified, len(rows))
     return classified
