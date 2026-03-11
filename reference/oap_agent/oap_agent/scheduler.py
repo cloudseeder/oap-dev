@@ -118,9 +118,12 @@ class TaskScheduler:
 
     def _is_empty_result(self, content: str) -> bool:
         """Return True if the task output indicates nothing new/actionable."""
-        # Check the first 300 chars for "no new" patterns
-        head = content[:300]
-        return bool(self._NO_NEWS_RE.search(head))
+        text = content.strip()
+        # Long responses have substantive content even if they mention
+        # "no new X" in passing — only filter short ones.
+        if len(text) > 300:
+            return False
+        return bool(self._NO_NEWS_RE.search(text))
 
     async def _execute_task(self, task_id: str) -> None:
         """Called by the scheduler to run a task."""

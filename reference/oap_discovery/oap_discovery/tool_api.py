@@ -1266,9 +1266,12 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 })
 
                 # Force escalation when tool result is large and escalation
-                # is configured but wasn't triggered by fingerprint prefix
+                # is configured but wasn't triggered by fingerprint prefix.
+                # Skip for experience cache hits — the small LLM already
+                # knows the right tool; escalation adds cost with no value.
                 if (
                     not should_escalate
+                    and not exp_cache_hit
                     and _escalation_cfg and _escalation_cfg.enabled
                     and len(result_str) > bridge_cfg.summarize_threshold
                 ):
