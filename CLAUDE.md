@@ -150,12 +150,14 @@ SQLite-backed reminder service for AI agents. Supports one-time and recurring re
 
 #### Email Scanner (`reference/oap_email/`)
 
-Read-only IMAP email scanner for AI agents. Two-phase design: `POST /scan` fetches from IMAP and caches to SQLite, read endpoints query local cache. UID-based incremental scanning.
+Read-only IMAP email scanner for AI agents. Two-phase design: `POST /scan` fetches from IMAP and caches to SQLite, read endpoints query local cache. UID-based incremental scanning. LLM-powered message classification.
 
 - Entry point: `oap-email-api` (:8305)
-- Config: `config.yaml` (IMAP host/port/credentials, folders, SQLite path, default scan hours)
-- Key files: `config.py` (IMAPConfig + Config), `imap.py` (stdlib imaplib + asyncio.to_thread), `db.py` (SQLite message cache with upsert/search/thread grouping), `sanitize.py` (HTML→text + prompt injection filtering), `models.py` (Pydantic types), `api.py` (FastAPI + dispatch endpoint)
-- API: `POST /scan`, `GET /messages`, `GET /messages/{id}`, `GET /threads/{thread_id}`, `GET /summary`, `POST /api` (single-endpoint dispatcher for OAP manifests), `GET /health`
+- Config: `config.yaml` (IMAP host/port/credentials, folders, SQLite path, default scan hours, classifier settings)
+- Key files: `config.py` (IMAPConfig + ClassifierConfig + Config), `imap.py` (stdlib imaplib + asyncio.to_thread), `db.py` (SQLite message cache with upsert/search/thread grouping + category column), `sanitize.py` (HTML→text + prompt injection filtering), `models.py` (Pydantic types), `api.py` (FastAPI + dispatch endpoint + background classification), `classifier.py` (LLM categorization via Ollama)
+- API: `POST /scan`, `GET /messages`, `GET /messages/{id}`, `GET /threads/{thread_id}`, `GET /summary`, `POST /classify`, `POST /api` (single-endpoint dispatcher for OAP manifests), `GET /health`
+- **Classifier**: Categorizes messages into `spam`, `marketing`, `transactional`, or `inbox` using a local LLM via Ollama. Runs in background after scan; `POST /classify` for manual trigger. Config: `classifier.enabled` (bool), `classifier.model`, `classifier.ollama_url`, `classifier.timeout`. Short system prompt (~100 tokens) produces single-word classification per message.
+- **Query parser**: Supports `OR` between terms and field prefixes (`from:`, `to:`, `subject:`, `body:`). Examples: `from:Amy OR from:Keric`, `from:amy@netgate.net subject:invoice`.
 - Manifest: `reference/oap_discovery/manifests/oap-email.json`
 
 ### Infrastructure
