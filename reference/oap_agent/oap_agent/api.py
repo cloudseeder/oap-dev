@@ -423,12 +423,34 @@ async def chat(req: ChatRequest):
                 # No notifications — tell the user explicitly
                 llm_messages.append({"role": "system", "content": "The user is asking about notifications. There are no pending notifications — let them know they're all caught up."})
             elif greeting:
-                # Greeting with no notifications — keep it simple
-                llm_messages.append({"role": "system", "content": (
-                    f"The user just greeted you. Today is {date.today().isoformat()}. "
-                    "Give a warm, brief greeting. You have NO notifications or updates to share. "
-                    "Do NOT invent any news, alerts, emails, or updates. Just say hello."
-                )})
+                # Greeting with no notifications — respond directly, no LLM.
+                # Cloud models ignore "don't hallucinate" instructions and
+                # fabricate morning briefings from the persona context.
+                from datetime import time as _time
+                hour = datetime.now().hour
+                if hour < 12:
+                    time_greeting = "Good morning"
+                elif hour < 17:
+                    time_greeting = "Good afternoon"
+                else:
+                    time_greeting = "Good evening"
+                persona_name = settings.get("persona_name", "")
+                direct_greeting = (
+                    f"{time_greeting}! Nothing new to report right now. "
+                    "What can I help you with?"
+                )
+                # Save and stream directly — skip LLM call
+                assistant_msg = _db.add_message(conv_id, role="assistant", content=direct_greeting)
+                yield _sse_event("assistant_message", {
+                    "conversation_id": conv_id,
+                    "message": assistant_msg,
+                })
+                yield _sse_event("done", {"conversation_id": conv_id})
+                # Fire-and-forget memory extraction
+                if settings.get("memory_enabled") == "true":
+                    import asyncio
+                    asyncio.create_task(_extract_memory(conv_id, req.message))
+                return
 
         # Route: conversational turns skip the tool bridge entirely
         conversational = _is_conversational(req.message) or greeting or notif_query
