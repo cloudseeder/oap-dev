@@ -450,7 +450,6 @@ async def chat(req: ChatRequest):
                 yield _sse_event("done", {"conversation_id": conv_id})
                 # Fire-and-forget memory extraction
                 if settings.get("memory_enabled") == "true":
-                    import asyncio
                     asyncio.create_task(_extract_memory(conv_id, req.message))
                 return
 
