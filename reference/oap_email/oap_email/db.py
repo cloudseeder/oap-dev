@@ -28,13 +28,15 @@ CREATE TABLE IF NOT EXISTS messages (
     has_attachments INTEGER DEFAULT 0,
     attachments TEXT,
     uid         INTEGER,
-    cached_at   TEXT
+    cached_at   TEXT,
+    category    TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_received ON messages(received_at);
 CREATE INDEX IF NOT EXISTS idx_messages_folder ON messages(folder);
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_messages_uid ON messages(folder, uid);
+CREATE INDEX IF NOT EXISTS idx_messages_category ON messages(category);
 """
 
 
@@ -51,8 +53,15 @@ class EmailDB:
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(_SCHEMA)
         self.conn.commit()
+        self._migrate()
         self._lock = threading.Lock()
         log.info("Email DB opened: %s", db_path)
+
+    def _migrate(self):
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(messages)").fetchall()}
+        if "category" not in cols:
+            self.conn.execute("ALTER TABLE messages ADD COLUMN category TEXT")
+            self.conn.commit()
 
     def close(self):
         self.conn.close()
@@ -106,6 +115,7 @@ class EmailDB:
         since: str | None = None,
         unread: bool = False,
         query: str | None = None,
+        category: str | None = None,
         limit: int = 20,
     ) -> list[dict]:
         conditions = ["folder = ?"]
@@ -115,6 +125,9 @@ class EmailDB:
             params.append(since)
         if unread:
             conditions.append("is_read = 0")
+        if category:
+            conditions.append("category = ?")
+            params.append(category.lower())
         if query:
             query_sql, query_params = self._parse_query(query)
             conditions.append(query_sql)
@@ -174,6 +187,23 @@ class EmailDB:
             if deleted:
                 self.conn.commit()
         return deleted
+
+    def get_uncategorized(self, limit: int = 50) -> list[dict]:
+        """Return messages without a category."""
+        rows = self.conn.execute(
+            "SELECT id, from_name, from_email, subject, snippet FROM messages "
+            "WHERE category IS NULL ORDER BY received_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_category(self, msg_id: str, category: str) -> None:
+        with self._lock:
+            self.conn.execute(
+                "UPDATE messages SET category = ? WHERE id = ?",
+                (category, msg_id),
+            )
+            self.conn.commit()
 
     # ------------------------------------------------------------------
     # Query parser — supports OR, field prefixes (from:, subject:, body:)

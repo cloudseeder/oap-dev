@@ -6,14 +6,15 @@
     "format": "application/json",
     "description": "JSON with 'action' to select operation. Prefer 'list' or 'summary' — they query the local cache (already populated by background scans). Actions: 'list' (search/filter cached messages), 'summary' (activity overview with counts and senders), 'get' (single message by id), 'thread' (all messages in thread), 'scan' (fetch new from IMAP server — rarely needed).",
     "parameters": {
-      "action": {"type": "string", "description": "Operation: 'scan', 'list', 'get', 'thread', 'summary'", "required": true},
+      "action": {"type": "string", "description": "Operation: 'list', 'get', 'thread', 'summary', 'classify', 'scan'", "required": true},
       "id": {"type": "string", "description": "Message ID (for get action)", "required": false},
       "thread_id": {"type": "string", "description": "Thread ID (for thread action)", "required": false},
       "since": {"type": "string", "description": "ISO 8601 timestamp — only messages after this time", "required": false},
       "limit": {"type": "integer", "description": "Max results (1-100, default 20)", "required": false},
       "unread": {"type": "boolean", "description": "Only unread messages (default false)", "required": false},
       "folder": {"type": "string", "description": "IMAP folder (default INBOX)", "required": false},
-      "query": {"type": "string", "description": "Search with OR support and field prefixes. Examples: 'Amy Brooks OR Keric Brooks', 'from:amy@netgate.net', 'from:Amy subject:car', 'subject:invoice'. Prefixes: from/sender, to, subject, body. Without prefix searches all fields.", "required": false}
+      "query": {"type": "string", "description": "Search with OR support and field prefixes. Examples: 'Amy Brooks OR Keric Brooks', 'from:amy@netgate.net', 'from:Amy subject:car', 'subject:invoice'. Prefixes: from/sender, to, subject, body. Without prefix searches all fields.", "required": false},
+      "category": {"type": "string", "description": "Filter by category: 'inbox' (real correspondence), 'marketing' (newsletters/promos), 'transactional' (receipts/alerts), 'spam'. Omit for all.", "required": false}
     }
   },
   "output": {

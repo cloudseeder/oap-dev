@@ -21,8 +21,16 @@ class IMAPConfig:
 
 
 @dataclass
+class ClassifierConfig:
+    enabled: bool = False
+    ollama_url: str = "http://localhost:11434"
+    model: str = "qwen3.5:latest"
+    timeout: int = 30
+
+@dataclass
 class Config:
     imap: IMAPConfig = field(default_factory=IMAPConfig)
+    classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
     db_path: str = "oap_email.db"
     host: str = "127.0.0.1"
     port: int = 8305
@@ -61,6 +69,13 @@ def load_config(path: str | None = None) -> Config:
 
         cfg.max_cached = raw.get("max_cached", cfg.max_cached)
         cfg.default_scan_hours = raw.get("default_scan_hours", cfg.default_scan_hours)
+
+        # Classifier
+        cl = raw.get("classifier", {})
+        cfg.classifier.enabled = cl.get("enabled", cfg.classifier.enabled)
+        cfg.classifier.ollama_url = cl.get("ollama_url", cfg.classifier.ollama_url)
+        cfg.classifier.model = cl.get("model", cfg.classifier.model)
+        cfg.classifier.timeout = cl.get("timeout", cfg.classifier.timeout)
 
         # Resolve relative DB path against config file directory
         db_path = Path(cfg.db_path)

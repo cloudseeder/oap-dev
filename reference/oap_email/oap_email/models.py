@@ -56,7 +56,7 @@ class EmailSummary(BaseModel):
 
 class DispatchRequest(BaseModel):
     """Single-endpoint dispatcher for OAP tool bridge."""
-    action: str = Field(..., description="Operation: list, get, thread, summary")
+    action: str = Field(..., description="Operation: list, get, thread, summary, classify")
     id: str | None = None
     thread_id: str | None = None
     since: str | None = None
@@ -64,3 +64,4 @@ class DispatchRequest(BaseModel):
     unread: bool = False
     folder: str = "INBOX"
     query: str | None = None
+    category: str | None = None

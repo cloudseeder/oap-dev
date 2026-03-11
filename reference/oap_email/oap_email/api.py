@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import argparse
 import logging
 from contextlib import asynccontextmanager
@@ -91,7 +92,38 @@ async def scan():
     if pruned:
         log.info("Pruned %d old cached message(s)", pruned)
 
+    # Classify new messages in background
+    if total > 0 and _cfg.classifier.enabled:
+        asyncio.create_task(_classify_background())
+
     return {"scanned": total, "folders": _cfg.imap.folders}
+
+
+# ---------------------------------------------------------------------------
+# Background classification
+# ---------------------------------------------------------------------------
+
+async def _classify_background():
+    """Classify uncategorized messages in background."""
+    try:
+        from .classifier import classify_uncategorized
+        count = await classify_uncategorized(_cfg.classifier, _db)
+        if count:
+            log.info("Background classification: %d message(s)", count)
+    except Exception as exc:
+        log.error("Background classification failed: %s", exc)
+
+
+@app.post("/classify")
+async def classify():
+    """Manually trigger classification of uncategorized messages."""
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if not _cfg or not _cfg.classifier.enabled:
+        raise HTTPException(status_code=400, detail="Classifier not enabled")
+    from .classifier import classify_uncategorized
+    count = await classify_uncategorized(_cfg.classifier, _db)
+    return {"classified": count}
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +136,7 @@ async def list_messages(
     since: str | None = None,
     unread: bool = False,
     query: str | None = None,
+    category: str | None = None,
     limit: int = Query(20, ge=1, le=100),
 ):
     """List cached messages."""
@@ -112,7 +145,7 @@ async def list_messages(
     if since is None:
         hours = _cfg.default_scan_hours if _cfg else 24
         since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    messages = _db.list_messages(folder=folder, since=since, unread=unread, query=query, limit=limit)
+    messages = _db.list_messages(folder=folder, since=since, unread=unread, query=query, category=category, limit=limit)
     return {"messages": messages, "total": len(messages)}
 
 
@@ -186,17 +219,20 @@ async def summary(since: str | None = None):
 async def dispatch(req: DispatchRequest):
     """Single-endpoint dispatcher for OAP manifests."""
     action = req.action.lower().strip()
-    log.info("Dispatch action=%s folder=%s query=%r since=%s limit=%d",
-             action, req.folder, req.query, req.since, req.limit)
+    log.info("Dispatch action=%s folder=%s query=%r category=%s since=%s limit=%d",
+             action, req.folder, req.query, req.category, req.since, req.limit)
 
     if action == "scan":
         result = await scan()
         log.info("Dispatch scan → %d message(s) scanned", result.get("scanned", 0))
         return result
+    elif action == "classify":
+        result = await classify()
+        return result
     elif action == "list":
         result = await list_messages(
             folder=req.folder, since=req.since, unread=req.unread,
-            query=req.query, limit=req.limit,
+            query=req.query, category=req.category, limit=req.limit,
         )
         log.info("Dispatch list → %d message(s)", result.get("total", 0))
         return result
