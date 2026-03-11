@@ -185,6 +185,7 @@ class CreateTaskRequest(BaseModel):
     prompt: str = Field(..., max_length=32_000)
     schedule: str | None = Field(None, max_length=100)
     model: str | None = Field(None, max_length=100)
+    incremental: bool = True
 
     @field_validator("model")
     @classmethod
@@ -226,6 +227,7 @@ class UpdateTaskRequest(BaseModel):
     schedule: str | None = Field(None, max_length=100)
     model: str | None = Field(None, max_length=100)
     enabled: bool | None = None
+    incremental: bool | None = None
 
     @field_validator("model")
     @classmethod
@@ -632,6 +634,7 @@ async def create_task(req: CreateTaskRequest):
         prompt=req.prompt,
         schedule=req.schedule,
         model=model,
+        incremental=req.incremental,
     )
     if _scheduler and task.get("schedule"):
         _scheduler.schedule_task(task)
@@ -664,6 +667,7 @@ async def update_task(task_id: str, req: UpdateTaskRequest):
         schedule=req.schedule,
         model=req.model,
         enabled=req.enabled,
+        incremental=req.incremental,
     )
     if _scheduler:
         if updated.get("enabled") and updated.get("schedule"):

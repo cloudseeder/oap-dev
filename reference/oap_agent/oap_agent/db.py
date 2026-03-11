@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     schedule   TEXT,
     model      TEXT NOT NULL DEFAULT 'qwen3:14b',
     enabled    INTEGER NOT NULL DEFAULT 1,
+    incremental INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -127,6 +128,11 @@ class AgentDB:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(user_facts)").fetchall()}
         if "pinned" not in cols:
             self.conn.execute("ALTER TABLE user_facts ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+            self.conn.commit()
+
+        task_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(tasks)").fetchall()}
+        if "incremental" not in task_cols:
+            self.conn.execute("ALTER TABLE tasks ADD COLUMN incremental INTEGER NOT NULL DEFAULT 1")
             self.conn.commit()
 
     def _seed_defaults(self):
@@ -292,14 +298,15 @@ class AgentDB:
         prompt: str,
         schedule: str | None = None,
         model: str = "qwen3:14b",
+        incremental: bool = True,
     ) -> dict:
         task_id = _new_id("task_")
         now = _now()
         with self._lock:
             self.conn.execute(
-                """INSERT INTO tasks (id, name, prompt, schedule, model, enabled, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
-                (task_id, name, prompt, schedule, model, now, now),
+                """INSERT INTO tasks (id, name, prompt, schedule, model, enabled, incremental, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+                (task_id, name, prompt, schedule, model, int(incremental), now, now),
             )
             self.conn.commit()
         return self.get_task(task_id)
@@ -312,6 +319,7 @@ class AgentDB:
             return None
         t = dict(row)
         t["enabled"] = bool(t["enabled"])
+        t["incremental"] = bool(t.get("incremental", 1))
         return t
 
     def list_tasks(self) -> list[dict]:
@@ -332,6 +340,7 @@ class AgentDB:
         for r in rows:
             t = dict(r)
             t["enabled"] = bool(t["enabled"])
+            t["incremental"] = bool(t.get("incremental", 1))
             result.append(t)
         return result
 
@@ -343,6 +352,7 @@ class AgentDB:
         schedule: str | None = None,
         model: str | None = None,
         enabled: bool | None = None,
+        incremental: bool | None = None,
     ) -> dict | None:
         now = _now()
         # Build explicit SET clause from provided fields
@@ -363,6 +373,9 @@ class AgentDB:
         if enabled is not None:
             fields.append("enabled = ?")
             values.append(1 if enabled else 0)
+        if incremental is not None:
+            fields.append("incremental = ?")
+            values.append(1 if incremental else 0)
         if not fields:
             return self.get_task(task_id)
         fields.append("updated_at = ?")

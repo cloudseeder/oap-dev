@@ -85,12 +85,13 @@ class TaskScheduler:
         log.debug("Scheduled task %s (%s) with cron %s", task["id"], task["name"], task["schedule"])
 
     def _build_prompt(self, task: dict) -> str:
-        """Prepend last-run timestamp to the task prompt for dedup."""
+        """Prepend last-run timestamp to the task prompt for incremental tasks."""
         prompt = task["prompt"]
-        last_run = self._db.get_last_successful_run(task["id"])
-        if last_run and last_run.get("finished_at"):
-            prompt = f"[Only include new information since {last_run['finished_at']}]\n{prompt}"
-            log.debug("Injected last-run timestamp %s into task %s", last_run["finished_at"], task["id"])
+        if task.get("incremental", True):
+            last_run = self._db.get_last_successful_run(task["id"])
+            if last_run and last_run.get("finished_at"):
+                prompt = f"[Only include new information since {last_run['finished_at']}]\n{prompt}"
+                log.debug("Injected last-run timestamp %s into task %s", last_run["finished_at"], task["id"])
         return prompt
 
     _NO_NEWS_RE = re.compile(

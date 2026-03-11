@@ -14,6 +14,7 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
   const [schedule, setSchedule] = useState(task?.schedule || '')
   const [models, setModels] = useState<string[]>([])
   const [model, setModel] = useState(task?.model || '')
+  const [incremental, setIncremental] = useState(task?.incremental ?? true)
 
   useEffect(() => {
     fetch('/v1/agent/models')
@@ -41,6 +42,7 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
       prompt: prompt.trim(),
       schedule: schedule.trim() || undefined,
       model,
+      incremental,
     }
 
     try {
@@ -107,6 +109,19 @@ export default function TaskForm({ task, onSave, onCancel }: TaskFormProps) {
             <option key={m} value={m}>{m}</option>
           ))}
         </select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="incremental"
+          checked={incremental}
+          onChange={(e) => setIncremental(e.target.checked)}
+          className="rounded border-gray-300 text-primary focus:ring-primary"
+        />
+        <label htmlFor="incremental" className="text-sm text-gray-700">
+          Incremental — only include new information since last run
+        </label>
       </div>
 
       {error && (

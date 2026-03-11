@@ -31,6 +31,7 @@ export interface AgentTask {
   schedule?: string
   model: string
   enabled: boolean
+  incremental: boolean
   created_at: string
   updated_at: string
   last_run_status?: 'running' | 'success' | 'error' | null
