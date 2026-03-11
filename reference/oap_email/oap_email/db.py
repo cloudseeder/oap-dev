@@ -28,15 +28,13 @@ CREATE TABLE IF NOT EXISTS messages (
     has_attachments INTEGER DEFAULT 0,
     attachments TEXT,
     uid         INTEGER,
-    cached_at   TEXT,
-    category    TEXT
+    cached_at   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_received ON messages(received_at);
 CREATE INDEX IF NOT EXISTS idx_messages_folder ON messages(folder);
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_messages_uid ON messages(folder, uid);
-CREATE INDEX IF NOT EXISTS idx_messages_category ON messages(category);
 """
 
 
@@ -61,6 +59,7 @@ class EmailDB:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(messages)").fetchall()}
         if "category" not in cols:
             self.conn.execute("ALTER TABLE messages ADD COLUMN category TEXT")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_category ON messages(category)")
             self.conn.commit()
 
     def close(self):
