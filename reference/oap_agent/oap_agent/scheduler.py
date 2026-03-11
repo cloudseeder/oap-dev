@@ -95,6 +95,7 @@ class TaskScheduler:
 
     _NO_NEWS_RE = re.compile(
         r"(no\s+new\s+(email|message|notification|update|result|item)|"
+        r"no\s+emails?\s+(from|found|were|in)|"
         r"nothing\s+new|no\s+updates?|no\s+results?\s+found|"
         r"all\s+caught\s+up|no\s+changes?|"
         r"0\s+(new\s+)?(email|message|notification|unread))",
