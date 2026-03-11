@@ -55,10 +55,11 @@ This means the agent task calls scan + summary together. Between scans, reads ar
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/scan` | Fetch new messages from IMAP, cache locally |
-| `GET` | `/messages` | List cached messages (query params: `folder`, `since`, `unread`, `query`, `limit`) |
+| `GET` | `/messages` | List cached messages (query params: `folder`, `since`, `unread`, `query`, `category`, `limit`) |
 | `GET` | `/messages/{id}` | Get a single message |
 | `GET` | `/threads/{thread_id}` | Get all messages in a thread |
 | `GET` | `/summary` | Activity overview: counts, senders, subjects (query param: `since`) |
+| `POST` | `/classify` | Manually trigger LLM classification of uncategorized messages |
 | `POST` | `/api` | Dispatch endpoint for OAP tool bridge (action-based routing) |
 | `GET` | `/health` | Health check |
 
@@ -67,10 +68,94 @@ This means the agent task calls scan + summary together. Between scans, reads ar
 The `/api` endpoint accepts `{"action": "..."}` for the OAP tool bridge:
 
 - `scan` — fetch new messages from IMAP
-- `list` — list cached messages (supports `since`, `unread`, `query`, `folder`, `limit`)
+- `list` — list cached messages (supports `since`, `unread`, `query`, `category`, `folder`, `limit`)
 - `get` — fetch single message by `id`
 - `thread` — fetch thread by `thread_id`
 - `summary` — activity overview
+- `classify` — trigger LLM classification of uncategorized messages
+
+## Email Classifier
+
+Messages are automatically categorized using a local LLM via Ollama. Classification runs in the background after each scan and stores the result in the database — each message is only classified once.
+
+### Categories
+
+| Category | Description |
+|----------|-------------|
+| `inbox` | Real human correspondence — anything that doesn't clearly fit the other categories |
+| `marketing` | Newsletters, promotional offers, sales, subscriptions |
+| `transactional` | Receipts, shipping notifications, account alerts, auth codes |
+| `spam` | Junk, phishing, unsolicited messages |
+
+### Configuration
+
+Add to `config.yaml`:
+
+```yaml
+classifier:
+  enabled: true
+  model: "qwen3:14b"
+  ollama_url: "http://localhost:11434"
+  timeout: 30
+```
+
+### How It Works
+
+1. `POST /scan` fetches new messages from IMAP and caches them
+2. If `classifier.enabled`, a background task classifies uncategorized messages
+3. Each message's subject, sender, and snippet are sent to the LLM with a short system prompt (~100 tokens)
+4. The LLM returns a single category word, stored in the `category` column
+5. Subsequent queries can filter by category: `{"action": "list", "category": "inbox"}`
+
+### Manual Classification
+
+To classify existing uncategorized messages:
+
+```bash
+curl -X POST http://localhost:8305/classify
+```
+
+Processes up to 50 messages per call. Run repeatedly until `{"classified": 0}`.
+
+### Query Filtering
+
+Filter by category in list queries:
+
+```bash
+# Only real correspondence
+curl 'http://localhost:8305/messages?category=inbox'
+
+# Via dispatch
+curl -X POST http://localhost:8305/api \
+  -H 'Content-Type: application/json' \
+  -d '{"action": "list", "category": "inbox"}'
+```
+
+## Query Parser
+
+The `query` parameter supports boolean `OR` and field prefixes for targeted searches.
+
+### Field Prefixes
+
+| Prefix | Searches |
+|--------|----------|
+| `from:` / `sender:` | `from_name`, `from_email` |
+| `to:` | `to_addrs` |
+| `subject:` | `subject` |
+| `body:` | `body_text` |
+| *(none)* | All fields |
+
+### Examples
+
+```
+from:amy@netgate.net                    # Sender email
+from:Amy OR from:Keric                  # Multiple senders
+from:Amy subject:PTO                    # Sender AND subject
+subject:invoice                         # Subject only
+Amy Brooks OR Keric Brooks              # Names across all fields
+```
+
+Both colon style (`from:Amy`) and space style (`FROM Amy Brooks`) are supported.
 
 ## Security
 
@@ -108,9 +193,10 @@ The task results appear in the morning greeting briefing automatically.
 
 | File | Purpose |
 |------|---------|
-| `config.py` | YAML config loader, IMAP/DB/API settings |
-| `models.py` | Pydantic types for messages, threads, summaries |
+| `config.py` | YAML config loader, IMAP/DB/API/classifier settings |
+| `models.py` | Pydantic types for messages, threads, summaries, dispatch |
 | `sanitize.py` | HTML→text, prompt injection filtering |
-| `imap.py` | Async IMAP scanner via aioimaplib, MIME parsing |
-| `db.py` | SQLite message cache with threading support |
-| `api.py` | FastAPI service, REST + dispatch endpoints |
+| `imap.py` | Async IMAP scanner via stdlib imaplib, MIME parsing |
+| `db.py` | SQLite message cache with threading, query parser, category support |
+| `classifier.py` | LLM email categorization via Ollama |
+| `api.py` | FastAPI service, REST + dispatch + background classification |

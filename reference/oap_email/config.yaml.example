@@ -26,3 +26,10 @@ max_cached: 500
 
 # Default scan window when no 'since' parameter provided (hours)
 default_scan_hours: 24
+
+# LLM email classifier — categorizes messages as inbox/marketing/transactional/spam
+classifier:
+  enabled: false                        # Set to true to enable classification
+  model: "qwen3:14b"                    # Ollama model for classification
+  ollama_url: "http://localhost:11434"   # Ollama API endpoint
+  timeout: 30                           # Per-message timeout (seconds)
