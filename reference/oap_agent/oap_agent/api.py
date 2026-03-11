@@ -387,6 +387,7 @@ async def chat(req: ChatRequest):
 
     async def stream_response():
         nonlocal llm_messages
+        briefing = ""
 
         # Emit user message saved event
         yield _sse_event("message_saved", {
@@ -419,8 +420,6 @@ async def chat(req: ChatRequest):
                     )
                 llm_messages.append({"role": "system", "content": briefing_prompt})
                 log.info("Briefing injected (%s, %d chars)", "greeting" if greeting else "query", len(briefing))
-                # Dismiss presented notifications so they don't repeat
-                _db.dismiss_all_notifications()
             elif notif_query:
                 # No notifications — tell the user explicitly
                 llm_messages.append({"role": "system", "content": "The user is asking about notifications. There are no pending notifications — let them know they're all caught up."})
@@ -560,6 +559,12 @@ async def chat(req: ChatRequest):
             "conversation_id": conv_id,
             "message": assistant_msg,
         })
+
+        # Dismiss notifications only after the response is successfully delivered
+        if (greeting or notif_query) and briefing:
+            _db.dismiss_all_notifications()
+            log.info("Dismissed notifications after successful delivery")
+
         yield _sse_event("done", {"conversation_id": conv_id})
 
     return StreamingResponse(stream_response(), media_type="text/event-stream")
