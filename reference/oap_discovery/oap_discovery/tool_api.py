@@ -977,6 +977,8 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "To look up commands or utilities by topic, use `apropos <keyword>` — "
         "never search through binary files with find or grep. "
         "When querying weather for US locations, use temperature_unit=fahrenheit and wind_speed_unit=mph. "
+        "When listing items (emails, reminders, results), show ALL of them — never omit, "
+        "skip, or summarize away items. The user asked for the data, show the data. "
         "After a tool result, reply in 1-2 sentences"
         + (" in character." if caller_system else ".")
     )

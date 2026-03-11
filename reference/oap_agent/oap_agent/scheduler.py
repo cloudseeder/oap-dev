@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import time
@@ -127,6 +128,25 @@ class TaskScheduler:
             return False
         return bool(self._NO_NEWS_RE.search(text))
 
+    @staticmethod
+    def _content_fingerprint(content: str) -> str:
+        """Normalize task output and hash it for dedup comparison.
+
+        Strips whitespace, punctuation, and lowercases so minor LLM
+        rephrasing (emoji changes, trailing punctuation) doesn't defeat
+        the comparison.
+        """
+        text = re.sub(r"[^\w\s]", "", content.lower())
+        text = re.sub(r"\s+", " ", text).strip()
+        return hashlib.md5(text.encode()).hexdigest()
+
+    def _is_duplicate_result(self, task_id: str, content: str) -> bool:
+        """Return True if the content is essentially identical to the last successful run."""
+        last_run = self._db.get_last_successful_run(task_id)
+        if not last_run or not last_run.get("response"):
+            return False
+        return self._content_fingerprint(content) == self._content_fingerprint(last_run["response"])
+
     async def _execute_task(self, task_id: str) -> None:
         """Called by the scheduler to run a task."""
         if self._db is None:
@@ -165,6 +185,10 @@ class TaskScheduler:
                     debug=True,
                 )
                 duration_ms = int((time.monotonic() - started) * 1000)
+                # Check for duplicate BEFORE saving this run (otherwise it matches itself)
+                is_dup = self._is_duplicate_result(task_id, result.get("content", ""))
+                if is_dup:
+                    log.info("Task %s produced duplicate result — skipping notification", task["name"])
                 self._db.finish_run(
                     run_id=run_id,
                     status="success",
@@ -174,9 +198,9 @@ class TaskScheduler:
                 )
                 log.info("Task run %s completed in %dms", run_id, duration_ms)
 
-                # Create notification from task result — skip empty/no-news results
+                # Create notification from task result — skip empty/no-news/duplicate results
                 content = result.get("content", "")
-                has_news = content.strip() and not self._is_empty_result(content)
+                has_news = content.strip() and not self._is_empty_result(content) and not is_dup
                 if has_news:
                     snippet = self._extract_snippet(content)
                     self._db.add_notification(
