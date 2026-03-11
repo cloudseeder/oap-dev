@@ -1,7 +1,7 @@
 {
   "oap": "1.0",
   "name": "oap-email",
-  "description": "Search and read cached email. Use for 'check my email', 'any new messages?', 'emails from Jane', 'email summary since yesterday', 'unread messages'. Messages are cached locally from IMAP — use 'list' to search/filter or 'summary' for an overview. Do NOT call 'scan' unless the user explicitly asks to refresh from the mail server. Returns sanitized plain text — no HTML, no raw MIME.",
+  "description": "Search and read cached email. Use for 'check my email', 'any new messages?', 'emails from Jane', 'email summary since yesterday', 'unread messages'. Messages are categorized: use category='inbox' for real/personal/important emails, 'transactional' for server alerts/receipts, 'marketing' for newsletters, 'spam' for junk. When the user asks for 'real emails' or 'my emails', ALWAYS set category='inbox'. Messages are cached locally from IMAP — use 'list' to search/filter or 'summary' for an overview. Do NOT call 'scan' unless the user explicitly asks to refresh from the mail server.",
   "input": {
     "format": "application/json",
     "description": "JSON with 'action' to select operation. Prefer 'list' or 'summary' — they query the local cache (already populated by background scans). Actions: 'list' (search/filter cached messages), 'summary' (activity overview with counts and senders), 'get' (single message by id), 'thread' (all messages in thread), 'scan' (fetch new from IMAP server — rarely needed).",
