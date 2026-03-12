@@ -1024,7 +1024,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 "model": req.model,
                 "messages": messages,
                 "stream": False,
-                "options": {"num_ctx": 32768 if is_cloud else 8192 if "qwen3.5" in req.model else ollama_cfg.num_ctx},
+                "options": {"num_ctx": 32768 if is_cloud else ollama_cfg.num_ctx},
                 "keep_alive": ollama_cfg.keep_alive,
             }
             # qwen3.5 requires thinking to produce tool calls — don't suppress it.
