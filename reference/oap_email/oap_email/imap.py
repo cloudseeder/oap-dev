@@ -304,6 +304,28 @@ def _move_messages_sync(
         moved = 0
         created_folders: set[str] = set()
 
+        # Detect IMAP namespace prefix (e.g. "INBOX." for Dovecot/cPanel)
+        prefix = ""
+        try:
+            status, ns_data = conn.namespace()
+            if status == "OK" and ns_data and ns_data[0]:
+                raw = ns_data[0].decode() if isinstance(ns_data[0], bytes) else str(ns_data[0])
+                import re as _re
+                m = _re.search(r'\(\("([^"]*)"', raw)
+                if m:
+                    prefix = m.group(1)
+        except Exception:
+            pass
+        # Fallback: if source folder is INBOX, assume "INBOX." prefix
+        # (standard for Dovecot, cPanel, and most IMAP servers)
+        if not prefix:
+            for source in by_source:
+                if source.upper() == "INBOX":
+                    prefix = "INBOX."
+                    break
+        if prefix:
+            log.info("IMAP namespace prefix: %r", prefix)
+
         # Group by source folder to minimize SELECT calls
         by_source: dict[str, list[tuple[int, str]]] = {}
         for source, uid, target in moves:
@@ -316,20 +338,25 @@ def _move_messages_sync(
                 continue
 
             for uid, target_folder in uid_targets:
+                # Apply namespace prefix if needed (e.g. "Personal" → "INBOX.Personal")
+                full_target = target_folder
+                if prefix and not target_folder.startswith(prefix):
+                    full_target = prefix + target_folder
+
                 # Create target folder if needed (once per folder)
-                if target_folder not in created_folders:
-                    cs, cd = conn.create(target_folder)  # OK if already exists
-                    log.info("IMAP CREATE %s: %s %s", target_folder, cs, cd)
-                    conn.subscribe(target_folder)
-                    created_folders.add(target_folder)
+                if full_target not in created_folders:
+                    cs, cd = conn.create(full_target)
+                    log.info("IMAP CREATE %s: %s %s", full_target, cs, cd)
+                    conn.subscribe(full_target)
+                    created_folders.add(full_target)
 
                 uid_str = str(uid)
-                status, data = conn.uid("COPY", uid_str, target_folder)
+                status, data = conn.uid("COPY", uid_str, full_target)
                 if status == "OK":
                     conn.uid("STORE", uid_str, "+FLAGS", "(\\Deleted)")
                     moved += 1
                 else:
-                    log.warning("IMAP COPY UID %s → %s failed: %s %s", uid_str, target_folder, status, data)
+                    log.warning("IMAP COPY UID %s → %s failed: %s %s", uid_str, full_target, status, data)
 
             # Expunge deleted messages from source folder
             conn.expunge()

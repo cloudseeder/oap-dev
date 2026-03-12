@@ -60,7 +60,7 @@ class AutoFileConfig:
     enabled: bool = False
     # Map category → IMAP folder name (created if missing)
     folders: dict[str, str] = field(default_factory=lambda: {
-        "personal": "Personal",
+        "personal": "INBOX",
         "machine": "Machine",
         "mailing-list": "Mailing-List",
         "spam": "Spam",
