@@ -1004,7 +1004,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             if original_messages[i].get("role") == "user":
                 original_messages[i] = {
                     **original_messages[i],
-                    "content": original_messages[i].get("content", "") + f"\n[Today's date: {_today}]",
+                    "content": original_messages[i].get("content", "") + f"\n[Today's date: {_today}. Show ALL results — never omit items.]",
                 }
                 break
 
