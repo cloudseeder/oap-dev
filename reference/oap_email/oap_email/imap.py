@@ -281,3 +281,70 @@ async def scan_folder(
 ) -> list[dict]:
     """Async wrapper — runs sync IMAP in a thread to avoid blocking."""
     return await asyncio.to_thread(_scan_folder_sync, cfg, folder, since_uid, limit)
+
+
+def _move_messages_sync(
+    cfg: IMAPConfig,
+    moves: list[tuple[str, int, str]],
+) -> int:
+    """Move messages to target IMAP folders. Each move is (source_folder, uid, target_folder).
+
+    Creates target folders if they don't exist. Returns count of successful moves.
+    """
+    if not moves:
+        return 0
+
+    if cfg.use_ssl:
+        conn = imaplib.IMAP4_SSL(cfg.host, cfg.port)
+    else:
+        conn = imaplib.IMAP4(cfg.host, cfg.port)
+
+    try:
+        conn.login(cfg.username, cfg.password)
+        moved = 0
+        created_folders: set[str] = set()
+
+        # Group by source folder to minimize SELECT calls
+        by_source: dict[str, list[tuple[int, str]]] = {}
+        for source, uid, target in moves:
+            by_source.setdefault(source, []).append((uid, target))
+
+        for source_folder, uid_targets in by_source.items():
+            status, _ = conn.select(source_folder)
+            if status != "OK":
+                log.error("IMAP SELECT %s failed", source_folder)
+                continue
+
+            for uid, target_folder in uid_targets:
+                # Create target folder if needed (once per folder)
+                if target_folder not in created_folders:
+                    conn.create(target_folder)  # OK if already exists
+                    created_folders.add(target_folder)
+
+                uid_str = str(uid)
+                status, _ = conn.uid("COPY", uid_str, target_folder)
+                if status == "OK":
+                    conn.uid("STORE", uid_str, "+FLAGS", "(\\Deleted)")
+                    moved += 1
+                else:
+                    log.warning("IMAP COPY UID %s → %s failed", uid_str, target_folder)
+
+            # Expunge deleted messages from source folder
+            conn.expunge()
+
+        log.info("IMAP filed %d/%d message(s)", moved, len(moves))
+        return moved
+
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
+async def move_messages(
+    cfg: IMAPConfig,
+    moves: list[tuple[str, int, str]],
+) -> int:
+    """Async wrapper for IMAP move."""
+    return await asyncio.to_thread(_move_messages_sync, cfg, moves)

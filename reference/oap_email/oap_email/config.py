@@ -27,10 +27,25 @@ class ClassifierConfig:
     model: str = "qwen3.5:latest"
     timeout: int = 30
 
+
+@dataclass
+class AutoFileConfig:
+    enabled: bool = False
+    # Map category → IMAP folder name (created if missing)
+    folders: dict[str, str] = field(default_factory=lambda: {
+        "personal": "Personal",
+        "machine": "Machine",
+        "mailing-list": "Mailing-List",
+        "spam": "Spam",
+        "offers": "Offers",
+    })
+
+
 @dataclass
 class Config:
     imap: IMAPConfig = field(default_factory=IMAPConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
+    auto_file: AutoFileConfig = field(default_factory=AutoFileConfig)
     db_path: str = "oap_email.db"
     host: str = "127.0.0.1"
     port: int = 8305
@@ -76,6 +91,12 @@ def load_config(path: str | None = None) -> Config:
         cfg.classifier.ollama_url = cl.get("ollama_url", cfg.classifier.ollama_url)
         cfg.classifier.model = cl.get("model", cfg.classifier.model)
         cfg.classifier.timeout = cl.get("timeout", cfg.classifier.timeout)
+
+        # Auto-file
+        af = raw.get("auto_file", {})
+        cfg.auto_file.enabled = af.get("enabled", cfg.auto_file.enabled)
+        if "folders" in af:
+            cfg.auto_file.folders.update(af["folders"])
 
         # Resolve relative DB path against config file directory
         db_path = Path(cfg.db_path)

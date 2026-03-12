@@ -150,13 +150,15 @@ SQLite-backed reminder service for AI agents. Supports one-time and recurring re
 
 #### Email Scanner (`reference/oap_email/`)
 
-Read-only IMAP email scanner for AI agents. Two-phase design: `POST /scan` fetches from IMAP and caches to SQLite, read endpoints query local cache. UID-based incremental scanning. LLM-powered message classification.
+IMAP email scanner for AI agents with LLM-powered classification and auto-filing. Two-phase design: `POST /scan` fetches from IMAP and caches to SQLite, read endpoints query local cache. UID-based incremental scanning. Optional auto-filing moves classified messages into IMAP folders.
 
 - Entry point: `oap-email-api` (:8305)
-- Config: `config.yaml` (IMAP host/port/credentials, folders, SQLite path, default scan hours, classifier settings)
-- Key files: `config.py` (IMAPConfig + ClassifierConfig + Config), `imap.py` (stdlib imaplib + asyncio.to_thread), `db.py` (SQLite message cache with upsert/search/thread grouping + category column), `sanitize.py` (HTML→text + prompt injection filtering), `models.py` (Pydantic types), `api.py` (FastAPI + dispatch endpoint + background classification), `classifier.py` (LLM categorization via Ollama)
-- API: `POST /scan`, `GET /messages`, `GET /messages/{id}`, `GET /threads/{thread_id}`, `GET /summary`, `POST /classify`, `POST /api` (single-endpoint dispatcher for OAP manifests), `GET /health`
-- **Classifier**: Categorizes messages into `spam`, `marketing`, `transactional`, or `inbox` using a local LLM via Ollama. Runs in background after scan; `POST /classify` for manual trigger. Config: `classifier.enabled` (bool), `classifier.model`, `classifier.ollama_url`, `classifier.timeout`. Short system prompt (~100 tokens) produces single-word classification per message.
+- Config: `config.yaml` (IMAP host/port/credentials, folders, SQLite path, default scan hours, classifier settings, auto-file settings)
+- Key files: `config.py` (IMAPConfig + ClassifierConfig + AutoFileConfig + Config), `imap.py` (stdlib imaplib + asyncio.to_thread + IMAP move), `db.py` (SQLite message cache with upsert/search/thread grouping + category + filed tracking), `sanitize.py` (HTML→text + prompt injection filtering), `models.py` (Pydantic types), `api.py` (FastAPI + dispatch endpoint + background classification + auto-filing), `classifier.py` (LLM categorization via Ollama)
+- API: `POST /scan`, `GET /messages`, `GET /messages/{id}`, `GET /threads/{thread_id}`, `GET /summary`, `POST /classify`, `POST /reclassify`, `POST /file`, `POST /api` (single-endpoint dispatcher for OAP manifests), `GET /health`
+- **Classifier**: Categorizes messages into `personal`, `machine`, `mailing-list`, `spam`, or `offers` using a local LLM via Ollama. Runs in background after scan; `POST /classify` for manual trigger. `POST /reclassify` resets all categories and re-runs classification. Config: `classifier.enabled` (bool), `classifier.model`, `classifier.ollama_url`, `classifier.timeout`. Short system prompt (~100 tokens) produces single-word classification per message.
+- **Auto-filing**: Moves classified messages to IMAP folders based on category. `POST /file` processes unfiled messages, COPY+DELETE via IMAP, creates target folders if they don't exist. Messages are marked as filed in the DB to prevent re-processing. Config: `auto_file.enabled` (bool), `auto_file.folders` (category → IMAP folder name mapping). Designed to run as a cron job after scan: `curl -s -X POST localhost:8305/scan && curl -s -X POST localhost:8305/file`.
+- **Timestamp normalization**: All `received_at` timestamps are stored in UTC (`+00:00`) for correct SQLite string comparison across timezone offsets. Migration auto-normalizes existing data on startup.
 - **Query parser**: Supports `OR` between terms and field prefixes (`from:`, `to:`, `subject:`, `body:`). Examples: `from:Amy OR from:Keric`, `from:amy@netgate.net subject:invoice`.
 - Manifest: `reference/oap_discovery/manifests/oap-email.json`
 

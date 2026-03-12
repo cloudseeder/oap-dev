@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Query
 
 from .config import Config, load_config
 from .db import EmailDB
-from .imap import scan_folder
+from .imap import move_messages, scan_folder
 from .models import DispatchRequest
 
 log = logging.getLogger("oap.email.api")
@@ -131,6 +131,44 @@ async def classify():
     from .classifier import classify_uncategorized
     count = await classify_uncategorized(_cfg.classifier, _db)
     return {"classified": count}
+
+
+@app.post("/file")
+async def file_messages():
+    """Move classified messages to IMAP folders based on category."""
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if not _cfg or not _cfg.auto_file.enabled:
+        raise HTTPException(status_code=400, detail="Auto-file not enabled")
+    if not _cfg.imap.host:
+        raise HTTPException(status_code=503, detail="IMAP not configured")
+
+    unfiled = _db.get_unfiled(limit=100)
+    if not unfiled:
+        return {"filed": 0, "skipped": 0}
+
+    folder_map = _cfg.auto_file.folders
+    moves: list[tuple[str, int, str]] = []
+    skipped = 0
+
+    for msg in unfiled:
+        target = folder_map.get(msg["category"])
+        if not target or target == msg["folder"]:
+            # No mapping or already in target folder — mark as filed
+            _db.mark_filed(msg["id"])
+            skipped += 1
+            continue
+        moves.append((msg["folder"], msg["uid"], target))
+
+    filed = 0
+    if moves:
+        filed = await move_messages(_cfg.imap, moves)
+        # Mark successfully moved messages as filed
+        for i, (_, _, _) in enumerate(moves[:filed]):
+            _db.mark_filed(unfiled[skipped + i]["id"])
+
+    log.info("Auto-filed %d message(s), skipped %d", filed, skipped)
+    return {"filed": filed, "skipped": skipped}
 
 
 @app.post("/reclassify")
@@ -253,6 +291,9 @@ async def dispatch(req: DispatchRequest):
         return result
     elif action == "reclassify":
         result = await reclassify()
+        return result
+    elif action == "file":
+        result = await file_messages()
         return result
     elif action == "list":
         result = await list_messages(

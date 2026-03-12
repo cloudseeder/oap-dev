@@ -1,6 +1,6 @@
 # oap-email
 
-Read-only IMAP email scanner for OAP agents. Fetches messages from any IMAP server, caches them in SQLite, and exposes sanitized plain text via a local API. No HTML, no raw MIME, no prompt injection reaches the LLM.
+IMAP email scanner with LLM-powered classification and auto-filing. Fetches messages from any IMAP server, caches them in SQLite, classifies them using a local LLM, and optionally files them into IMAP folders by category. No HTML, no raw MIME, no prompt injection reaches the LLM.
 
 ## Quick Start
 
@@ -32,6 +32,21 @@ database:
 api:
   host: "127.0.0.1"
   port: 8305
+
+classifier:
+  enabled: true
+  model: "qwen3.5:latest"
+  ollama_url: "http://localhost:11434"
+  timeout: 30
+
+auto_file:
+  enabled: true
+  folders:
+    personal: Personal
+    machine: Machine
+    mailing-list: Mailing-List
+    spam: Spam
+    offers: Offers
 ```
 
 ### App Passwords
@@ -43,12 +58,18 @@ Most providers require an app password for IMAP, not your login password:
 
 ## Architecture
 
-Two-phase design: scan then read.
+Three-phase pipeline: scan, classify, file.
 
-1. **Scan** (`POST /scan`) — connects to IMAP, fetches messages newer than the last cached UID, parses MIME, sanitizes, and caches to SQLite
-2. **Read** (`GET /messages`, `GET /summary`, etc.) — queries the local cache, never touches IMAP
+1. **Scan** (`POST /scan`) — connects to IMAP, fetches messages newer than the last cached UID, parses MIME, sanitizes, and caches to SQLite. Timestamps normalized to UTC.
+2. **Classify** (automatic after scan) — sends subject, sender, and snippet to a local LLM which returns a single category word. Stored in the `category` column.
+3. **File** (`POST /file`) — moves classified messages to IMAP folders based on category mapping. Creates folders if they don't exist. Marks messages as filed to prevent re-processing.
 
-This means the agent task calls scan + summary together. Between scans, reads are instant (local SQLite).
+Between scans, reads are instant (local SQLite). The full pipeline runs well as a cron job:
+
+```bash
+# Every 15 minutes: scan IMAP, then file classified messages
+*/15 * * * * curl -s -X POST http://localhost:8305/scan && curl -s -X POST http://localhost:8305/file > /dev/null 2>&1
+```
 
 ## API Endpoints
 
@@ -60,6 +81,8 @@ This means the agent task calls scan + summary together. Between scans, reads ar
 | `GET` | `/threads/{thread_id}` | Get all messages in a thread |
 | `GET` | `/summary` | Activity overview: counts, senders, subjects (query param: `since`) |
 | `POST` | `/classify` | Manually trigger LLM classification of uncategorized messages |
+| `POST` | `/reclassify` | Reset all categories and reclassify every message |
+| `POST` | `/file` | Move classified messages to IMAP folders by category |
 | `POST` | `/api` | Dispatch endpoint for OAP tool bridge (action-based routing) |
 | `GET` | `/health` | Health check |
 
@@ -73,6 +96,8 @@ The `/api` endpoint accepts `{"action": "..."}` for the OAP tool bridge:
 - `thread` — fetch thread by `thread_id`
 - `summary` — activity overview
 - `classify` — trigger LLM classification of uncategorized messages
+- `reclassify` — reset all categories and reclassify
+- `file` — move classified messages to IMAP folders
 
 ## Email Classifier
 
@@ -82,54 +107,76 @@ Messages are automatically categorized using a local LLM via Ollama. Classificat
 
 | Category | Description |
 |----------|-------------|
-| `inbox` | Real human correspondence — anything that doesn't clearly fit the other categories |
-| `marketing` | Newsletters, promotional offers, sales, subscriptions |
-| `transactional` | Receipts, shipping notifications, account alerts, auth codes |
-| `spam` | Junk, phishing, unsolicited messages |
-
-### Configuration
-
-Add to `config.yaml`:
-
-```yaml
-classifier:
-  enabled: true
-  model: "qwen3:14b"
-  ollama_url: "http://localhost:11434"
-  timeout: 30
-```
-
-### How It Works
-
-1. `POST /scan` fetches new messages from IMAP and caches them
-2. If `classifier.enabled`, a background task classifies uncategorized messages
-3. Each message's subject, sender, and snippet are sent to the LLM with a short system prompt (~100 tokens)
-4. The LLM returns a single category word, stored in the `category` column
-5. Subsequent queries can filter by category: `{"action": "list", "category": "inbox"}`
+| `personal` | Written by or about a real person: colleagues, friends, family, clients, community members. Social media notifications about people you know (Facebook comments, tags). HOA/community group emails. |
+| `machine` | Automated/system-generated with no human author: server alerts, cron output, cPanel, disk space warnings, security scans, WordPress updates, CI/CD, monitoring, auth codes |
+| `mailing-list` | Informational newsletters, news digests, editorial content, industry bulletins (CISA advisories, tech newsletters, curated content) |
+| `spam` | Junk, phishing, unsolicited bulk email |
+| `offers` | Selling something: sales, promotions, deals, coupons, discounts, event tickets, subscription renewals, product launches, service upgrades |
 
 ### Manual Classification
 
-To classify existing uncategorized messages:
-
 ```bash
+# Classify uncategorized messages (up to 50 per call)
 curl -X POST http://localhost:8305/classify
-```
 
-Processes up to 50 messages per call. Run repeatedly until `{"classified": 0}`.
+# Reset all categories and reclassify everything
+curl -X POST http://localhost:8305/reclassify
+```
 
 ### Query Filtering
 
-Filter by category in list queries:
-
 ```bash
-# Only real correspondence
-curl 'http://localhost:8305/messages?category=inbox'
-
-# Via dispatch
+# Only personal correspondence
 curl -X POST http://localhost:8305/api \
   -H 'Content-Type: application/json' \
-  -d '{"action": "list", "category": "inbox"}'
+  -d '{"action": "list", "category": "personal"}'
+
+# Machine alerts from today
+curl -X POST http://localhost:8305/api \
+  -H 'Content-Type: application/json' \
+  -d '{"action": "list", "category": "machine", "since": "2026-03-12T00:00:00Z"}'
 ```
+
+## Auto-Filing
+
+When enabled, `POST /file` moves classified messages from INBOX to category-specific IMAP folders via COPY + DELETE. Target folders are created automatically if they don't exist.
+
+### How It Works
+
+1. Queries the DB for classified but unfiled messages
+2. Maps each message's category to an IMAP folder name (configurable)
+3. Opens a writable IMAP connection, copies messages to target folders
+4. Deletes originals from source folder (IMAP expunge)
+5. Marks messages as `filed` in the DB
+
+### Configuration
+
+```yaml
+auto_file:
+  enabled: true
+  folders:
+    personal: Personal        # category → IMAP folder name
+    machine: Machine
+    mailing-list: Mailing-List
+    spam: Spam
+    offers: Offers
+```
+
+Override any folder name to match your mail server's conventions (e.g., `spam: Junk` for servers that use "Junk" instead of "Spam").
+
+### Standalone Use
+
+The scanner works independently of OAP. Point it at any IMAP mailbox with an Ollama instance available, and it becomes a self-hosted email classifier and filer:
+
+```bash
+# Minimal config — just IMAP + classifier + auto-file
+oap-email-api --config my-mailbox.yaml
+
+# Cron: scan, classify (automatic), file
+*/15 * * * * curl -s -X POST http://localhost:8305/scan && curl -s -X POST http://localhost:8305/file
+```
+
+No agent, no discovery service, no manifests required.
 
 ## Query Parser
 
@@ -185,7 +232,7 @@ Create a scheduled task in the agent UI:
 - **Name**: Daily email scan
 - **Prompt**: Scan my email and summarize any new messages
 - **Schedule**: `0 7 * * *` (daily at 7 AM)
-- **Model**: qwen3:14b
+- **Model**: qwen3.5:9b
 
 The task results appear in the morning greeting briefing automatically.
 
@@ -193,10 +240,10 @@ The task results appear in the morning greeting briefing automatically.
 
 | File | Purpose |
 |------|---------|
-| `config.py` | YAML config loader, IMAP/DB/API/classifier settings |
+| `config.py` | YAML config loader: IMAP, DB, API, classifier, auto-file settings |
 | `models.py` | Pydantic types for messages, threads, summaries, dispatch |
 | `sanitize.py` | HTML→text, prompt injection filtering |
-| `imap.py` | Async IMAP scanner via stdlib imaplib, MIME parsing |
-| `db.py` | SQLite message cache with threading, query parser, category support |
+| `imap.py` | Async IMAP scanner + message mover via stdlib imaplib |
+| `db.py` | SQLite message cache with threading, query parser, category + filed tracking |
 | `classifier.py` | LLM email categorization via Ollama |
-| `api.py` | FastAPI service, REST + dispatch + background classification |
+| `api.py` | FastAPI service: REST + dispatch + background classification + auto-filing |

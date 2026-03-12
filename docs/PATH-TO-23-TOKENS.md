@@ -151,3 +151,24 @@ OAP's experience cache gives a small LLM procedural memory — the ability to re
 The fingerprint needs to be fast — it's the gate that decides whether to use the cache or do full discovery. At 112 seconds, the fingerprint took longer than the discovery it was supposed to skip. At 1.7 seconds, it's a genuine fast path.
 
 A 4-billion parameter model on a $500 Mac Mini discovering tools it's never seen, executing them, summarizing the output, and synthesizing a coherent answer — all through a protocol that didn't exist in its training data. The fingerprint is one small piece, but getting it right meant the difference between a demo and something you'd actually use.
+
+## Epilogue: The model that won't call tools without thinking
+
+Months later, we consolidated. Three models (qwen3:4b for fingerprinting, qwen3:8b for chat and tool calling, qwen3:14b for classification) became one: qwen3.5:9b. One model for everything — discovery, tool routing, fingerprinting, email classification, result summarization. The ultimate expression of the "single model on commodity hardware" thesis.
+
+There was just one problem. qwen3.5:9b refuses to make tool calls with `think=false`.
+
+The original qwen3:8b would dutifully select tools without reasoning — you could suppress thinking and it would still emit well-formed tool calls. qwen3.5:9b won't. Alibaba trained the 3.5 generation with tighter coupling between reasoning and structured output. The model needs to think through *which* tool to call, *why*, and *what arguments* to pass. Cut off the thinking and it produces empty responses, malformed JSON, or just... nothing.
+
+So now thinking is always enabled for tool calls. The system prompt that once said "never think" now stays silent on the matter, and the model reasons its way to every tool selection. Latency went up. Token counts went up. VRAM pressure at 8k context is manageable — 8.7GB, 100% GPU offload, no swapping on 16GB — but it's a heavier model doing more work per request.
+
+The fingerprinting trick still works, though. `format="json"` constrains the output space regardless of whether thinking is enabled. The model can reason internally all it wants — the grammar mask ensures only valid JSON tokens get emitted. Structure still beats persuasion.
+
+The irony compounds: we spent 12 hours teaching qwen3:4b to stop thinking. Then we upgraded to a model that *must* think to function. The lesson isn't "thinking bad" or "thinking good" — it's that different tasks have different constraints, and the right tool is the one that enforces the constraint you actually have. For fingerprinting, that's `format=json`. For tool calling, it's letting the model think.
+
+| Model | Fingerprinting | Tool calling | Classification | Models loaded |
+|-------|---------------|-------------|----------------|---------------|
+| qwen3:4b + 8b + 14b | 23 tokens / 1.7s | ~12 tokens / ~3s | ~1 token / ~2s | 3 |
+| qwen3.5:9b | 18 tokens / 2.9s | 178 tokens / 20s | ~1 token / ~3s | 1 |
+
+One model. One machine. No internet. Everything works — just slower. The escalation path to cloud models exists for when speed matters more than independence. But the local-first architecture means the system never *needs* the cloud. It's a choice, not a dependency.

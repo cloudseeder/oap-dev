@@ -61,6 +61,9 @@ class EmailDB:
             self.conn.execute("ALTER TABLE messages ADD COLUMN category TEXT")
             self.conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_category ON messages(category)")
             self.conn.commit()
+        if "filed" not in cols:
+            self.conn.execute("ALTER TABLE messages ADD COLUMN filed INTEGER DEFAULT 0")
+            self.conn.commit()
         # Normalize received_at to UTC (+00:00) for consistent string comparison
         self._normalize_timestamps()
 
@@ -235,6 +238,23 @@ class EmailDB:
             self.conn.execute(
                 "UPDATE messages SET category = ? WHERE id = ?",
                 (category, msg_id),
+            )
+            self.conn.commit()
+
+    def get_unfiled(self, limit: int = 50) -> list[dict]:
+        """Return classified but unfiled messages."""
+        rows = self.conn.execute(
+            "SELECT id, folder, uid, category FROM messages "
+            "WHERE category IS NOT NULL AND filed = 0 "
+            "ORDER BY received_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_filed(self, msg_id: str) -> None:
+        with self._lock:
+            self.conn.execute(
+                "UPDATE messages SET filed = 1 WHERE id = ?", (msg_id,),
             )
             self.conn.commit()
 
