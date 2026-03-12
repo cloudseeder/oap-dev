@@ -29,6 +29,7 @@ async def extract_facts_from_text(
     text: str,
     existing_facts: list[dict],
     *,
+    model: str = "qwen3:8b",
     timeout: int = 30,
 ) -> list[str]:
     """Extract user facts from freeform text. Returns list of fact strings."""
@@ -46,7 +47,7 @@ async def extract_facts_from_text(
     )
 
     payload = {
-        "model": "qwen3:8b",
+        "model": model,
         "prompt": prompt,
         "system": EXTRACTION_SYSTEM,
         "stream": False,
@@ -76,6 +77,7 @@ async def extract_and_store_facts(
     user_message: str,
     assistant_response: str,
     *,
+    model: str = "qwen3:8b",
     timeout: int = 30,
     max_facts: int = 50,
 ) -> None:
@@ -101,7 +103,7 @@ async def extract_and_store_facts(
         )
 
         payload = {
-            "model": "qwen3:8b",
+            "model": model,
             "prompt": prompt,
             "system": EXTRACTION_SYSTEM,
             "stream": False,

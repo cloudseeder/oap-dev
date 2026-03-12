@@ -577,7 +577,7 @@ async def chat(req: ChatRequest):
         if settings.get("memory_enabled") == "true" and result["content"]:
             from .memory import extract_and_store_facts
             asyncio.create_task(
-                extract_and_store_facts(_db, _discovery_url, req.message, result["content"])
+                extract_and_store_facts(_db, _discovery_url, req.message, result["content"], model=req.model)
             )
 
         yield _sse_event("assistant_message", {
