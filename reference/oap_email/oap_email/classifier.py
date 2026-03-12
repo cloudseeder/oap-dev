@@ -14,12 +14,20 @@ CATEGORIES = ("personal", "machine", "mailing-list", "spam", "offers")
 
 _SYSTEM_PROMPT = (
     "Classify this email into exactly one category.\n\n"
-    "personal — written by a real human (colleague, friend, family, client)\n"
-    "machine — automated/system-generated (server alerts, cron output, cPanel, "
-    "disk space warnings, security scans, WordPress updates, CI/CD, monitoring)\n"
-    "mailing-list — newsletters, digests, mailing list posts, group emails\n"
-    "spam — junk, phishing, unsolicited bulk email\n"
-    "offers — sales, promotions, deals, coupons, limited-time discounts\n\n"
+    "personal — written by or about a real person you know: colleagues, friends, "
+    "family, clients, neighbors, community members. Includes social media "
+    "notifications about people you know (Facebook comments, tags, replies). "
+    "HOA/community group emails where a real person is writing also count.\n"
+    "machine — automated/system-generated with no human author: server alerts, "
+    "cron output, cPanel, disk space warnings, security scans, WordPress updates, "
+    "CI/CD, monitoring, settlement reports, auth codes\n"
+    "mailing-list — informational newsletters, news digests, editorial content, "
+    "industry bulletins (CISA advisories, tech newsletters, curated content). "
+    "NOT social notifications about people you know (those are personal). "
+    "NOT promotional offers (those are offers).\n"
+    "spam — junk, phishing, unsolicited bulk email, adult content\n"
+    "offers — selling something: sales, promotions, deals, coupons, discounts, "
+    "event tickets, subscription renewals, product launches, service upgrades\n\n"
     "Respond with ONLY the category name, nothing else."
 )
 
