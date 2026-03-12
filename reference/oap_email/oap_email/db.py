@@ -61,6 +61,37 @@ class EmailDB:
             self.conn.execute("ALTER TABLE messages ADD COLUMN category TEXT")
             self.conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_category ON messages(category)")
             self.conn.commit()
+        # Normalize received_at to UTC (+00:00) for consistent string comparison
+        self._normalize_timestamps()
+
+    def _normalize_timestamps(self):
+        """Convert any non-UTC received_at values to UTC +00:00 format."""
+        from datetime import datetime, timezone
+        rows = self.conn.execute(
+            "SELECT id, received_at FROM messages WHERE received_at IS NOT NULL "
+            "AND received_at NOT LIKE '%+00:00'"
+        ).fetchall()
+        if not rows:
+            return
+        updated = 0
+        for row in rows:
+            raw = row[1]
+            try:
+                parsed = datetime.fromisoformat(raw)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                utc = parsed.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                if utc != raw:
+                    self.conn.execute(
+                        "UPDATE messages SET received_at = ? WHERE id = ?",
+                        (utc, row[0]),
+                    )
+                    updated += 1
+            except (ValueError, TypeError):
+                continue
+        if updated:
+            self.conn.commit()
+            log.info("Normalized %d/%d received_at timestamps to UTC", updated, len(rows))
 
     def close(self):
         self.conn.close()
@@ -120,6 +151,9 @@ class EmailDB:
         conditions = ["folder = ?"]
         params: list = [folder]
         if since:
+            # Normalize Z suffix to +00:00 for consistent string comparison
+            if since.endswith("Z"):
+                since = since[:-1] + "+00:00"
             conditions.append("received_at >= ?")
             params.append(since)
         if unread:

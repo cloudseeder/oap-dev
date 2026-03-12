@@ -29,6 +29,13 @@ async def lifespan(app: FastAPI):
     _cfg = load_config(config_path)
     _db = EmailDB(_cfg.db_path)
 
+    # Log cached message count for debugging
+    try:
+        cached = _db.conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+        log.info("Email DB: %d cached message(s) in %s", cached, _cfg.db_path)
+    except Exception:
+        pass
+
     if not _cfg.imap.host:
         log.warning("No IMAP host configured — scan endpoints will fail")
     else:
@@ -152,11 +159,12 @@ async def list_messages(
     query: str | None = None,
     category: str | None = None,
     limit: int = Query(20, ge=1, le=100),
+    _skip_default_since: bool = False,
 ):
     """List cached messages."""
     if not _db:
         raise HTTPException(status_code=503, detail="Service unavailable")
-    if since is None:
+    if since is None and not _skip_default_since:
         hours = _cfg.default_scan_hours if _cfg else 24
         since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     messages = _db.list_messages(folder=folder, since=since, unread=unread, query=query, category=category, limit=limit)
@@ -250,6 +258,7 @@ async def dispatch(req: DispatchRequest):
         result = await list_messages(
             folder=req.folder, since=req.since, unread=req.unread,
             query=req.query, category=req.category, limit=req.limit,
+            _skip_default_since=True,
         )
         log.info("Dispatch list → %d message(s)", result.get("total", 0))
         return result

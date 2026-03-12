@@ -51,14 +51,18 @@ def _parse_address_list(raw: str | None) -> list[dict]:
 
 
 def _parse_date(raw: str | None) -> str:
-    """Parse email date header to ISO 8601."""
+    """Parse email date header to ISO 8601 UTC.
+
+    Always normalizes to UTC so SQLite string comparison works correctly
+    across messages with different timezone offsets.
+    """
     if not raw:
         return ""
     try:
         parsed = email.utils.parsedate_to_datetime(raw)
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.isoformat()
+        return parsed.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     except Exception:
         return raw
 
