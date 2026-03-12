@@ -387,47 +387,24 @@ async def chat(req: ChatRequest):
 
     async def stream_response():
         nonlocal llm_messages
-        briefing = ""
-
         # Emit user message saved event
         yield _sse_event("message_saved", {
             "conversation_id": conv_id,
             "message": user_msg,
         })
 
-        # Inject pending notifications as context for greetings or direct queries
+        # Inject pending notifications as context for greetings or direct queries.
+        # Briefings are formatted directly — no LLM — because the notification
+        # data is already ground truth (title + snippet).  Cloud models hallucinate
+        # when asked to "summarize" short factual data.
         if greeting or notif_query:
-            briefing = _build_briefing_context()
             from datetime import date, datetime, timezone
             _db.set_setting("last_greeting_at", datetime.now(timezone.utc).isoformat())
-            if briefing:
-                if greeting:
-                    briefing_prompt = (
-                        f"The user just greeted you. Today is {date.today().isoformat()}. "
-                        "Give a warm greeting, then summarize ONLY the notifications listed below. "
-                        "Do NOT invent, fabricate, or add any information not explicitly present in the notifications. "
-                        "If a notification is unclear, say so rather than guessing. "
-                        "Keep it concise.\n\n"
-                        + briefing
-                    )
-                else:
-                    briefing_prompt = (
-                        f"The user is asking about their notifications. Today is {date.today().isoformat()}. "
-                        "Present ONLY the notifications listed below. "
-                        "Do NOT invent, fabricate, or add any information not present in the notifications. "
-                        "If there's nothing actionable, say so.\n\n"
-                        + briefing
-                    )
-                llm_messages.append({"role": "system", "content": briefing_prompt})
-                log.info("Briefing injected (%s, %d chars)", "greeting" if greeting else "query", len(briefing))
-            elif notif_query:
-                # No notifications — tell the user explicitly
-                llm_messages.append({"role": "system", "content": "The user is asking about notifications. There are no pending notifications — let them know they're all caught up."})
-            elif greeting:
-                # Greeting with no notifications — respond directly, no LLM.
-                # Cloud models ignore "don't hallucinate" instructions and
-                # fabricate morning briefings from the persona context.
-                from datetime import time as _time
+            notifications = _db.get_pending_notifications(limit=20)
+            log.info("Briefing: %d pending notification(s)", len(notifications))
+
+            if notifications:
+                # Build direct briefing — present ground truth, no LLM
                 hour = datetime.now().hour
                 if hour < 12:
                     time_greeting = "Good morning"
@@ -435,19 +412,67 @@ async def chat(req: ChatRequest):
                     time_greeting = "Good afternoon"
                 else:
                     time_greeting = "Good evening"
-                persona_name = settings.get("persona_name", "")
+
+                lines: list[str] = []
+                for n in notifications:
+                    line = f"- **{n['title']}**"
+                    if n.get("body"):
+                        line += f": {n['body']}"
+                    lines.append(line)
+
+                if greeting:
+                    direct_briefing = (
+                        f"{time_greeting}! You have {len(notifications)} update{'s' if len(notifications) != 1 else ''}:\n\n"
+                        + "\n".join(lines)
+                    )
+                else:
+                    direct_briefing = (
+                        f"You have {len(notifications)} notification{'s' if len(notifications) != 1 else ''}:\n\n"
+                        + "\n".join(lines)
+                    )
+
+                log.info("Briefing direct (%s, %d notification(s))", "greeting" if greeting else "query", len(notifications))
+                assistant_msg = _db.add_message(conv_id, role="assistant", content=direct_briefing)
+                yield _sse_event("assistant_message", {
+                    "conversation_id": conv_id,
+                    "message": assistant_msg,
+                })
+                yield _sse_event("done", {"conversation_id": conv_id})
+                _db.dismiss_all_notifications()
+                log.info("Dismissed %d notification(s) after delivery", len(notifications))
+                if settings.get("memory_enabled") == "true":
+                    asyncio.create_task(_extract_memory(conv_id, req.message))
+                return
+
+            elif notif_query:
+                # No notifications — tell the user directly
+                assistant_msg = _db.add_message(conv_id, role="assistant", content="No pending notifications — you're all caught up!")
+                yield _sse_event("assistant_message", {
+                    "conversation_id": conv_id,
+                    "message": assistant_msg,
+                })
+                yield _sse_event("done", {"conversation_id": conv_id})
+                return
+
+            elif greeting:
+                # Greeting with no notifications — respond directly
+                hour = datetime.now().hour
+                if hour < 12:
+                    time_greeting = "Good morning"
+                elif hour < 17:
+                    time_greeting = "Good afternoon"
+                else:
+                    time_greeting = "Good evening"
                 direct_greeting = (
                     f"{time_greeting}! Nothing new to report right now. "
                     "What can I help you with?"
                 )
-                # Save and stream directly — skip LLM call
                 assistant_msg = _db.add_message(conv_id, role="assistant", content=direct_greeting)
                 yield _sse_event("assistant_message", {
                     "conversation_id": conv_id,
                     "message": assistant_msg,
                 })
                 yield _sse_event("done", {"conversation_id": conv_id})
-                # Fire-and-forget memory extraction
                 if settings.get("memory_enabled") == "true":
                     asyncio.create_task(_extract_memory(conv_id, req.message))
                 return
@@ -559,11 +584,6 @@ async def chat(req: ChatRequest):
             "conversation_id": conv_id,
             "message": assistant_msg,
         })
-
-        # Dismiss notifications only after the response is successfully delivered
-        if (greeting or notif_query) and briefing:
-            _db.dismiss_all_notifications()
-            log.info("Dismissed notifications after successful delivery")
 
         yield _sse_event("done", {"conversation_id": conv_id})
 
