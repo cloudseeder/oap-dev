@@ -103,7 +103,7 @@ The `/api` endpoint accepts `{"action": "..."}` for the OAP tool bridge:
 
 Messages are automatically categorized using a local LLM via Ollama. Classification runs in the background after each scan and stores the result in the database — each message is only classified once.
 
-### Categories
+### Default Categories
 
 | Category | Description |
 |----------|-------------|
@@ -112,6 +112,34 @@ Messages are automatically categorized using a local LLM via Ollama. Classificat
 | `mailing-list` | Informational newsletters, news digests, editorial content, industry bulletins (CISA advisories, tech newsletters, curated content) |
 | `spam` | Junk, phishing, unsolicited bulk email |
 | `offers` | Selling something: sales, promotions, deals, coupons, discounts, event tickets, subscription renewals, product launches, service upgrades |
+
+### Custom Categories
+
+Categories are fully user-configurable. Add or override categories in `config.yaml` — each entry is a name and a plain-English description that gets built into the LLM system prompt. No code changes or prompt tuning required.
+
+```yaml
+classifier:
+  enabled: true
+  model: "qwen3.5:9b"
+  categories:
+    # These merge with the 5 defaults above
+    finance: "invoices, receipts, bank statements, tax documents, payment confirmations"
+    newsletters: "editorial newsletters, curated content digests, industry bulletins"
+
+auto_file:
+  enabled: true
+  folders:
+    # Add matching folders for your custom categories
+    finance: Finance
+    newsletters: Reading-List
+```
+
+To apply new categories to existing messages:
+
+```bash
+# Reclassify everything with the updated category set
+curl -X POST http://localhost:8305/reclassify
+```
 
 ### Manual Classification
 
