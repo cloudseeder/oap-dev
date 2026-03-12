@@ -4,12 +4,12 @@
   "description": "Create, list, complete, and manage personal reminders with due dates and recurrence. Use for requests like 'remind me to call the dentist Friday', 'what reminders are due today', 'show my overdue reminders', 'mark reminder 3 as done', 'set a weekly reminder to check backups'. Supports one-time and recurring reminders (daily, weekly, monthly, yearly).",
   "input": {
     "format": "application/json",
-    "description": "JSON with 'action' to select operation and additional parameters. Actions: 'create' (new reminder), 'due' (due/overdue today), 'list' (all reminders), 'complete' (mark done by id), 'delete' (remove by id), 'get' (fetch by id), 'cleanup' (purge old completed).",
+    "description": "JSON with 'action' to select operation and additional parameters. Actions: 'list' (all reminders, optional due_date filter), 'due' (due/overdue today), 'create' (new reminder), 'complete' (mark done by id), 'delete' (remove by id), 'get' (fetch by id), 'cleanup' (purge old completed).",
     "parameters": {
       "action": {"type": "string", "description": "Operation: 'create', 'due', 'list', 'complete', 'delete', 'get', 'cleanup'", "required": true},
       "title": {"type": "string", "description": "Reminder title (required for create)", "required": false},
       "notes": {"type": "string", "description": "Additional details or context", "required": false},
-      "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format (or 'today', 'tomorrow')", "required": false},
+      "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format. For 'list' action, filters to reminders on that exact date. For 'create', sets the due date.", "required": false},
       "due_time": {"type": "string", "description": "Due time in HH:MM format or '5 PM' style", "required": false},
       "recurring": {"type": "string", "description": "Recurrence: 'daily', 'weekly', 'monthly', or 'yearly'", "required": false},
       "id": {"type": "integer", "description": "Reminder ID (for complete, delete, get)", "required": false},

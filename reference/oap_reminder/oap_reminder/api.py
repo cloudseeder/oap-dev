@@ -153,6 +153,7 @@ async def dispatch(body: dict):
     elif action in ("list", "list_all", "show", "all"):
         reminders, total = _db.list_all(
             status=body.get("status"),
+            due_date=body.get("due_date"),
             limit=int(body.get("limit", 50)),
         )
         return {"reminders": reminders, "total": total}

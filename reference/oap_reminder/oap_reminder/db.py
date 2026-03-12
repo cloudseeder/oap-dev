@@ -152,14 +152,19 @@ class ReminderDB:
     def list_all(
         self,
         status: str | None = None,
+        due_date: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        where = ""
+        clauses: list[str] = []
         params: list = []
         if status:
-            where = "WHERE status = ?"
+            clauses.append("status = ?")
             params.append(status)
+        if due_date:
+            clauses.append("due_date = ?")
+            params.append(due_date)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
 
         total = self.conn.execute(
             f"SELECT COUNT(*) FROM reminders {where}", params,
