@@ -440,8 +440,6 @@ async def chat(req: ChatRequest):
                 yield _sse_event("done", {"conversation_id": conv_id})
                 _db.dismiss_all_notifications()
                 log.info("Dismissed %d notification(s) after delivery", len(notifications))
-                if settings.get("memory_enabled") == "true":
-                    asyncio.create_task(_extract_memory(conv_id, req.message))
                 return
 
             elif notif_query:
@@ -473,8 +471,6 @@ async def chat(req: ChatRequest):
                     "message": assistant_msg,
                 })
                 yield _sse_event("done", {"conversation_id": conv_id})
-                if settings.get("memory_enabled") == "true":
-                    asyncio.create_task(_extract_memory(conv_id, req.message))
                 return
 
         # Route: conversational turns skip the tool bridge entirely
