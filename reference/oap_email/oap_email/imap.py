@@ -286,13 +286,13 @@ async def scan_folder(
 def _move_messages_sync(
     cfg: IMAPConfig,
     moves: list[tuple[str, int, str]],
-) -> int:
+) -> set[int]:
     """Move messages to target IMAP folders. Each move is (source_folder, uid, target_folder).
 
-    Creates target folders if they don't exist. Returns count of successful moves.
+    Creates target folders if they don't exist. Returns set of UIDs successfully moved.
     """
     if not moves:
-        return 0
+        return set()
 
     if cfg.use_ssl:
         conn = imaplib.IMAP4_SSL(cfg.host, cfg.port)
@@ -301,7 +301,7 @@ def _move_messages_sync(
 
     try:
         conn.login(cfg.username, cfg.password)
-        moved = 0
+        moved_uids: set[int] = set()
         created_folders: set[str] = set()
 
         # Detect IMAP namespace prefix (e.g. "INBOX." for Dovecot/cPanel)
@@ -354,15 +354,15 @@ def _move_messages_sync(
                 status, data = conn.uid("COPY", uid_str, full_target)
                 if status == "OK":
                     conn.uid("STORE", uid_str, "+FLAGS", "(\\Deleted)")
-                    moved += 1
+                    moved_uids.add(uid)
                 else:
                     log.warning("IMAP COPY UID %s → %s failed: %s %s", uid_str, full_target, status, data)
 
             # Expunge deleted messages from source folder
             conn.expunge()
 
-        log.info("IMAP filed %d/%d message(s)", moved, len(moves))
-        return moved
+        log.info("IMAP filed %d/%d message(s)", len(moved_uids), len(moves))
+        return moved_uids
 
     finally:
         try:
@@ -374,6 +374,6 @@ def _move_messages_sync(
 async def move_messages(
     cfg: IMAPConfig,
     moves: list[tuple[str, int, str]],
-) -> int:
-    """Async wrapper for IMAP move."""
+) -> set[int]:
+    """Async wrapper for IMAP move. Returns set of UIDs successfully moved."""
     return await asyncio.to_thread(_move_messages_sync, cfg, moves)

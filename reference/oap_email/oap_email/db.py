@@ -258,6 +258,13 @@ class EmailDB:
             )
             self.conn.commit()
 
+    def reset_filed(self) -> int:
+        """Reset all filed flags so messages get re-processed."""
+        with self._lock:
+            cur = self.conn.execute("UPDATE messages SET filed = 0 WHERE filed = 1")
+            self.conn.commit()
+            return cur.rowcount
+
     def reset_categories(self) -> int:
         """Clear all categories so messages get reclassified."""
         with self._lock:

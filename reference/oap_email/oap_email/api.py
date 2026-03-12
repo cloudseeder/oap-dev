@@ -162,13 +162,26 @@ async def file_messages():
 
     filed = 0
     if moves:
-        filed = await move_messages(_cfg.imap, moves)
-        # Mark successfully moved messages as filed
-        for i, (_, _, _) in enumerate(moves[:filed]):
-            _db.mark_filed(unfiled[skipped + i]["id"])
+        moved_uids = await move_messages(_cfg.imap, moves)
+        # Mark only successfully moved messages as filed (by UID match)
+        for msg in unfiled:
+            if msg["uid"] in moved_uids:
+                _db.mark_filed(msg["id"])
+                filed += 1
 
     log.info("Auto-filed %d message(s), skipped %d", filed, skipped)
     return {"filed": filed, "skipped": skipped}
+
+
+@app.post("/refile")
+async def refile():
+    """Reset all filed flags and re-process. Use after fixing filing issues."""
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    reset = _db.reset_filed()
+    log.info("Reset %d filed flag(s) for re-filing", reset)
+    result = await file_messages()
+    return {"reset": reset, **result}
 
 
 @app.post("/reclassify")
