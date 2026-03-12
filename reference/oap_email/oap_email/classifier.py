@@ -10,26 +10,17 @@ from .config import ClassifierConfig
 
 log = logging.getLogger("oap.email.classifier")
 
-CATEGORIES = ("personal", "machine", "mailing-list", "spam", "offers")
+# Legacy category mapping for pre-existing cached responses
+_LEGACY = {"inbox": "personal", "transactional": "machine", "marketing": "mailing-list"}
 
-_SYSTEM_PROMPT = (
-    "Classify this email into exactly one category.\n\n"
-    "personal — written by or about a real person you know: colleagues, friends, "
-    "family, clients, neighbors, community members. Includes social media "
-    "notifications about people you know (Facebook comments, tags, replies). "
-    "HOA/community group emails where a real person is writing also count.\n"
-    "machine — automated/system-generated with no human author: server alerts, "
-    "cron output, cPanel, disk space warnings, security scans, WordPress updates, "
-    "CI/CD, monitoring, settlement reports, auth codes\n"
-    "mailing-list — informational newsletters, news digests, editorial content, "
-    "industry bulletins (CISA advisories, tech newsletters, curated content). "
-    "NOT social notifications about people you know (those are personal). "
-    "NOT promotional offers (those are offers).\n"
-    "spam — junk, phishing, unsolicited bulk email, adult content\n"
-    "offers — selling something: sales, promotions, deals, coupons, discounts, "
-    "event tickets, subscription renewals, product launches, service upgrades\n\n"
-    "Respond with ONLY the category name, nothing else."
-)
+
+def _build_system_prompt(categories: dict[str, str]) -> str:
+    """Build classifier system prompt from category definitions."""
+    lines = ["Classify this email into exactly one category.\n"]
+    for name, description in categories.items():
+        lines.append(f"{name} — {description}")
+    lines.append("\nRespond with ONLY the category name, nothing else.")
+    return "\n".join(lines)
 
 
 async def classify_message(
@@ -41,11 +32,12 @@ async def classify_message(
 ) -> str | None:
     """Classify a single email message. Returns category or None on failure."""
     user_msg = f"From: {from_name} <{from_email}>\nSubject: {subject}\n\n{snippet}"
+    system_prompt = _build_system_prompt(cfg.categories)
 
     payload = {
         "model": cfg.model,
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_msg},
         ],
         "stream": False,
@@ -67,19 +59,21 @@ async def classify_message(
 
     content = data.get("message", {}).get("content", "").strip().lower()
     # Normalize variations: "mailing list" → "mailing-list"
+    content = content.replace(" ", "-") if "-" in "".join(cfg.categories) else content
     content = content.replace("mailing list", "mailing-list")
     # Extract category — handle models that add extra text
-    for cat in CATEGORIES:
+    for cat in cfg.categories:
         if cat in content:
             return cat
-    # Legacy category mapping for pre-existing cached responses
-    _LEGACY = {"inbox": "personal", "transactional": "machine", "marketing": "mailing-list"}
+    # Legacy category mapping
     for old, new in _LEGACY.items():
-        if old in content:
+        if old in content and new in cfg.categories:
             return new
 
-    log.warning("Unrecognized category %r — defaulting to personal", content)
-    return "personal"
+    # Default to first category
+    default = next(iter(cfg.categories))
+    log.warning("Unrecognized category %r — defaulting to %s", content, default)
+    return default
 
 
 async def classify_uncategorized(cfg: ClassifierConfig, db) -> int:

@@ -20,12 +20,39 @@ class IMAPConfig:
     folders: list[str] = field(default_factory=lambda: ["INBOX"])
 
 
+_DEFAULT_CATEGORIES: dict[str, str] = {
+    "personal": (
+        "written by or about a real person you know: colleagues, friends, "
+        "family, clients, neighbors, community members. Includes social media "
+        "notifications about people you know (Facebook comments, tags, replies). "
+        "HOA/community group emails where a real person is writing also count"
+    ),
+    "machine": (
+        "automated/system-generated with no human author: server alerts, "
+        "cron output, cPanel, disk space warnings, security scans, WordPress updates, "
+        "CI/CD, monitoring, settlement reports, auth codes"
+    ),
+    "mailing-list": (
+        "informational newsletters, news digests, editorial content, "
+        "industry bulletins (CISA advisories, tech newsletters, curated content). "
+        "NOT social notifications about people you know (those are personal). "
+        "NOT promotional offers (those are offers)"
+    ),
+    "spam": "junk, phishing, unsolicited bulk email, adult content",
+    "offers": (
+        "selling something: sales, promotions, deals, coupons, discounts, "
+        "event tickets, subscription renewals, product launches, service upgrades"
+    ),
+}
+
+
 @dataclass
 class ClassifierConfig:
     enabled: bool = False
     ollama_url: str = "http://localhost:11434"
     model: str = "qwen3.5:latest"
     timeout: int = 30
+    categories: dict[str, str] = field(default_factory=lambda: dict(_DEFAULT_CATEGORIES))
 
 
 @dataclass
@@ -91,6 +118,9 @@ def load_config(path: str | None = None) -> Config:
         cfg.classifier.ollama_url = cl.get("ollama_url", cfg.classifier.ollama_url)
         cfg.classifier.model = cl.get("model", cfg.classifier.model)
         cfg.classifier.timeout = cl.get("timeout", cfg.classifier.timeout)
+        if "categories" in cl:
+            # Merge user categories into defaults — user can override or add
+            cfg.classifier.categories.update(cl["categories"])
 
         # Auto-file
         af = raw.get("auto_file", {})
