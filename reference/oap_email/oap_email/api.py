@@ -126,6 +126,20 @@ async def classify():
     return {"classified": count}
 
 
+@app.post("/reclassify")
+async def reclassify():
+    """Reset all categories and reclassify every message."""
+    if not _db:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    if not _cfg or not _cfg.classifier.enabled:
+        raise HTTPException(status_code=400, detail="Classifier not enabled")
+    reset = _db.reset_categories()
+    log.info("Reset %d message categories for reclassification", reset)
+    from .classifier import classify_uncategorized
+    count = await classify_uncategorized(_cfg.classifier, _db)
+    return {"reset": reset, "classified": count}
+
+
 # ---------------------------------------------------------------------------
 # REST endpoints
 # ---------------------------------------------------------------------------
@@ -228,6 +242,9 @@ async def dispatch(req: DispatchRequest):
         return result
     elif action == "classify":
         result = await classify()
+        return result
+    elif action == "reclassify":
+        result = await reclassify()
         return result
     elif action == "list":
         result = await list_messages(

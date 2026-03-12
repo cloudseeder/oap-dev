@@ -10,14 +10,16 @@ from .config import ClassifierConfig
 
 log = logging.getLogger("oap.email.classifier")
 
-CATEGORIES = ("spam", "marketing", "transactional", "inbox")
+CATEGORIES = ("personal", "machine", "mailing-list", "spam", "offers")
 
 _SYSTEM_PROMPT = (
     "Classify this email into exactly one category.\n\n"
-    "spam — junk, phishing, unsolicited\n"
-    "marketing — newsletters, offers, sales, subscriptions\n"
-    "transactional — receipts, shipping, account alerts, auth codes\n"
-    "inbox — real human correspondence, anything that doesn't clearly fit above\n\n"
+    "personal — written by a real human (colleague, friend, family, client)\n"
+    "machine — automated/system-generated (server alerts, cron output, cPanel, "
+    "disk space warnings, security scans, WordPress updates, CI/CD, monitoring)\n"
+    "mailing-list — newsletters, digests, mailing list posts, group emails\n"
+    "spam — junk, phishing, unsolicited bulk email\n"
+    "offers — sales, promotions, deals, coupons, limited-time discounts\n\n"
     "Respond with ONLY the category name, nothing else."
 )
 
@@ -56,13 +58,20 @@ async def classify_message(
         return None
 
     content = data.get("message", {}).get("content", "").strip().lower()
+    # Normalize variations: "mailing list" → "mailing-list"
+    content = content.replace("mailing list", "mailing-list")
     # Extract category — handle models that add extra text
     for cat in CATEGORIES:
         if cat in content:
             return cat
+    # Legacy category mapping for pre-existing cached responses
+    _LEGACY = {"inbox": "personal", "transactional": "machine", "marketing": "mailing-list"}
+    for old, new in _LEGACY.items():
+        if old in content:
+            return new
 
-    log.warning("Unrecognized category %r — defaulting to inbox", content)
-    return "inbox"
+    log.warning("Unrecognized category %r — defaulting to personal", content)
+    return "personal"
 
 
 async def classify_uncategorized(cfg: ClassifierConfig, db) -> int:

@@ -204,6 +204,13 @@ class EmailDB:
             )
             self.conn.commit()
 
+    def reset_categories(self) -> int:
+        """Clear all categories so messages get reclassified."""
+        with self._lock:
+            cur = self.conn.execute("UPDATE messages SET category = NULL WHERE category IS NOT NULL")
+            self.conn.commit()
+            return cur.rowcount
+
     # ------------------------------------------------------------------
     # Query parser — supports OR, field prefixes (from:, subject:, body:)
     # ------------------------------------------------------------------
