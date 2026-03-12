@@ -318,16 +318,18 @@ def _move_messages_sync(
             for uid, target_folder in uid_targets:
                 # Create target folder if needed (once per folder)
                 if target_folder not in created_folders:
-                    conn.create(target_folder)  # OK if already exists
+                    cs, cd = conn.create(target_folder)  # OK if already exists
+                    log.info("IMAP CREATE %s: %s %s", target_folder, cs, cd)
+                    conn.subscribe(target_folder)
                     created_folders.add(target_folder)
 
                 uid_str = str(uid)
-                status, _ = conn.uid("COPY", uid_str, target_folder)
+                status, data = conn.uid("COPY", uid_str, target_folder)
                 if status == "OK":
                     conn.uid("STORE", uid_str, "+FLAGS", "(\\Deleted)")
                     moved += 1
                 else:
-                    log.warning("IMAP COPY UID %s → %s failed", uid_str, target_folder)
+                    log.warning("IMAP COPY UID %s → %s failed: %s %s", uid_str, target_folder, status, data)
 
             # Expunge deleted messages from source folder
             conn.expunge()
