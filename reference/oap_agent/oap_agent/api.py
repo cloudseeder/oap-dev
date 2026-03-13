@@ -390,7 +390,7 @@ async def chat(req: ChatRequest):
         # For short/generic messages (greetings, "thanks", "ok"), inject all
         # facts so the companion feels like it knows the user.
         msg_words = len(req.message.split())
-        if total_facts > 15 and msg_words >= 4:
+        if total_facts > 30 and msg_words >= 4:
             query_vec = await _embed_query(_discovery_url, req.message)
             if query_vec is not None:
                 facts = _db.search_facts(query_vec, top_k=10, min_similarity=0.45)
