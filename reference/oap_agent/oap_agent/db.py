@@ -767,6 +767,9 @@ class AgentDB:
 
         Pinned facts are ALWAYS included regardless of similarity score.
         Returns pinned facts first, then top-K learned facts above min_similarity.
+        Each returned fact has a ``similarity`` key (1.0 for pinned).
+        Also returns the max similarity score found across all embedded facts
+        as ``_max_similarity`` on the first result (for caller diagnostics).
         """
         rows = self.conn.execute(
             "SELECT * FROM user_facts WHERE embedding IS NOT NULL OR pinned = 1"
@@ -774,10 +777,12 @@ class AgentDB:
 
         pinned: list[dict] = []
         scored: list[tuple[float, dict]] = []
+        max_sim = 0.0
 
         for row in rows:
             fact = dict(row)
             if fact.get("pinned"):
+                fact["similarity"] = 1.0
                 pinned.append(fact)
                 continue
             blob = fact.get("embedding")
@@ -785,7 +790,9 @@ class AgentDB:
                 continue
             vec = _unpack_embedding(blob)
             sim = _cosine_similarity(query_embedding, vec)
+            max_sim = max(max_sim, sim)
             if sim >= min_similarity:
+                fact["similarity"] = round(sim, 4)
                 scored.append((sim, fact))
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -795,7 +802,11 @@ class AgentDB:
         for f in pinned + top_learned:
             f.pop("embedding", None)
 
-        return pinned + top_learned
+        results = pinned + top_learned
+        # Stash max similarity for caller diagnostics
+        if results:
+            results[0]["_max_similarity"] = round(max_sim, 4)
+        return results
 
     # --- Notifications ---
 

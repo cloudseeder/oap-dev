@@ -382,21 +382,53 @@ async def chat(req: ChatRequest):
     if settings.get("memory_enabled") == "true":
         from .memory import embed_query as _embed_query
 
-        # RAG: embed the user message and retrieve relevant facts
-        query_vec = await _embed_query(_discovery_url, req.message)
-        if query_vec is not None:
-            facts = _db.search_facts(query_vec, top_k=10, min_similarity=0.3)
-            # Also include any unembedded facts (partial backfill state)
-            unembedded = _db.get_facts_without_embeddings()
-            if unembedded:
-                embedded_ids = {f["id"] for f in facts}
-                for uf in unembedded:
-                    if uf["id"] not in embedded_ids:
-                        facts.append(uf)
+        total_facts = _db.count_facts()
+        use_rag = False
+        rag_reason = "disabled"
+
+        # Only use RAG when there are enough facts to benefit from filtering.
+        # For short/generic messages (greetings, "thanks", "ok"), inject all
+        # facts so the companion feels like it knows the user.
+        msg_words = len(req.message.split())
+        if total_facts > 15 and msg_words >= 4:
+            query_vec = await _embed_query(_discovery_url, req.message)
+            if query_vec is not None:
+                facts = _db.search_facts(query_vec, top_k=10, min_similarity=0.25)
+                # Check if the query was too generic (low max similarity)
+                max_sim = facts[0].pop("_max_similarity", 0.0) if facts else 0.0
+                if max_sim < 0.3:
+                    # Query didn't meaningfully match anything — inject all
+                    facts = _db.get_all_facts()
+                    rag_reason = f"generic query (max_sim={max_sim:.3f}), using all {len(facts)} facts"
+                else:
+                    use_rag = True
+                    rag_reason = f"top_sim={max_sim:.3f}, selected {len(facts)}/{total_facts} facts"
+                    # Also include any unembedded facts (partial backfill state)
+                    unembedded = _db.get_facts_without_embeddings()
+                    if unembedded:
+                        embedded_ids = {f["id"] for f in facts}
+                        for uf in unembedded:
+                            if uf["id"] not in embedded_ids:
+                                facts.append(uf)
+            else:
+                # Embedding failed — fall back to all facts
+                facts = _db.get_all_facts()
+                rag_reason = "embed failed, using all facts"
         else:
-            # Embedding failed — fall back to all facts (current behavior)
-            log.warning("embed_query failed, falling back to all facts")
             facts = _db.get_all_facts()
+            if total_facts <= 15:
+                rag_reason = f"only {total_facts} facts, using all"
+            else:
+                rag_reason = f"short message ({msg_words} words), using all {len(facts)} facts"
+
+        # Debug logging
+        if use_rag:
+            scored = [f for f in facts if f.get("similarity") and not f.get("pinned")]
+            log.info("Memory RAG: %s", rag_reason)
+            for f in scored[:5]:
+                log.info("  %.3f  %s", f["similarity"], f["fact"])
+        else:
+            log.info("Memory inject-all: %s", rag_reason)
 
         if facts:
             _db.touch_facts([f["id"] for f in facts])
