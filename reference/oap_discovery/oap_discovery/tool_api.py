@@ -813,7 +813,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
                 _prev_user_msg = msg.content
                 break
     _FOLLOWUP_RE = _re.compile(
-        r'^(please\s+)?(correct|fix|update|change|delete|remove|yes|do|ok|sure|confirm)\b',
+        r'^(please\s+)?(correct|fix|update|change|delete|remove|yes|ok|sure|confirm|do\s+(it|that|this|so))\b',
         _re.I,
     )
     if last_user_msg and _prev_user_msg and len(last_user_msg) < 60 and _FOLLOWUP_RE.search(last_user_msg):
