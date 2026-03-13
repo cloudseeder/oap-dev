@@ -31,7 +31,7 @@ const DEFAULT_STATE: BuilderState = {
 }
 
 const MINUTE_INTERVALS = [5, 10, 15, 30]
-const MINUTE_OPTIONS = [0, 15, 30, 45]
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => i)
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const MINUTES = Array.from({ length: 60 }, (_, i) => i)
 const DAYS_OF_MONTH = Array.from({ length: 28 }, (_, i) => i + 1)
