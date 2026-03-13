@@ -15,10 +15,10 @@ log = logging.getLogger("oap.agent.memory")
 EXTRACTION_SYSTEM = (
     "You extract short factual statements about the user and their world from a conversation. "
     "Return a JSON object with a single key \"facts\" containing an array of strings. "
-    "Each fact should be 3-12 words. Always include the subject's name when the fact "
-    "is about someone other than the user. "
+    "Each fact should be 3-15 words. Always preserve full names (first and last) "
+    "and include the subject's relationship when the fact is about someone other than the user. "
     "Examples: \"lives in Portland\", \"wife Amy works as video editor at KGW\", "
-    "\"son Kai born in 1996\", \"dog Bear born August 2019\". "
+    "\"son Kai born in 1996\", \"grandparents Hellen and Jack Schwieger lived in Cherry Creek NY\". "
     "Only extract DURABLE facts: identity, relationships, family, preferences, expertise, "
     "location, health, birthdays, or interests. "
     "Do NOT extract: "
