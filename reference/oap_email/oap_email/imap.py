@@ -224,8 +224,10 @@ def _scan_folder_sync(
         if not uid_list:
             return []
 
-        # Take the most recent ones
-        uid_list = uid_list[-limit:]
+        # Initial scan (no cached UIDs): fetch all messages
+        # Incremental scan: limit to most recent N new messages
+        if since_uid > 0:
+            uid_list = uid_list[-limit:]
 
         messages = []
         for uid_bytes in uid_list:
