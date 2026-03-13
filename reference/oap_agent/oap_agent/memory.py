@@ -147,6 +147,42 @@ async def extract_facts_from_text(
     return [str(f) for f in facts if f and isinstance(f, str) and len(str(f)) < 200]
 
 
+def _extract_subject(fact: str) -> str | None:
+    """Extract the named subject from a fact, if any.
+
+    Returns the name (e.g. "kai", "amy", "bear") or None if the fact
+    is about the user (implicit subject).
+    """
+    _REL_PREFIX = re.compile(
+        r"^(?:son|daughter|wife|husband|dog|cat|pet|child|partner|mom|dad|"
+        r"mother|father|brother|sister|grandparents?|user'?s?\s+\w+)\s+",
+        re.IGNORECASE,
+    )
+    text = _REL_PREFIX.sub("", fact)  # Strip relationship prefix
+    # First remaining capitalized word is the name
+    m = re.match(r"(\b[A-Z][a-z]+\b)", text)
+    if m:
+        name = m.group(1)
+        _GENERIC = {"The", "That", "This", "User", "Plans", "Parents", "Children",
+                     "Recently", "Has", "Was", "Born", "Lives", "Works", "Owned"}
+        if name not in _GENERIC:
+            return name.lower()
+    return None
+
+
+def _same_subject(fact_a: str, fact_b: str) -> bool:
+    """Check if two facts are about the same subject.
+
+    Two facts with no named subject (both about the user) → same subject.
+    Two facts with the same name → same subject.
+    One with a name, one without → different subjects.
+    Two with different names → different subjects.
+    """
+    subj_a = _extract_subject(fact_a)
+    subj_b = _extract_subject(fact_b)
+    return subj_a == subj_b
+
+
 async def _semantic_dedup(
     db: AgentDB,
     discovery_url: str,
@@ -191,8 +227,12 @@ async def _semantic_dedup(
             if sim > max_sim:
                 max_sim = sim
                 best_match = existing_texts[j]
-        if max_sim >= threshold:
+        if max_sim >= threshold and _same_subject(cand, best_match):
             log.info("Semantic dedup: '%.60s' ≈ '%.60s' (sim=%.3f), skipping", cand, best_match, max_sim)
+        elif max_sim >= threshold:
+            log.info("Semantic dedup: '%.60s' ≈ '%.60s' (sim=%.3f), different subjects — keeping", cand, best_match, max_sim)
+            kept.append(cand)
+            kept_vecs.append(cvec)
         else:
             kept.append(cand)
             kept_vecs.append(cvec)
