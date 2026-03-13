@@ -199,7 +199,7 @@ async def extract_and_store_facts(
     assistant_response: str,
     *,
     model: str = "qwen3:8b",
-    timeout: int = 30,
+    timeout: int = 120,
     max_facts: int = 500,
 ) -> None:
     """Extract user facts from a conversation turn and store them.
