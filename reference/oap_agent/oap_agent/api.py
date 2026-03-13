@@ -387,13 +387,17 @@ async def chat(req: ChatRequest):
     # Save user message
     user_msg = _db.add_message(conv_id, role="user", content=req.message)
 
-    # Build message history for the LLM
+    # Build message history for the LLM — keep last N messages to bound
+    # latency as conversations grow (user facts carry long-term memory).
+    _MAX_HISTORY_MESSAGES = 20  # ~10 turns
     history = _db.get_messages(conv_id)
     llm_messages = [
         {"role": m["role"], "content": m["content"]}
         for m in history
         if m["role"] in ("user", "assistant")
     ]
+    if len(llm_messages) > _MAX_HISTORY_MESSAGES:
+        llm_messages = llm_messages[-_MAX_HISTORY_MESSAGES:]
 
     # Prepend persona + user facts as a system message
     settings = _db.get_settings()
