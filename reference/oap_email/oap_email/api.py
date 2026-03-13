@@ -99,15 +99,21 @@ async def scan():
     if pruned:
         log.info("Pruned %d old cached message(s)", pruned)
 
-    # Classify all uncategorized messages (not just new ones)
+    # Classify uncategorized messages — one batch for incremental scans,
+    # loop until done for initial ingest (large number of new messages)
     classified = 0
     if _cfg.classifier.enabled:
         from .classifier import classify_uncategorized
-        while True:
-            batch = await classify_uncategorized(_cfg.classifier, _db)
-            classified += batch
-            if batch == 0:
-                break
+        if total > 50:
+            # Initial ingest — classify everything
+            while True:
+                batch = await classify_uncategorized(_cfg.classifier, _db)
+                classified += batch
+                if batch == 0:
+                    break
+        else:
+            # Incremental — single batch, keeps scan fast
+            classified = await classify_uncategorized(_cfg.classifier, _db)
 
     # Auto-file classified messages
     filed = 0
