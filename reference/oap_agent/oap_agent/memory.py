@@ -13,12 +13,14 @@ from .db import AgentDB
 log = logging.getLogger("oap.agent.memory")
 
 EXTRACTION_SYSTEM = (
-    "You extract short factual statements about the user from a conversation. "
+    "You extract short factual statements about the user and their world from a conversation. "
     "Return a JSON object with a single key \"facts\" containing an array of strings. "
-    "Each fact should be 3-10 words, third person (e.g. \"lives in Portland\", "
-    "\"prefers Python over JavaScript\", \"works on robotics\"). "
-    "Only extract DURABLE facts: identity, relationships, preferences, expertise, "
-    "location, health, or interests. "
+    "Each fact should be 3-12 words. Always include the subject's name when the fact "
+    "is about someone other than the user. "
+    "Examples: \"lives in Portland\", \"wife Amy works as video editor at KGW\", "
+    "\"son Kai born in 1996\", \"dog Bear born August 2019\". "
+    "Only extract DURABLE facts: identity, relationships, family, preferences, expertise, "
+    "location, health, birthdays, or interests. "
     "Do NOT extract: "
     "(1) facts about the assistant or tool results, "
     "(2) ephemeral actions (\"ran a script\", \"asked a question\"), "
