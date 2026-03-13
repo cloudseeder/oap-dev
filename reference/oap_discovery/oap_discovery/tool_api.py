@@ -746,7 +746,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
     When stream=true (default for standard Ollama clients), returns NDJSON
     streaming format wrapping the final result.
     """
+    log.info("chat_proxy entered: discover=%s model=%s messages=%d", req.oap_discover, req.model, len(req.messages))
     engine, store, ollama_cfg, bridge_cfg = _require_enabled()
+    log.info("chat_proxy: engine ready, ollama_url=%s", ollama_cfg.base_url)
 
     # Fast path: when discovery is disabled, pass messages straight to Ollama
     # without fingerprinting, tool injection, or system prompt rewriting.
@@ -759,16 +761,24 @@ async def chat_proxy(req: ChatRequest) -> Any:
             "options": {"num_ctx": 32768 if _is_cloud else ollama_cfg.num_ctx},
             "keep_alive": ollama_cfg.keep_alive,
         }
-        async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
-            resp = await client.post(
-                f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
-                json=ollama_payload,
-            )
-            resp.raise_for_status()
-            ollama_resp = resp.json()
+        log.info("chat_proxy: fast path — calling Ollama at %s/api/chat (timeout=%s)", ollama_cfg.base_url, bridge_cfg.ollama_timeout)
+        try:
+            async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:
+                log.info("chat_proxy: fast path — httpx client created, sending POST")
+                resp = await client.post(
+                    f"{ollama_cfg.base_url.rstrip('/')}/api/chat",
+                    json=ollama_payload,
+                )
+                log.info("chat_proxy: fast path — Ollama responded %d", resp.status_code)
+                resp.raise_for_status()
+                ollama_resp = resp.json()
+        except Exception as exc:
+            log.error("chat_proxy: fast path FAILED: %s: %s", type(exc).__name__, exc)
+            raise
         ollama_resp["oap_tools_injected"] = 0
         ollama_resp["oap_round"] = 1
         ollama_resp["oap_conversational"] = True
+        log.info("chat_proxy: fast path — returning response (stream=%s)", req.stream)
         if req.stream:
             return StreamingResponse(
                 _stream_ollama_response(ollama_resp),
@@ -776,6 +786,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             )
         return ollama_resp
 
+    log.info("chat_proxy: full discovery path (max_rounds=%d)", min(req.oap_max_rounds, bridge_cfg.max_rounds))
     max_rounds = min(req.oap_max_rounds, bridge_cfg.max_rounds)
     tools: list[Tool] = []
     registry: dict[str, ToolRegistryEntry] = {}
@@ -823,7 +834,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
     # Always fingerprint when experience engine is available (needed for failure hints
     # even with --no-cache)
     if _experience_engine and last_user_msg:
+        log.info("chat_proxy: fingerprinting intent...")
         exp_fingerprint, exp_intent_domain = await _experience_engine.fingerprint_intent(last_user_msg)
+        log.info("chat_proxy: fingerprint=%s domain=%s", exp_fingerprint, exp_intent_domain)
 
     # Enable thinking for fingerprint prefixes that benefit from verification
     allow_think = False
