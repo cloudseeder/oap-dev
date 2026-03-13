@@ -758,6 +758,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             "model": req.model,
             "messages": [m.model_dump(exclude_none=True) for m in req.messages],
             "stream": False,
+            "think": False,
             "options": {"num_ctx": 32768 if _is_cloud else ollama_cfg.num_ctx},
             "keep_alive": ollama_cfg.keep_alive,
         }
