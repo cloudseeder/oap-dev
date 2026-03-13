@@ -979,6 +979,9 @@ async def chat_proxy(req: ChatRequest) -> Any:
         "When querying weather for US locations, use temperature_unit=fahrenheit and wind_speed_unit=mph. "
         "When listing items (emails, reminders, results), show ALL of them — never omit, "
         "skip, or summarize away items. The user asked for the data, show the data. "
+        "Make ONE tool call with your best parameters. If the result is empty, report that "
+        "no results were found — do NOT retry with different filters, broader queries, or "
+        "removed constraints. Empty results are normal and expected. "
         "After a tool result, reply in 1-2 sentences"
         + (" in character." if caller_system else ".")
     )
