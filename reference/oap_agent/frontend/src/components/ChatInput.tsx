@@ -12,6 +12,7 @@ interface ChatInputProps {
   attentive?: boolean
   transcribing?: boolean
   streaming?: boolean
+  speaking?: boolean
   micSupported?: boolean
   wakeWord?: string
   onMicClick?: () => void
@@ -32,6 +33,7 @@ export default function ChatInput({
   attentive = false,
   transcribing = false,
   streaming = false,
+  speaking = false,
   micSupported = false,
   wakeWord = '',
   onMicClick,
@@ -157,11 +159,15 @@ export default function ChatInput({
                 )}
               </button>
             )}
-            {streaming ? (
+            {streaming || speaking ? (
               <button
                 onClick={onStop}
-                title="Stop generating"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+                title={streaming ? 'Stop generating' : 'Stop speaking'}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg text-white transition-colors ${
+                  speaking && !streaming
+                    ? 'bg-orange-500 hover:bg-orange-600'
+                    : 'bg-red-500 hover:bg-red-600'
+                }`}
               >
                 <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                   <rect x="6" y="6" width="12" height="12" rx="2" />

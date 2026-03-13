@@ -65,6 +65,27 @@ def _syn_config():
         return None
 
 
+def _clean_for_speech(text: str) -> str:
+    """Remove or simplify content that sounds bad when spoken aloud."""
+    # ISO timestamps (2026-03-13T11:07:40.678418Z) → remove entirely
+    text = re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", "", text)
+    # Remaining ISO dates (2026-03-13) → natural form
+    def _format_date(m: re.Match) -> str:
+        months = ["January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December"]
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return f"{months[mo - 1]} {d}, {y}"
+    text = re.sub(r"(\d{4})-(\d{2})-(\d{2})", _format_date, text)
+    # URLs — remove (not speakable)
+    text = re.sub(r"https?://\S+", "", text)
+    # UUIDs and long hex strings
+    text = re.sub(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", "", text, flags=re.IGNORECASE)
+    # Collapse leftover punctuation and whitespace
+    text = re.sub(r"\(\s*\)", "", text)
+    text = re.sub(r"  +", " ", text)
+    return text
+
+
 def _strip_markdown(text: str) -> str:
     """Convert markdown to plain text for natural TTS output."""
     # Code blocks → remove entirely (not speakable)
@@ -130,7 +151,7 @@ def _split_sentences(text: str) -> list[str]:
 def synthesize_stream(text: str, voice: str | None = None):
     """Yield per-sentence WAV bytes. Each yield is a complete mini-WAV."""
     v = _get_voice(voice)
-    text = _strip_markdown(text)
+    text = _clean_for_speech(_strip_markdown(text))
 
     cfg = _syn_config()
 
@@ -161,7 +182,7 @@ def synthesize_stream(text: str, voice: str | None = None):
 def synthesize(text: str, voice: str | None = None) -> bytes:
     """Synthesize text to WAV bytes using the specified (or default) voice."""
     v = _get_voice(voice)
-    text = _strip_markdown(text)
+    text = _clean_for_speech(_strip_markdown(text))
     cfg = _syn_config()
     buf = io.BytesIO()
     wav_file = wave.open(buf, "wb")

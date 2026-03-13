@@ -404,11 +404,12 @@ export default function ChatView() {
         listening={listening}
         transcribing={transcribing}
         streaming={streaming}
+        speaking={anySpeaking}
         attentive={attentive}
         micSupported={micSupported}
         wakeWord={wakeWord}
         onMicClick={handleMicClick}
-        onStop={() => abortRef.current?.abort()}
+        onStop={() => { abortRef.current?.abort(); autoSpeakTTS.stop() }}
         onModelChange={(m) => { modelRef.current = m }}
         onTranscriptionRef={pendingTranscriptionRef}
       />
