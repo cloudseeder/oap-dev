@@ -242,6 +242,7 @@ async def extract_and_store_facts(
         text = data.get("response", "")
         # Strip qwen3 thinking tags if present
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        log.info("Extraction raw output: %s", text[:500])
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
@@ -254,12 +255,15 @@ async def extract_and_store_facts(
                 except json.JSONDecodeError:
                     continue
             else:
+                log.warning("Extraction output not valid JSON, discarding")
                 return
         facts = parsed.get("facts", [])
         if not isinstance(facts, list):
+            log.warning("Extraction returned non-list facts: %s", type(facts))
             return
 
         clean = [str(f) for f in facts if f and isinstance(f, str) and len(str(f)) < 200]
+        log.info("Extraction candidates: %s", clean)
         if clean:
             # Semantic dedup: filter out candidates that are too similar to existing facts
             clean = await _semantic_dedup(db, discovery_url, clean)
