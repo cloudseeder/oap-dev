@@ -415,10 +415,14 @@ async def chat(req: ChatRequest):
 
                 lines: list[str] = []
                 for n in notifications:
-                    line = f"- **{n['title']}**"
-                    if n.get("body"):
-                        line += f": {n['body']}"
-                    lines.append(line)
+                    body = (n.get("body") or "").strip()
+                    if "\n" in body:
+                        # Multi-line: title as header, body as block
+                        lines.append(f"**{n['title']}**:\n{body}")
+                    elif body:
+                        lines.append(f"- **{n['title']}**: {body}")
+                    else:
+                        lines.append(f"- **{n['title']}**")
 
                 if greeting:
                     direct_briefing = (
