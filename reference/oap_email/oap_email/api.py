@@ -163,10 +163,12 @@ async def file_messages():
     filed = 0
     if moves:
         moved_uids = await move_messages(_cfg.imap, moves)
-        # Mark only successfully moved messages as filed (by UID match)
+        # Build UID → target folder map for DB update
+        uid_to_target = {uid: target for _, uid, target in moves}
+        # Mark only successfully moved messages as filed + update folder
         for msg in unfiled:
             if msg["uid"] in moved_uids:
-                _db.mark_filed(msg["id"])
+                _db.mark_filed(msg["id"], new_folder=uid_to_target[msg["uid"]])
                 filed += 1
 
     log.info("Auto-filed %d message(s), skipped %d", filed, skipped)

@@ -251,11 +251,17 @@ class EmailDB:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def mark_filed(self, msg_id: str) -> None:
+    def mark_filed(self, msg_id: str, new_folder: str | None = None) -> None:
         with self._lock:
-            self.conn.execute(
-                "UPDATE messages SET filed = 1 WHERE id = ?", (msg_id,),
-            )
+            if new_folder:
+                self.conn.execute(
+                    "UPDATE messages SET filed = 1, folder = ? WHERE id = ?",
+                    (new_folder, msg_id),
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE messages SET filed = 1 WHERE id = ?", (msg_id,),
+                )
             self.conn.commit()
 
     def reset_filed(self) -> int:
