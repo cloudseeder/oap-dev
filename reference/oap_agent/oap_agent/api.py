@@ -301,6 +301,14 @@ def _is_conversational(message: str) -> bool:
     # imperative verbs / task-oriented keywords.
     if "?" in stripped:
         return False
+    # "tell me about X" and "what do you know about X" are recall questions
+    # that should be answered from memory, not routed to tools.
+    _recall_patterns = re.compile(
+        r"^(tell\s+me\s+about|what\s+do\s+you\s+know\s+about|what\s+do\s+you\s+remember)\b",
+        re.IGNORECASE,
+    )
+    if _recall_patterns.match(stripped):
+        return True
     _task_starts = re.compile(
         r"^(check|find|search|look\s+up|get|fetch|set|create|delete|remove|update"
         r"|send|tell|show|list|remind|schedule|run|execute|can\s+you|could\s+you"
@@ -706,8 +714,15 @@ async def chat(req: ChatRequest):
                 message_id=assistant_msg["id"],
             )
 
-        # Fire-and-forget: extract user memory from this turn
-        if settings.get("memory_enabled") == "true" and result["content"]:
+        # Fire-and-forget: extract user memory from this turn.
+        # Skip extraction when the user asked a question — the assistant's
+        # response just parrots stored facts, and the extractor would save
+        # hallucinated embellishments as new "facts" (feedback loop).
+        _user_is_sharing = (
+            "?" not in req.message
+            and not re.match(r"^(tell|show|what|list|describe)\b", req.message.strip(), re.IGNORECASE)
+        )
+        if settings.get("memory_enabled") == "true" and result["content"] and _user_is_sharing:
             from .memory import extract_and_store_facts
             asyncio.create_task(
                 extract_and_store_facts(_db, _discovery_url, req.message, result["content"], model=req.model)
