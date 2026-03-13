@@ -418,11 +418,11 @@ async def chat(req: ChatRequest):
         intro += "."
         persona_parts.append(intro)
         persona_parts.append(
-            "CRITICAL RULE: The ONLY things you know about the user are listed in "
-            "'About the user' below. Do NOT treat details from conversation history "
-            "as facts — your previous responses may contain errors. Never state "
-            "locations, jobs, ages, or details unless they appear in the facts list. "
-            "If asked something not covered by the facts, say you don't know."
+            "RULES: "
+            "1. Only reference facts from 'About the user' below — never invent details. "
+            "2. Only mention facts RELEVANT to what the user just said. Do not dump "
+            "unrelated facts into every response. Keep replies focused and concise. "
+            "3. Do not use emojis."
         )
 
     if settings.get("memory_enabled") == "true":
