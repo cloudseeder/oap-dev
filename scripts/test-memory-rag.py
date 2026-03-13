@@ -38,40 +38,36 @@ TESTS = [
 ]
 
 
-def send_chat(url: str, message: str, timeout: int = 60) -> dict:
-    """Send a chat message, parse SSE response. Returns parsed result."""
-    resp = httpx.post(
-        f"{url}/v1/agent/chat",
-        json={"message": message},
-        timeout=timeout,
-    )
-    resp.raise_for_status()
-
-    # Parse SSE events
-    events = []
-    for line in resp.text.split("\n"):
-        if line.startswith("data: "):
-            try:
-                events.append(json.loads(line[6:]))
-            except json.JSONDecodeError:
-                pass
-        elif line.startswith("event: "):
-            events.append({"_event": line[7:]})
-
-    # Extract assistant response
+def send_chat(url: str, message: str, timeout: int = 120) -> dict:
+    """Send a chat message, stream SSE response. Returns parsed result."""
     assistant_content = ""
     conv_id = None
-    for evt in events:
-        if isinstance(evt, dict):
-            if evt.get("message", {}).get("role") == "assistant":
-                assistant_content = evt["message"].get("content", "")
-            if evt.get("conversation_id"):
-                conv_id = evt["conversation_id"]
+    event_count = 0
+
+    with httpx.stream(
+        "POST",
+        f"{url}/v1/agent/chat",
+        json={"message": message},
+        timeout=httpx.Timeout(timeout, connect=10),
+    ) as resp:
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                try:
+                    data = json.loads(line[6:])
+                    event_count += 1
+                    msg = data.get("message", {})
+                    if msg.get("role") == "assistant":
+                        assistant_content = msg.get("content", "")
+                    if data.get("conversation_id"):
+                        conv_id = data["conversation_id"]
+                except json.JSONDecodeError:
+                    pass
 
     return {
         "content": assistant_content[:200],
         "conversation_id": conv_id,
-        "events": len(events),
+        "events": event_count,
     }
 
 
