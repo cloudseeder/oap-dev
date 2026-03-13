@@ -477,13 +477,38 @@ async def chat(req: ChatRequest):
             _db.touch_facts([f["id"] for f in facts])
             pinned = [f for f in facts if f.get("pinned")]
             learned = [f for f in facts if not f.get("pinned")]
+
+            # Separate family/pet facts from user facts to prevent
+            # the model from attributing family details to the user.
+            _FAMILY_RE = re.compile(
+                r"^(wife|husband|son|daughter|dog|cat|pet|child|partner|mom|dad|brother|sister)\b|"
+                r"^(Amy|Keric|Kai|Bear)\b",
+                re.IGNORECASE,
+            )
+
+            def _split_facts(fact_list):
+                user_facts = []
+                family_facts = []
+                for f in fact_list:
+                    if _FAMILY_RE.match(f["fact"]):
+                        family_facts.append(f)
+                    else:
+                        user_facts.append(f)
+                return user_facts, family_facts
+
+            pinned_user, pinned_family = _split_facts(pinned)
+            learned_user, learned_family = _split_facts(learned)
+
             memory_parts = []
-            if pinned:
-                memory_parts.append("Core facts:\n" + "\n".join(f"- {f['fact']}" for f in pinned))
-            if learned:
-                memory_parts.append("Learned:\n" + "\n".join(f"- {f['fact']}" for f in learned))
+            user_lines = [f"- {f['fact']}" for f in pinned_user + learned_user]
+            family_lines = [f"- {f['fact']}" for f in pinned_family + learned_family]
+
+            if user_lines:
+                memory_parts.append("About the user:\n" + "\n".join(user_lines))
+            if family_lines:
+                memory_parts.append("Family and pets (NOT the user):\n" + "\n".join(family_lines))
             if memory_parts:
-                persona_parts.append("About the user:\n" + "\n".join(memory_parts))
+                persona_parts.append("\n".join(memory_parts))
 
     if persona_parts:
         llm_messages.insert(0, {"role": "system", "content": "\n\n".join(persona_parts)})
