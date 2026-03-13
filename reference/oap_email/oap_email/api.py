@@ -99,26 +99,23 @@ async def scan():
     if pruned:
         log.info("Pruned %d old cached message(s)", pruned)
 
-    # Classify new messages in background
-    if total > 0 and _cfg.classifier.enabled:
-        asyncio.create_task(_classify_background())
-
-    return {"scanned": total, "folders": _cfg.imap.folders}
-
-
-# ---------------------------------------------------------------------------
-# Background classification
-# ---------------------------------------------------------------------------
-
-async def _classify_background():
-    """Classify uncategorized messages in background."""
-    try:
+    # Classify all uncategorized messages (not just new ones)
+    classified = 0
+    if _cfg.classifier.enabled:
         from .classifier import classify_uncategorized
-        count = await classify_uncategorized(_cfg.classifier, _db)
-        if count:
-            log.info("Background classification: %d message(s)", count)
-    except Exception as exc:
-        log.error("Background classification failed: %s", exc)
+        while True:
+            batch = await classify_uncategorized(_cfg.classifier, _db)
+            classified += batch
+            if batch == 0:
+                break
+
+    # Auto-file classified messages
+    filed = 0
+    if _cfg.auto_file.enabled and _cfg.imap.host:
+        result = await file_messages()
+        filed = result.get("filed", 0)
+
+    return {"scanned": total, "classified": classified, "filed": filed, "folders": _cfg.imap.folders}
 
 
 @app.post("/classify")
