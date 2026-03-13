@@ -421,9 +421,10 @@ async def chat(req: ChatRequest):
             "RULES: "
             "1. Never invent personal details. You may reference facts from 'About the user' "
             "and anything the user tells you in conversation. "
-            "2. Keep replies focused — only mention facts relevant to the current message. "
-            "Do not list unrelated facts. "
-            "3. Be concise. Do not use emojis."
+            "2. When the user mentions a name (Kai, Amy, Keric, Bear, etc.), match it to "
+            "known family members or pets from the facts. Do not confuse them with the user. "
+            "3. Keep replies focused — only mention facts relevant to the current message. "
+            "4. Be concise. Do not use emojis."
         )
 
     if settings.get("memory_enabled") == "true":
