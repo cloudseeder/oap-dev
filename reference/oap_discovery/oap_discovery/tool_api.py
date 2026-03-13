@@ -759,7 +759,7 @@ async def chat_proxy(req: ChatRequest) -> Any:
             "think": False,
             "options": {
                 "num_ctx": 32768 if _is_cloud else ollama_cfg.num_ctx,
-                "temperature": 0.7,
+                "temperature": 0.5,
             },
             "keep_alive": ollama_cfg.keep_alive,
         }

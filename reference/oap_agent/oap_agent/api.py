@@ -418,8 +418,10 @@ async def chat(req: ChatRequest):
         intro += "."
         persona_parts.append(intro)
         persona_parts.append(
-            "Only reference facts you have been told about the user. "
-            "Never invent, assume, or embellish personal details."
+            "IMPORTANT: You MUST only reference facts listed below under 'About the user'. "
+            "Do NOT invent, guess, or embellish any personal details such as locations, "
+            "names, jobs, hobbies, or events that are not explicitly listed. "
+            "If you are unsure about something, ask — never fabricate."
         )
 
     if settings.get("memory_enabled") == "true":
