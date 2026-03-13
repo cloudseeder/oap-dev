@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import type { Conversation } from '@/lib/types'
 import PersonaAvatar from './PersonaAvatar'
 import { useAnySpeaking } from '@/hooks/useTTS'
@@ -10,6 +10,7 @@ export default function AgentSidebar() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const anySpeaking = useAnySpeaking()
   const { state: avatar } = useAvatarState()
   const { notificationCount } = useAgentEvents()
@@ -28,6 +29,21 @@ export default function AgentSidebar() {
   async function handleNewChat() {
     navigate('/chat')
   }
+
+  const handleDelete = useCallback(async (convId: string) => {
+    try {
+      const resp = await fetch(`/v1/agent/conversations/${convId}`, { method: 'DELETE' })
+      if (resp.ok) {
+        setConversations((prev) => prev.filter((c) => c.id !== convId))
+        if (pathname === `/chat/${convId}`) {
+          navigate('/chat')
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setConfirmDelete(null)
+  }, [pathname, navigate])
 
   return (
     <aside className="flex h-full w-64 flex-col bg-gray-900 text-white">
@@ -58,18 +74,41 @@ export default function AgentSidebar() {
         )}
         {conversations.map((conv) => {
           const isActive = pathname === `/chat/${conv.id}`
+          const isConfirming = confirmDelete === conv.id
           return (
-            <Link
-              key={conv.id}
-              to={`/chat/${conv.id}`}
-              className={`block truncate rounded-md px-2 py-1.5 text-sm transition-colors ${
-                isActive
-                  ? 'bg-primary text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              }`}
-            >
-              {conv.title || 'Untitled'}
-            </Link>
+            <div key={conv.id} className="group relative flex items-center">
+              <Link
+                to={`/chat/${conv.id}`}
+                className={`block flex-1 truncate rounded-md px-2 py-1.5 pr-7 text-sm transition-colors ${
+                  isActive
+                    ? 'bg-primary text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+              >
+                {conv.title || 'Untitled'}
+              </Link>
+              {isConfirming ? (
+                <button
+                  onClick={() => handleDelete(conv.id)}
+                  className="absolute right-1 rounded p-0.5 text-red-400 hover:bg-red-500/20 hover:text-red-300"
+                  title="Confirm delete"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={(e) => { e.preventDefault(); setConfirmDelete(conv.id) }}
+                  className="absolute right-1 rounded p-0.5 text-gray-500 opacity-0 transition-opacity hover:bg-gray-600 hover:text-gray-300 group-hover:opacity-100"
+                  title="Delete conversation"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )
         })}
       </nav>
