@@ -54,7 +54,8 @@ async def classify_message(
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
-        log.warning("Classification failed: %s", exc)
+        log.warning("Classification failed for %s <%s> subject=%r: %s: %s",
+                     from_name, from_email, subject[:60], type(exc).__name__, exc)
         return None
 
     content = data.get("message", {}).get("content", "").strip().lower()
