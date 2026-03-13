@@ -51,7 +51,7 @@ class ClassifierConfig:
     enabled: bool = False
     ollama_url: str = "http://localhost:11434"
     model: str = "qwen3.5:latest"
-    timeout: int = 30
+    timeout: int = 120
     categories: dict[str, str] = field(default_factory=lambda: dict(_DEFAULT_CATEGORIES))
 
 

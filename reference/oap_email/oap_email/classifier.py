@@ -10,6 +10,22 @@ from .config import ClassifierConfig
 
 log = logging.getLogger("oap.email.classifier")
 
+_client: httpx.AsyncClient | None = None
+_client_timeout: int = 0
+
+
+def _get_client(cfg) -> httpx.AsyncClient:
+    """Return a reusable async HTTP client, creating one if needed."""
+    global _client, _client_timeout
+    if _client is None or _client.is_closed or _client_timeout != cfg.timeout:
+        if _client and not _client.is_closed:
+            # Can't await close here, just let it GC
+            pass
+        _client = httpx.AsyncClient(timeout=cfg.timeout)
+        _client_timeout = cfg.timeout
+    return _client
+
+
 # Legacy category mapping for pre-existing cached responses
 _LEGACY = {"inbox": "personal", "transactional": "machine", "marketing": "mailing-list"}
 
@@ -46,13 +62,13 @@ async def classify_message(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=cfg.timeout) as client:
-            resp = await client.post(
-                f"{cfg.ollama_url.rstrip('/')}/api/chat",
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        client = _get_client(cfg)
+        resp = await client.post(
+            f"{cfg.ollama_url.rstrip('/')}/api/chat",
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
     except Exception as exc:
         log.warning("Classification failed for %s <%s> subject=%r: %s: %s",
                      from_name, from_email, subject[:60], type(exc).__name__, exc)
