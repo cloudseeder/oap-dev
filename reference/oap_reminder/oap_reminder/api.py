@@ -158,7 +158,7 @@ async def dispatch(body: dict):
         )
         return {"reminders": reminders, "total": total}
     elif action in ("due", "due_today", "overdue", "upcoming", "today"):
-        reminders = _db.list_due(before=body.get("before"))
+        reminders = _db.list_due(before=body.get("before") or body.get("due_date"))
         return {"reminders": reminders, "total": len(reminders)}
     elif action in ("complete", "done", "finish"):
         rid = body.get("id") or body.get("reminder_id")
