@@ -17,10 +17,16 @@ EXTRACTION_SYSTEM = (
     "Return a JSON object with a single key \"facts\" containing an array of strings. "
     "Each fact should be 3-10 words, third person (e.g. \"lives in Portland\", "
     "\"prefers Python over JavaScript\", \"works on robotics\"). "
-    "Only extract facts that reveal the user's identity, preferences, expertise, "
-    "location, or interests. Do NOT extract facts about the assistant, the tool "
-    "results, or generic knowledge. If there is nothing to extract, return "
-    "{\"facts\": []}."
+    "Only extract DURABLE facts: identity, relationships, preferences, expertise, "
+    "location, health, or interests. "
+    "Do NOT extract: "
+    "(1) facts about the assistant or tool results, "
+    "(2) ephemeral actions (\"ran a script\", \"asked a question\"), "
+    "(3) meta-observations about the conversation itself "
+    "(\"wants to share info\", \"is being friendly\"), "
+    "(4) generic knowledge. "
+    "If a new fact is essentially the same as an existing one, do NOT include it. "
+    "If there is nothing to extract, return {\"facts\": []}."
 )
 
 
@@ -138,6 +144,54 @@ async def extract_facts_from_text(
     return [str(f) for f in facts if f and isinstance(f, str) and len(str(f)) < 200]
 
 
+async def _semantic_dedup(
+    db: AgentDB,
+    discovery_url: str,
+    candidates: list[str],
+    threshold: float = 0.85,
+) -> list[str]:
+    """Filter out candidate facts that are semantically similar to existing facts.
+
+    Embeds candidates and compares against existing fact embeddings using
+    cosine similarity. Returns only candidates below the similarity threshold.
+    Falls back to returning all candidates if embedding fails.
+    """
+    from .db import _unpack_embedding, _cosine_similarity
+
+    # Get existing facts that have embeddings
+    rows = db.conn.execute(
+        "SELECT fact, embedding FROM user_facts WHERE embedding IS NOT NULL"
+    ).fetchall()
+    if not rows:
+        return candidates  # No existing embeddings to compare against
+
+    existing_vecs = [_unpack_embedding(r["embedding"]) for r in rows]
+    existing_texts = [r["fact"] for r in rows]
+
+    # Embed candidates
+    candidate_vecs = await embed_texts(discovery_url, candidates)
+    if not candidate_vecs or len(candidate_vecs) != len(candidates):
+        return candidates  # Embedding failed, let SQLite UNIQUE handle it
+
+    kept: list[str] = []
+    for i, (cand, cvec) in enumerate(zip(candidates, candidate_vecs)):
+        max_sim = 0.0
+        best_match = ""
+        for j, evec in enumerate(existing_vecs):
+            sim = _cosine_similarity(cvec, evec)
+            if sim > max_sim:
+                max_sim = sim
+                best_match = existing_texts[j]
+        if max_sim >= threshold:
+            log.info("Semantic dedup: '%.60s' ≈ '%.60s' (sim=%.3f), skipping", cand, best_match, max_sim)
+        else:
+            kept.append(cand)
+
+    if len(kept) < len(candidates):
+        log.info("Semantic dedup: %d/%d candidates kept", len(kept), len(candidates))
+    return kept
+
+
 async def extract_and_store_facts(
     db: AgentDB,
     discovery_url: str,
@@ -207,6 +261,10 @@ async def extract_and_store_facts(
 
         clean = [str(f) for f in facts if f and isinstance(f, str) and len(str(f)) < 200]
         if clean:
+            # Semantic dedup: filter out candidates that are too similar to existing facts
+            clean = await _semantic_dedup(db, discovery_url, clean)
+            if not clean:
+                return
             added = db.add_facts(clean, user_message, max_facts)
             if added:
                 log.info("Extracted %d new user fact(s): %s", added, clean)
