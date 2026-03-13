@@ -757,7 +757,10 @@ async def chat_proxy(req: ChatRequest) -> Any:
             "messages": [m.model_dump(exclude_none=True) for m in req.messages],
             "stream": False,
             "think": False,
-            "options": {"num_ctx": 32768 if _is_cloud else ollama_cfg.num_ctx},
+            "options": {
+                "num_ctx": 32768 if _is_cloud else ollama_cfg.num_ctx,
+                "temperature": 0.7,
+            },
             "keep_alive": ollama_cfg.keep_alive,
         }
         async with httpx.AsyncClient(timeout=bridge_cfg.ollama_timeout) as client:

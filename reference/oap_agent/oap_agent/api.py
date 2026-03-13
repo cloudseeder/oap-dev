@@ -417,6 +417,10 @@ async def chat(req: ChatRequest):
             intro += f", {settings['persona_description']}"
         intro += "."
         persona_parts.append(intro)
+        persona_parts.append(
+            "Only reference facts you have been told about the user. "
+            "Never invent, assume, or embellish personal details."
+        )
 
     if settings.get("memory_enabled") == "true":
         from .memory import embed_query as _embed_query
