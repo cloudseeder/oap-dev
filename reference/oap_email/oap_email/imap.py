@@ -229,41 +229,55 @@ def _scan_folder_sync(
         if since_uid > 0:
             uid_list = uid_list[-limit:]
 
-        messages = []
+        # Filter out already-cached UIDs
+        uids = []
         for uid_bytes in uid_list:
             uid_str = uid_bytes.decode() if isinstance(uid_bytes, bytes) else str(uid_bytes)
             uid_val = int(uid_str)
+            if uid_val > since_uid:
+                uids.append((uid_val, uid_str))
 
-            if uid_val <= since_uid:
-                continue
+        if not uids:
+            log.info("Scanned %s: 0 new message(s) (since UID %d)", folder, since_uid)
+            return []
 
-            # Fetch message
-            status, msg_data = conn.uid("FETCH", uid_str, "(RFC822 FLAGS)")
+        # Fetch in batches to avoid IMAP connection drops on large mailboxes
+        batch_size = 50
+        messages = []
+        for batch_start in range(0, len(uids), batch_size):
+            batch = uids[batch_start:batch_start + batch_size]
+            uid_set = ",".join(u[1] for u in batch)
+            status, msg_data = conn.uid("FETCH", uid_set, "(RFC822 FLAGS)")
             if status != "OK" or not msg_data:
+                log.warning("IMAP FETCH batch %d-%d failed: %s",
+                            batch_start, batch_start + len(batch), status)
                 continue
 
-            # Find the RFC822 body in the response
-            raw_bytes = None
-            flags_str = ""
-            for part in msg_data:
+            # Parse each message from the batch response
+            i = 0
+            while i < len(msg_data):
+                part = msg_data[i]
                 if isinstance(part, tuple) and len(part) == 2:
                     header_line = part[0].decode("ascii", errors="ignore") if isinstance(part[0], bytes) else str(part[0])
-                    if b"RFC822" in part[0] if isinstance(part[0], bytes) else "RFC822" in header_line:
+                    if "RFC822" in header_line:
                         raw_bytes = part[1]
-                        flags_str = header_line
-                        break
+                        # Extract UID from header line (e.g. "123 (UID 456 RFC822 ...")
+                        uid_val = None
+                        uid_match = re.search(r"UID\s+(\d+)", header_line)
+                        if uid_match:
+                            uid_val = int(uid_match.group(1))
+                        if raw_bytes and uid_val:
+                            try:
+                                parsed = parse_message(uid_val, folder, raw_bytes)
+                                parsed["is_read"] = r"\Seen" in header_line
+                                parsed["is_flagged"] = r"\Flagged" in header_line
+                                messages.append(parsed)
+                            except Exception as exc:
+                                log.warning("Failed to parse UID %s in %s: %s", uid_val, folder, exc)
+                i += 1
 
-            if not raw_bytes:
-                continue
-
-            try:
-                parsed = parse_message(uid_val, folder, raw_bytes)
-                parsed["is_read"] = r"\Seen" in flags_str
-                parsed["is_flagged"] = r"\Flagged" in flags_str
-                messages.append(parsed)
-            except Exception as exc:
-                log.warning("Failed to parse UID %s in %s: %s", uid_str, folder, exc)
-                continue
+            log.info("Fetched batch %d-%d: %d message(s)",
+                     batch_start + 1, min(batch_start + batch_size, len(uids)), len(messages))
 
         log.info("Scanned %s: %d new message(s) (since UID %d)", folder, len(messages), since_uid)
         return messages
