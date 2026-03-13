@@ -160,6 +160,11 @@ class AgentDB:
             self.conn.execute("ALTER TABLE user_facts ADD COLUMN embedding BLOB")
             self.conn.commit()
 
+        if "superseded_by" not in cols:
+            self.conn.execute("ALTER TABLE user_facts ADD COLUMN superseded_by TEXT")
+            self.conn.execute("ALTER TABLE user_facts ADD COLUMN superseded_at TEXT")
+            self.conn.commit()
+
         task_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(tasks)").fetchall()}
         if "incremental" not in task_cols:
             self.conn.execute("ALTER TABLE tasks ADD COLUMN incremental INTEGER NOT NULL DEFAULT 1")
@@ -634,9 +639,10 @@ class AgentDB:
     # --- User Facts ---
 
     def get_all_facts(self) -> list[dict]:
-        """Return all user facts ordered by pinned DESC, reference_count DESC."""
+        """Return all active user facts ordered by pinned DESC, reference_count DESC."""
         rows = self.conn.execute(
-            "SELECT * FROM user_facts ORDER BY pinned DESC, reference_count DESC"
+            "SELECT * FROM user_facts WHERE superseded_by IS NULL "
+            "ORDER BY pinned DESC, reference_count DESC"
         ).fetchall()
         result = []
         for r in rows:
@@ -666,15 +672,15 @@ class AgentDB:
                     pass  # duplicate fact
             if added:
                 self.conn.commit()
-                # Only evict unpinned facts
+                # Only evict unpinned, active facts
                 unpinned = self.conn.execute(
-                    "SELECT COUNT(*) FROM user_facts WHERE pinned = 0"
+                    "SELECT COUNT(*) FROM user_facts WHERE pinned = 0 AND superseded_by IS NULL"
                 ).fetchone()[0]
                 if unpinned > max_facts:
                     excess = unpinned - max_facts
                     self.conn.execute(
                         "DELETE FROM user_facts WHERE id IN ("
-                        "  SELECT id FROM user_facts WHERE pinned = 0 "
+                        "  SELECT id FROM user_facts WHERE pinned = 0 AND superseded_by IS NULL "
                         "  ORDER BY reference_count ASC, last_referenced ASC "
                         "  LIMIT ?"
                         ")",
@@ -714,6 +720,17 @@ class AgentDB:
             self.conn.commit()
         return cur.rowcount > 0
 
+    def supersede_fact(self, old_fact_id: str, new_fact_id: str) -> bool:
+        """Mark old fact as superseded by new fact. Pinned facts are immune."""
+        with self._lock:
+            cur = self.conn.execute(
+                "UPDATE user_facts SET superseded_by = ?, superseded_at = ? "
+                "WHERE id = ? AND pinned = 0 AND superseded_by IS NULL",
+                (new_fact_id, _now(), old_fact_id),
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
+
     def touch_facts(self, fact_ids: list[str]) -> None:
         """Bump reference_count and last_referenced for the given fact IDs."""
         now = _now()
@@ -727,8 +744,10 @@ class AgentDB:
             self.conn.commit()
 
     def count_facts(self) -> int:
-        """Total number of stored user facts."""
-        return self.conn.execute("SELECT COUNT(*) FROM user_facts").fetchone()[0]
+        """Total number of active user facts."""
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM user_facts WHERE superseded_by IS NULL"
+        ).fetchone()[0]
 
     def set_embedding(self, fact_id: str, embedding: list[float]) -> bool:
         """Store an embedding BLOB for a single fact. Returns True if updated."""
@@ -754,9 +773,9 @@ class AgentDB:
         return updated
 
     def get_facts_without_embeddings(self) -> list[dict]:
-        """Return facts that have no embedding (NULL)."""
+        """Return active facts that have no embedding (NULL)."""
         rows = self.conn.execute(
-            "SELECT id, fact FROM user_facts WHERE embedding IS NULL"
+            "SELECT id, fact FROM user_facts WHERE embedding IS NULL AND superseded_by IS NULL"
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -772,7 +791,8 @@ class AgentDB:
         as ``_max_similarity`` on the first result (for caller diagnostics).
         """
         rows = self.conn.execute(
-            "SELECT * FROM user_facts WHERE embedding IS NOT NULL OR pinned = 1"
+            "SELECT * FROM user_facts WHERE superseded_by IS NULL "
+            "AND (embedding IS NOT NULL OR pinned = 1)"
         ).fetchall()
 
         pinned: list[dict] = []
