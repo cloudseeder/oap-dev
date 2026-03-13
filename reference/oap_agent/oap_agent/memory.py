@@ -124,6 +124,7 @@ async def extract_facts_from_text(
         "prompt": prompt,
         "system": EXTRACTION_SYSTEM,
         "stream": False,
+        "think": False,
         "format": "json",
         "options": {"num_predict": 200},
     }
@@ -229,6 +230,7 @@ async def extract_and_store_facts(
             "prompt": prompt,
             "system": EXTRACTION_SYSTEM,
             "stream": False,
+            "think": False,
             "format": "json",
             "options": {"num_predict": 400},
         }
