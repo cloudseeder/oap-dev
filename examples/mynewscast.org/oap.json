@@ -1,0 +1,157 @@
+{
+  "oap": "1.0",
+  "name": "mynewscast",
+  "description": "Portland Metro civic news and transparency platform. Get local news articles, government meeting schedules, restaurant health inspections, and search meeting transcripts for 17 agencies across the Portland metropolitan area. For general news queries, use intent \"stories\".",
+  "invoke": {
+    "method": "POST",
+    "url": "https://mynewscast.org/api/v1/query",
+    "auth": "api_key",
+    "auth_in": "header",
+    "auth_name": "X-API-Key"
+  },
+  "input": {
+    "format": "application/json",
+    "description": "JSON object with an \"intent\" field that determines the query type. Supported intents: \"stories\" (news articles — preferred for news queries), \"events\" (government meeting schedules), \"inspections\" (restaurant health data), \"search\" (raw transcript search via RAG — not for news), \"trending\" (top civic topics). All intents support optional \"geo\" parameter (geographic slug) and \"geoScope\" parameter (\"primary\" or \"all\", default \"all\").",
+    "parameters": {
+      "intent": {
+        "type": "string",
+        "enum": ["stories", "events", "inspections", "search", "trending"],
+        "description": "Query type. \"stories\" for current news articles and summaries — use this for general news queries. \"events\" for government meeting schedules and agendas. \"inspections\" for restaurant health inspection data. \"search\" for full-text search of raw meeting transcripts (returns unprocessed speech-to-text excerpts, not news articles — only use when looking for specific quotes or discussion topics). \"trending\" for top civic topics.",
+        "required": true
+      },
+      "geo": {
+        "type": "string",
+        "description": "Geographic scope slug. Resolves to a set of agencies based on the geo hierarchy. Examples: \"portland\" (city), \"multnomah\" (county), \"portland-metro\" (region). Mutually exclusive with \"jurisdiction\" — if both are provided, \"jurisdiction\" takes precedence. Does not apply to inspections intent.",
+        "required": false
+      },
+      "geoScope": {
+        "type": "string",
+        "enum": ["primary", "all"],
+        "description": "Controls which agencies are included when \"geo\" is set. \"primary\" returns only the geo's own agencies (e.g. portland = portland-city-council + portland-public-schools). \"all\" (default) includes the geo's agencies plus county and regional agencies (e.g. portland = city + multnomah-county-board + metro-council + trimet-board + tvfr-board + thprd-board).",
+        "required": false,
+        "default": "all"
+      },
+      "jurisdiction": {
+        "type": "string",
+        "description": "Specific agency slug (e.g. \"portland-city-council\", \"trimet-board\"). Takes precedence over \"geo\". Applies to events and stories intents.",
+        "required": false
+      },
+      "jurisdictions": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Array of agency slugs to scope a search query. Used with \"search\" intent. When set alongside \"geo\", this takes precedence.",
+        "required": false
+      },
+      "topics": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Filter results by topic tags (e.g. [\"housing\", \"transportation\"]). Used with \"events\" and \"stories\" intents.",
+        "required": false
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of results to return. Max 50 for events, stories, and inspections.",
+        "required": false
+      },
+      "cursor": {
+        "type": "string",
+        "description": "Pagination cursor returned in the previous response as \"pagination.nextCursor\". Used with events, stories, and inspections intents.",
+        "required": false
+      },
+      "query": {
+        "type": "string",
+        "description": "Full-text search query (max 1000 characters). Required for \"search\" intent.",
+        "required": false
+      },
+      "topK": {
+        "type": "integer",
+        "description": "Number of RAG transcript chunks to return. Used with \"search\" intent. Max 20, default 5.",
+        "required": false
+      },
+      "daysBack": {
+        "type": "integer",
+        "description": "Number of days to look back. Used with \"stories\" (max 90) and \"inspections\" (max 90) intents.",
+        "required": false
+      },
+      "city": {
+        "type": "string",
+        "description": "City name filter (e.g. \"Portland\", \"Beaverton\"). Used with \"inspections\" intent.",
+        "required": false
+      },
+      "minScore": {
+        "type": "integer",
+        "description": "Minimum inspection score (0–100). Used with \"inspections\" intent.",
+        "required": false
+      },
+      "maxScore": {
+        "type": "integer",
+        "description": "Maximum inspection score (0–100). Used with \"inspections\" intent.",
+        "required": false
+      }
+    }
+  },
+  "output": {
+    "format": "application/json",
+    "description": "JSON envelope with \"ok\" boolean, \"intent\" string, \"data\" object (shape varies by intent), optional \"pagination\" object, and \"meta\" with resultCount and executionTimeMs."
+  },
+  "publisher": {
+    "name": "mynewscast",
+    "url": "https://mynewscast.org"
+  },
+  "tags": ["news", "civic", "government", "portland", "meetings", "health-inspections"],
+  "geos": [
+    { "slug": "portland-metro", "name": "Portland Metro", "level": "region" },
+    { "slug": "multnomah", "name": "Multnomah County", "level": "county" },
+    { "slug": "washington", "name": "Washington County", "level": "county" },
+    { "slug": "clackamas", "name": "Clackamas County", "level": "county" },
+    { "slug": "portland", "name": "Portland", "level": "city" },
+    { "slug": "gresham", "name": "Gresham", "level": "city" },
+    { "slug": "milwaukie", "name": "Milwaukie", "level": "city" },
+    { "slug": "beaverton", "name": "Beaverton", "level": "city" },
+    { "slug": "hillsboro", "name": "Hillsboro", "level": "city" },
+    { "slug": "tigard", "name": "Tigard", "level": "city" },
+    { "slug": "tualatin", "name": "Tualatin", "level": "city" },
+    { "slug": "lakeoswego", "name": "Lake Oswego", "level": "city" },
+    { "slug": "oregoncity", "name": "Oregon City", "level": "city" },
+    { "slug": "westlinn", "name": "West Linn", "level": "city" },
+    { "slug": "happyvalley", "name": "Happy Valley", "level": "city" }
+  ],
+  "registration_url": "https://mynewscast.org/connect",
+  "health": "https://mynewscast.org/api/v1/health",
+  "version": "1.2.0",
+  "updated": "2026-03-13T00:00:00Z",
+  "examples": [
+    {
+      "description": "Get current Portland news",
+      "input": { "intent": "stories", "geo": "portland", "daysBack": 7, "limit": 10 }
+    },
+    {
+      "description": "Get news articles from the last 14 days",
+      "input": { "intent": "stories", "daysBack": 14, "limit": 10 }
+    },
+    {
+      "description": "Get recent Portland City Council events",
+      "input": { "intent": "events", "jurisdiction": "portland-city-council", "limit": 5 }
+    },
+    {
+      "description": "Get all events in Portland (city + county + regional agencies)",
+      "input": { "intent": "events", "geo": "portland", "limit": 10 }
+    },
+    {
+      "description": "Get events from Portland's own agencies only (no county/regional)",
+      "input": { "intent": "events", "geo": "portland", "geoScope": "primary", "limit": 10 }
+    },
+    {
+      "description": "Search meeting transcripts about housing policy",
+      "input": { "intent": "search", "query": "affordable housing policy changes", "topK": 5 }
+    },
+    {
+      "description": "Get restaurant health inspections in Portland",
+      "input": { "intent": "inspections", "city": "Portland", "minScore": 0, "maxScore": 70, "limit": 10 }
+    },
+    {
+      "description": "Get trending civic topics",
+      "input": { "intent": "trending" }
+    }
+  ]
+}

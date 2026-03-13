@@ -102,7 +102,7 @@ class TaskScheduler:
 
     _NO_NEWS_RE = re.compile(
         r"(no\s+new\s+(email|message|notification|update|result|item)|"
-        r"no\s+emails?\s+(from|found|were|in)|"
+        r"no\s+emails?\s+(from|found|were|in|received)|"
         r"nothing\s+new|no\s+updates?|no\s+results?\s+found|"
         r"all\s+caught\s+up|no\s+changes?|"
         r"0\s+(new\s+)?(email|message|notification|unread))",
@@ -124,9 +124,28 @@ class TaskScheduler:
         truncated = line[:max_len].rsplit(" ", 1)[0]
         return truncated + "…"
 
+    @staticmethod
+    def _is_raw_json(content: str) -> bool:
+        """Return True if the content is raw JSON (model failed to summarize)."""
+        text = content.strip()
+        if not text:
+            return False
+        # Starts with { or [ — raw tool output, not a natural language summary
+        if text[0] in ('{', '['):
+            try:
+                import json
+                json.loads(text)
+                return True
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return False
+
     def _is_empty_result(self, content: str) -> bool:
         """Return True if the task output indicates nothing new/actionable."""
         text = content.strip()
+        # Raw JSON = model didn't summarize, not useful as a notification
+        if self._is_raw_json(text):
+            return True
         # Long responses have substantive content even if they mention
         # "no new X" in passing — only filter short ones.
         if len(text) > 300:
