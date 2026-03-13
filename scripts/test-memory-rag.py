@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """Synthetic test harness for RAG memory selection.
 
-Sends chat messages to the agent and parses SSE responses.
-Watch the agent logs alongside for Memory RAG/inject-all lines.
+Sends chat messages to the agent and reads just the first SSE event
+(message_saved) — enough to confirm memory selection happened without
+waiting for the full LLM response. Watch agent logs for the real signal.
 
 Usage:
     python scripts/test-memory-rag.py [--url http://localhost:8303]
+    python scripts/test-memory-rag.py --test topic-location
+    python scripts/test-memory-rag.py --full   # wait for LLM responses
 """
 
 import argparse
 import json
 import sys
+import time
 import httpx
 
 # Test cases: (label, message, expected_behavior)
@@ -38,11 +42,15 @@ TESTS = [
 ]
 
 
-def send_chat(url: str, message: str, timeout: int = 120) -> dict:
-    """Send a chat message, stream SSE response. Returns parsed result."""
-    assistant_content = ""
+def send_chat_quick(url: str, message: str, timeout: int = 30) -> dict:
+    """Send a chat message and read just the first SSE data event.
+
+    Memory selection happens before the stream starts, so by the time
+    we get the first event, the Memory RAG/inject-all log line has
+    already been written. We close immediately — no need to wait for
+    the full LLM response.
+    """
     conv_id = None
-    event_count = 0
 
     with httpx.stream(
         "POST",
@@ -55,7 +63,31 @@ def send_chat(url: str, message: str, timeout: int = 120) -> dict:
             if line.startswith("data: "):
                 try:
                     data = json.loads(line[6:])
-                    event_count += 1
+                    conv_id = data.get("conversation_id")
+                except json.JSONDecodeError:
+                    pass
+                # Got first data event — memory selection is done
+                break
+
+    return {"conversation_id": conv_id}
+
+
+def send_chat_full(url: str, message: str, timeout: int = 300) -> dict:
+    """Send a chat message and wait for the full LLM response."""
+    assistant_content = ""
+    conv_id = None
+
+    with httpx.stream(
+        "POST",
+        f"{url}/v1/agent/chat",
+        json={"message": message},
+        timeout=httpx.Timeout(timeout, connect=10),
+    ) as resp:
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                try:
+                    data = json.loads(line[6:])
                     msg = data.get("message", {})
                     if msg.get("role") == "assistant":
                         assistant_content = msg.get("content", "")
@@ -64,11 +96,7 @@ def send_chat(url: str, message: str, timeout: int = 120) -> dict:
                 except json.JSONDecodeError:
                     pass
 
-    return {
-        "content": assistant_content[:200],
-        "conversation_id": conv_id,
-        "events": event_count,
-    }
+    return {"content": assistant_content[:200], "conversation_id": conv_id}
 
 
 def cleanup_conversation(url: str, conv_id: str):
@@ -84,7 +112,8 @@ def main():
     parser.add_argument("--url", default="http://localhost:8303", help="Agent URL")
     parser.add_argument("--test", help="Run a single test by label")
     parser.add_argument("--dry-run", action="store_true", help="Show tests without running")
-    parser.add_argument("--timeout", type=int, default=120, help="Request timeout")
+    parser.add_argument("--full", action="store_true", help="Wait for full LLM responses")
+    parser.add_argument("--timeout", type=int, default=300, help="Request timeout (--full mode)")
     args = parser.parse_args()
 
     tests = TESTS
@@ -115,31 +144,47 @@ def main():
         mem = httpx.get(f"{args.url}/v1/agent/memory", timeout=5).json()
         total_facts = mem.get("total", 0)
         pinned = sum(1 for f in mem.get("facts", []) if f.get("pinned"))
-        print(f"Facts: {total_facts} total, {pinned} pinned\n")
+        print(f"Facts: {total_facts} total, {pinned} pinned")
     except Exception:
-        print("Could not fetch memory stats\n")
+        print("Could not fetch memory stats")
 
-    print(f"{'Label':<20} {'Expected':<25} {'Result':<12} Response preview")
-    print("=" * 100)
+    mode = "full (waiting for LLM)" if args.full else "quick (memory selection only)"
+    print(f"Mode: {mode}\n")
+
+    header = f"{'Label':<20} {'Expected':<25} {'Time':<8}"
+    if args.full:
+        header += " Response preview"
+    print(header)
+    print("=" * 90)
 
     passed = 0
     for label, message, expected in tests:
         try:
-            result = send_chat(args.url, message, timeout=args.timeout)
-            preview = result["content"][:60].replace("\n", " ")
-            conv_id = result["conversation_id"]
-
-            # Check the agent logs for the actual behavior
-            # (we can't see logs from here, but we print what we can)
-            print(f"{label:<20} {expected:<25} {'ok':<12} {preview}")
+            t0 = time.time()
+            if args.full:
+                result = send_chat_full(args.url, message, timeout=args.timeout)
+                elapsed = time.time() - t0
+                preview = result.get("content", "")[:50].replace("\n", " ")
+                print(f"{label:<20} {expected:<25} {elapsed:5.1f}s  {preview}")
+            else:
+                result = send_chat_quick(args.url, message)
+                elapsed = time.time() - t0
+                print(f"{label:<20} {expected:<25} {elapsed:5.1f}s")
             passed += 1
 
             # Clean up test conversation
+            conv_id = result.get("conversation_id")
             if conv_id:
                 cleanup_conversation(args.url, conv_id)
 
+            # Small delay between tests to avoid queuing on Ollama
+            if args.full:
+                time.sleep(1)
+
         except Exception as e:
-            print(f"{label:<20} {expected:<25} {'FAIL':<12} {e}")
+            elapsed = time.time() - t0
+            err = str(e)[:60]
+            print(f"{label:<20} {expected:<25} {elapsed:5.1f}s  FAIL: {err}")
 
     print(f"\n{passed}/{len(tests)} completed — check agent logs for Memory RAG/inject-all lines")
 
