@@ -393,10 +393,10 @@ async def chat(req: ChatRequest):
         if total_facts > 15 and msg_words >= 4:
             query_vec = await _embed_query(_discovery_url, req.message)
             if query_vec is not None:
-                facts = _db.search_facts(query_vec, top_k=10, min_similarity=0.25)
+                facts = _db.search_facts(query_vec, top_k=10, min_similarity=0.45)
                 # Check if the query was too generic (low max similarity)
                 max_sim = facts[0].pop("_max_similarity", 0.0) if facts else 0.0
-                if max_sim < 0.3:
+                if max_sim < 0.55:
                     # Query didn't meaningfully match anything — inject all
                     facts = _db.get_all_facts()
                     rag_reason = f"generic query (max_sim={max_sim:.3f}), using all {len(facts)} facts"
