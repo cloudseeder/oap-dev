@@ -186,7 +186,7 @@ class TaskScheduler:
                     discovery_url=self._discovery_url,
                     prompt=prompt,
                     model=task.get("model", "qwen3:8b"),
-                    timeout=120,
+                    timeout=300,
                     debug=True,
                 )
                 duration_ms = int((time.monotonic() - started) * 1000)
