@@ -91,8 +91,13 @@ class TaskScheduler:
         if task.get("incremental", True):
             last_run = self._db.get_last_successful_run(task["id"])
             if last_run and last_run.get("finished_at"):
-                prompt = f"[Only include new information since {last_run['finished_at']}]\n{prompt}"
-                log.debug("Injected last-run timestamp %s into task %s", last_run["finished_at"], task["id"])
+                since = last_run["finished_at"]
+                prompt = (
+                    f"[IMPORTANT: Only report items received AFTER {since}. "
+                    f"When calling tools, set since=\"{since}\" to filter. "
+                    f"Ignore anything older.]\n{prompt}"
+                )
+                log.debug("Injected last-run timestamp %s into task %s", since, task["id"])
         return prompt
 
     _NO_NEWS_RE = re.compile(
