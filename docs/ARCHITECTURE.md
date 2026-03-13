@@ -19,30 +19,44 @@ Knowledge lives where it belongs. Manifests stay on publishers' domains. Discove
                           |
                           v
 +---------------------------------------------------+
+|           Experience Cache (local)               |
+|                                                   |
+|  Dual-store: SQLite + ChromaDB vectors.           |
+|  Embed task → cosine search → cache hit if        |
+|  distance < 0.25 and confidence ≥ 0.85.           |
+|  Hit? Replay cached invocation. Miss? Continue.   |
++-------------------------+-------------------------+
+                          |  (cache miss)
+                          v
++---------------------------------------------------+
 |             Discovery Layer (local)               |
 |                                                   |
 |  +--------------+    +-------------------------+  |
-|  | Small LLM    |<-->| Vector DB               |  |
-|  | (3B-8B)      |    | (embedded manifest      |  |
-|  |              |    |  index)                 |  |
+|  | Small LLM    |<-->| Vector DB + FTS5        |  |
+|  | (8B)         |    | (embedded manifest      |  |
+|  |              |    |  index + keyword search) |  |
 |  +--------------+    +-------------------------+  |
 |                                                   |
-|  "myNewscast Meeting Processor matches this       |
-|   task with 0.94 similarity"                      |
+|  Intent extraction → vector search + BM25 →       |
+|  LLM ranking → up to 3 tools injected             |
 +-------------------------+-------------------------+
                           |
                           v
 +---------------------------------------------------+
-|          Execution Layer (local or cloud)         |
+|          Execution Layer (local + escalation)     |
 |                                                   |
 |  +--------------+    +-------------------------+  |
-|  | Frontier LLM |--->| Invoke capability via   |  |
-|  | (Claude,     |    | manifest's invoke field |  |
-|  |  GPT, etc.)  |    |                         |  |
+|  | Small LLM    |--->| Tool bridge executes    |  |
+|  | (tool calls, |    | oap_exec + HTTP tools   |  |
+|  |  multi-round)|    | in sandboxed subprocess |  |
 |  +--------------+    +-------------------------+  |
-|                                                   |
-|  Reads manifest, constructs request, reasons      |
-|  about output, composes next step if needed       |
+|         |                                         |
+|         v  (large results or escalate_prefix)     |
+|  +--------------+                                 |
+|  | Big LLM      |  Claude, GPT, Gemini — only    |
+|  | (optional)   |  for final reasoning on large   |
+|  +--------------+  outputs the small model can't  |
+|                     handle                        |
 +-------------------------+-------------------------+
                           |
                           v
@@ -56,26 +70,26 @@ Knowledge lives where it belongs. Manifests stay on publishers' domains. Discove
 +---------------------------------------------------+
 ```
 
-## Three Cognitive Jobs, Three Cost Points
+## Five Cognitive Jobs, Tiered Cost
 
-The key insight: discovery and execution are different cognitive tasks requiring different levels of intelligence. Don't waste a frontier model on finding work. Don't trust a tiny model with doing the work.
+The key insight: discovery and execution are different cognitive tasks requiring different levels of intelligence. The original design had three tiers. Production experience revealed five distinct jobs at three cost points.
 
-**Similarity search** finds candidate manifests matching the 
-agent's intent. This is pure vector math — no LLM involved. 
-Embed the query, compare against the index, return the nearest 
-neighbors. Sub-50ms. Near zero cost.
+**Experience cache lookup** checks if this task (or one semantically similar) has been seen before. Embed the task with nomic-embed-text (~50ms), cosine search against the experience vector store, replay the cached invocation if the distance is under 0.25. No LLM involved. Near zero cost. This is the fast path — most repeated tasks never reach discovery.
 
-**Manifest reasoning** reads the top candidates and picks the 
-best fit for the task. A small local LLM (3B-8B parameters) 
-handles this — reading descriptions, evaluating fit, selecting 
-the winner. Runs on CPU. Minimal cost.
+**Intent extraction** preprocesses the raw task before embedding. `_extract_search_query()` strips inline data (everything after `\n`), normalizes colloquial verbs (`pull out` to `filter`), strips trailing prepositions, and appends domain hints. The cleaned query goes to vector search; the full task still goes to LLM ranking unchanged. This step exists because raw user queries embed poorly — "pull out the emails from Amy about invoices" drifts in vector space, while "filter emails" lands precisely.
 
-**Task execution** invokes the selected capability, reasons 
-about the output, and composes the next step if needed. This 
-is the frontier model's job — Claude, GPT, Gemini. The only 
-step that costs real money. The only step that should.
+**Similarity search + keyword search** finds candidate manifests matching the agent's intent. Vector search embeds the cleaned query and returns nearest neighbors from ChromaDB. FTS5 keyword search (SQLite with BM25 ranking) runs in parallel as a complement — deterministic keyword matching fills gaps where vector search drifts on proper nouns, tool names, or domain-specific terms. Results are merged and deduped before LLM ranking. Sub-50ms combined.
 
-The expensive model never wastes tokens on discovery. The cheap model never attempts complex reasoning. Each model does what it's good at.
+**Manifest reasoning** reads the top candidates and picks the
+best fit for the task. A small local LLM (8B parameters)
+handles this — reading descriptions, evaluating fit, selecting
+the winner. Runs on GPU via Ollama. Minimal cost.
+
+**Task execution** is now handled by the tool bridge, not a separate frontier model. The same small LLM that picks manifests also makes tool calls — `oap_exec` for CLI tasks, HTTP invocations for API tools. Multi-round execution loops up to `max_rounds`. For most tasks, the small model handles everything end-to-end.
+
+**Big LLM escalation** (optional) sends the final reasoning step to an external model (Claude, GPT, Gemini) only when the small model demonstrably cannot handle the output — large results exceeding `summarize_threshold` characters, or tasks matching configured `escalate_prefixes`. The small model still does discovery and tool execution. The big model only reasons about the result. Fails silently — falls back to the small model on any error.
+
+The expensive model never wastes tokens on discovery or tool calls. The cheap model handles the full pipeline for the 90% of tasks that don't need frontier reasoning. Escalation is the exception, not the rule.
 
 ---
 
@@ -175,35 +189,45 @@ A base-model Mac Mini (M4, 16GB unified memory, 256GB SSD, $549) runs the entire
 |                   Mac Mini (M4 / 16GB)                    |
 |                                                           |
 |  +-----------------------------------------------------+  |
-|  |               OpenClaw Gateway                      |  |
-|  |  WhatsApp / Telegram / iMessage / Slack / etc.      |  |
-|  |  Persistent memory - Cron jobs - Skills engine      |  |
-|  |  ~200MB RAM                                         |  |
+|  |               Manifest Agent (:8303)                |  |
+|  |  Chat + autonomous tasks + voice (STT/TTS)         |  |
+|  |  Vite SPA frontend + FastAPI backend                |  |
+|  |  Calls /v1/chat on discovery — never talks to       |  |
+|  |  Ollama directly                                    |  |
 |  +---------------------------+-------------------------+  |
 |                              |                            |
 |  +---------------------------v-------------------------+  |
-|  |              OAP Discovery Layer                    |  |
+|  |         OAP Discovery + Tool Bridge (:8300)         |  |
 |  |                                                     |  |
 |  |  +----------------+    +--------------------------+ |  |
-|  |  | Ollama         |    | ChromaDB / LanceDB       | |  |
-|  |  | Qwen 3 4B      |    | Manifest vector index    | |  |
-|  |  | + nomic        |    | ~100MB for 10K           | |  |
-|  |  |   embed-text   |    |   manifests              | |  |
-|  |  | ~4GB RAM       |    | ~500MB RAM               | |  |
+|  |  | Ollama         |    | ChromaDB                  | |  |
+|  |  | qwen3:8b       |    | Manifest vector index     | |  |
+|  |  | + nomic        |    | Experience vector store   | |  |
+|  |  |   embed-text   |    | ~100MB for 10K manifests  | |  |
+|  |  | ~5.9GB VRAM    |    | ~500MB RAM                | |  |
 |  |  +----------------+    +--------------------------+ |  |
 |  |                                                     |  |
 |  |  +----------------+    +--------------------------+ |  |
-|  |  | Crawler        |    | Discovery API            | |  |
-|  |  | (background    |    | (FastAPI)                | |  |
-|  |  |  process)      |    | ~100MB RAM               | |  |
-|  |  | ~50MB RAM      |    |                          | |  |
+|  |  | Crawler        |    | SQLite stores             | |  |
+|  |  | (background    |    | FTS5 keyword index        | |  |
+|  |  |  + seed crawl  |    | Experience cache          | |  |
+|  |  |  on startup)   |    | Reminder DB               | |  |
+|  |  | ~50MB RAM      |    | Email cache               | |  |
 |  |  +----------------+    +--------------------------+ |  |
 |  +------------------------------------------------------+ |
 |                                                           |
-|  RAM budget: ~5GB active (11GB free for OS + headroom)    |
-|  Storage: ~8GB (models + index + manifests)               |
+|  +-----------------------------------------------------+  |
+|  |              Additional Services                    |  |
+|  |  Trust API (:8301)     — domain attestation         |  |
+|  |  Dashboard API (:8302) — adoption tracking          |  |
+|  |  Reminder API (:8304)  — recurring reminders        |  |
+|  |  Email Scanner (:8305) — IMAP + classification      |  |
+|  +-----------------------------------------------------+  |
+|                                                           |
+|  RAM budget: ~7GB active (9GB free for OS + headroom)     |
+|  Storage: ~10GB (models + indexes + manifests + DBs)      |
 |  Power: 7-15W under typical load                          |
-|  Network: Outbound only (API calls + crawler fetches)     |
+|  Network: Outbound only (API calls + crawler + IMAP)      |
 +-----------------------------------------------------------+
 ```
 
@@ -213,13 +237,15 @@ A base-model Mac Mini (M4, 16GB unified memory, 256GB SSD, $549) runs the entire
 |-----------|------|
 | Mac Mini (M4, 16GB, 256GB) | $549 (one-time) |
 | Ollama (LLM runtime) | Free |
-| Qwen 3 4B + nomic-embed-text (discovery models) | Free |
-| ChromaDB or LanceDB (vector database) | Free |
-| Python + FastAPI (discovery API) | Free |
-| OpenClaw (personal agent) | Free |
-| Claude / GPT API (frontier model for task execution) | ~$5-20/month |
+| qwen3:8b + nomic-embed-text (discovery + tool bridge models) | Free |
+| ChromaDB (vector database + experience vectors) | Free |
+| Python + FastAPI (all services) | Free |
+| Manifest agent (chat + tasks + voice) | Free |
+| Claude / GPT API (big LLM escalation, optional) | ~$0-10/month |
 | Electricity (always-on operation) | ~$0.50/month |
-| **Total first year** | **~$610-730** |
+| **Total first year** | **~$555-675** |
+
+The cost model changed significantly with the tool bridge. The small LLM now handles the full pipeline — discovery, tool execution, and response generation — for most tasks. Big LLM escalation is optional and only fires for large outputs or configured prefixes. Many deployments run entirely local with zero API costs.
 
 Compare to running an equivalent stack in the cloud: a GPU-capable VM for the local LLM ($400-500/month) plus the same frontier API costs. That's $5,000-6,000 per year. The Mac Mini pays for itself in under five weeks.
 
@@ -234,9 +260,9 @@ brew install ollama
 ollama serve &
 
 # 3. Pull the two models the discovery stack needs:
-#    - qwen3:4b — small LLM that reads manifests and picks the best match
+#    - qwen3:8b — small LLM for manifest reasoning, tool calls, and chat
 #    - nomic-embed-text — embedding model that converts descriptions to vectors
-ollama pull qwen3:4b              # ~2.5 GB, reasoning model
+ollama pull qwen3:8b              # ~4.9 GB, reasoning + tool calling model
 ollama pull nomic-embed-text      # ~274 MB, vector embeddings
 
 # 4. Clone the OAP repository
@@ -252,6 +278,9 @@ source .venv/bin/activate
 pip install -e reference/oap_discovery   # provides: oap-api, oap-crawl, oap
 pip install -e reference/oap_trust       # provides: oap-trust-api, oap-trust
 pip install -e reference/oap_dashboard   # provides: oap-dashboard-api, oap-dashboard-crawl
+pip install -e reference/oap_agent       # provides: oap-agent-api
+pip install -e reference/oap_reminder    # provides: oap-reminder-api
+pip install -e reference/oap_email       # provides: oap-email-api (requires config.yaml with IMAP credentials)
 
 # 7. Add seed domains for the crawler
 #    The crawler fetches https://<domain>/.well-known/oap.json for each
@@ -263,19 +292,32 @@ echo "example.com" >> seeds.txt          # add domains you want to index
 #    and stores the vectors in a local ChromaDB database (./oap_data/)
 oap-crawl --once
 
-# 9. Start the discovery API
+# 9. Start the discovery API (includes tool bridge, experience cache, Ollama pass-through)
 #    Accepts natural-language queries, searches ChromaDB by vector similarity,
-#    then uses qwen3:4b to pick the best manifest match
+#    then uses qwen3:8b to pick the best manifest match.
+#    Also serves /v1/chat and /api/chat for tool-augmented LLM conversations.
 oap-api &                                # http://localhost:8300
 
-# 10. Start the trust provider (optional)
+# 10. Start the Manifest agent (optional — chat + task UI)
+cd ../oap_agent
+oap-agent-api &                          # http://localhost:8303
+
+# 11. Start the trust provider (optional)
 cd ../oap_trust
 oap-trust-api &                          # http://localhost:8301
 
-# 11. Start the dashboard (optional)
+# 12. Start the dashboard (optional)
 cd ../oap_dashboard
 oap-dashboard-crawl --once               # initial crawl into SQLite
 oap-dashboard-api &                      # http://localhost:8302
+
+# 13. Start the reminder service (optional)
+cd ../oap_reminder
+oap-reminder-api &                       # http://localhost:8304
+
+# 14. Start the email scanner (optional — requires IMAP config)
+cd ../oap_email
+oap-email-api &                          # http://localhost:8305
 ```
 
 You can verify the stack is running:
@@ -288,6 +330,14 @@ curl http://localhost:8300/health
 curl -X POST http://localhost:8300/v1/discover \
   -H "Content-Type: application/json" \
   -d '{"task": "summarize text"}'
+
+# Try the tool bridge — the small LLM discovers tools, calls them, and responds
+curl -X POST http://localhost:8300/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"model": "qwen3:8b", "messages": [{"role": "user", "content": "what is the weather in Portland?"}]}'
+
+# Open the Manifest agent UI
+open http://localhost:8303
 ```
 
 #### Connecting an Agent: OpenClaw Example
@@ -323,27 +373,29 @@ One box. $549. Your agent. Your data. Your discovery. No one else's agenda.
 
 ## Small LLM Recommendations
 
-The discovery LLM has one job: read a handful of manifest descriptions and decide which one best matches the agent's task. This requires instruction following, reading comprehension, and basic reasoning — not world knowledge, creative writing, or code generation.
+The discovery LLM's job expanded since the initial design. It still reads manifest descriptions and picks the best match — but now it also makes tool calls, reasons about tool output, and generates user-facing responses via the tool bridge. This requires instruction following, reading comprehension, structured output (JSON tool calls), and basic reasoning. The model needs to be good at tool calling, not just classification.
 
-### Recommended Models (as of February 2026)
+### Recommended Models (as of March 2026)
 
-**Qwen 3 4B** — 4 billion parameters, roughly 3GB VRAM quantized at Q4. The recommended default. Best balance of size and reasoning for the discovery task. Hybrid think/no-think modes let you use fast mode for manifest matching where deep chain-of-thought isn't needed. Apache 2.0 license.
+**qwen3:8b** — 8 billion parameters, roughly 5.9GB VRAM at Q4 with 4K context. The **production default**. Best balance of tool-calling reliability, reasoning quality, and VRAM usage on 16GB machines. Hybrid think/no-think modes: `think: false` (default) keeps responses to ~12 tokens per tool-call round; `think: true` can be enabled per-task via `think_prefixes` config for tasks requiring output verification. At 4K context (`num_ctx: 4096`) it fits alongside nomic-embed-text with headroom to spare. Apache 2.0 license.
+
+**qwen3.5:9b** — 9 billion parameters. The **latest tested model** as of March 2026. Improved reasoning over qwen3:8b with similar VRAM requirements. Drop-in replacement — same Ollama config, same tool-calling interface.
+
+**Qwen 3 4B** — 4 billion parameters, roughly 3GB VRAM quantized at Q4. A viable option for constrained hardware. Adequate for discovery-only use (manifest matching without tool bridge), but tool-calling reliability drops compared to the 8B models. The path-to-23-tokens optimization work was done on this model.
 
 **Phi-4-mini-instruct** — 3.8 billion parameters, roughly 3GB VRAM quantized. Strong instruction following and reasoning at minimal size, with a 128K context window that handles large manifests easily. MIT license.
 
-**Llama 3.2 3B** — 3 billion parameters, roughly 2GB VRAM quantized. The smallest viable option. Runs on almost anything including underpowered hardware. Good enough for manifest matching even if it occasionally stumbles on edge cases. Meta license.
+**Llama 3.2 3B** — 3 billion parameters, roughly 2GB VRAM quantized. The smallest viable option for discovery-only. Not recommended for tool bridge use — tool-calling reliability is insufficient.
 
 **SmolLM3 3B** — 3 billion parameters, roughly 2GB VRAM quantized. Fully open from Hugging Face with transparent training methodology. Outperforms Llama 3.2 3B on most benchmarks while maintaining the same footprint.
 
-**Qwen 2.5 7B Instruct** — 7 billion parameters, roughly 5GB VRAM quantized. The best option if you have the VRAM. Best-in-class instruction following at this size with strong structured reasoning. Overkill for manifest matching, but handles every edge case gracefully.
-
 ### Model Selection Guidance
 
-**Constrained hardware** — laptop or edge device with 16GB system RAM. Use Llama 3.2 3B or SmolLM3 3B. They run on CPU without consuming too much memory.
+**Constrained hardware** — laptop or edge device with 16GB system RAM and no discrete GPU. Use Qwen 3 4B for discovery-only. For tool bridge use, qwen3:8b still works on CPU but expect 5-10 second response times per round.
 
-**Good hardware** — M-series Mac or a machine with a gaming GPU. Use Qwen 3 4B or Phi-4-mini. Best reasoning per parameter at a size that still leaves plenty of headroom.
+**Good hardware (recommended)** — M-series Mac or a machine with a gaming GPU (8+ GB VRAM). Use **qwen3:8b** or **qwen3.5:9b**. This is the production sweet spot. The Mac Mini M4 with 16GB runs qwen3:8b at 4K context using ~5.9GB VRAM, leaving room for nomic-embed-text and all services.
 
-**Server with GPU** — dedicated machine with 12+ GB VRAM. Use Qwen 2.5 7B Instruct. Fast with GPU acceleration and handles edge cases better than the smaller models.
+**Server with GPU** — dedicated machine with 12+ GB VRAM. Use qwen3:8b with a larger context window (`num_ctx: 8192` or higher) for complex multi-tool tasks. Or run qwen3.5:9b with full context.
 
 ### Runtime
 
@@ -354,13 +406,15 @@ The discovery LLM has one job: read a handful of manifest descriptions and decid
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull your chosen model
-ollama pull qwen3:4b           # Recommended default
-ollama pull phi4-mini          # Alternative
-ollama pull llama3.2:3b        # Minimal option
-ollama pull qwen2.5:7b         # If you have the VRAM
+ollama pull qwen3:8b           # Production default
+ollama pull qwen3.5:9b         # Latest tested
+ollama pull qwen3:4b           # Constrained hardware / discovery-only
+ollama pull nomic-embed-text   # Required for embeddings
 ```
 
-Ollama exposes a local API at `http://localhost:11434` that your discovery service calls.
+Ollama exposes a local API at `http://localhost:11434` that the discovery service calls. The OAP discovery service proxies Ollama's non-chat `/api/*` endpoints transparently, so agents can use OAP as a drop-in Ollama replacement: `OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b`.
+
+**Ollama tuning for 16GB machines:** Set `num_ctx: 4096` to cap VRAM usage, `keep_alive: "-1m"` to keep models permanently loaded (eliminates cold-start latency), and warm up on startup with a throwaway `generate("hello")` call. Override context size via `OAP_OLLAMA_NUM_CTX` env var.
 
 ---
 
@@ -442,30 +496,196 @@ Respect the `updated` field in manifests — if it hasn't changed, don't re-embe
 
 ---
 
+## Tool Bridge
+
+The tool bridge is the execution engine that turns OAP from a discovery service into a complete agent runtime. It intercepts Ollama-compatible chat requests, discovers relevant tools from the manifest index, injects them into the conversation, executes tool calls, and loops until the LLM produces a final response.
+
+### Endpoints
+
+**`POST /v1/chat`** — the primary tool-augmented chat endpoint. Accepts Ollama-compatible request format with additional OAP fields (`oap_debug`, streaming control). Discovers tools, injects them, executes tool calls in a multi-round loop.
+
+**`POST /api/chat`** — Ollama wire-compatible alias. Same behavior as `/v1/chat` but returns responses in Ollama NDJSON streaming format. This makes OAP a drop-in Ollama replacement: `OLLAMA_HOST=http://localhost:8300 ollama run qwen3:8b`.
+
+**Ollama pass-through** — non-chat `/api/*` endpoints (`/api/tags`, `/api/show`, `/api/ps`, `/api/generate`, `/api/embed`, `/api/embeddings`) proxy directly to Ollama. This means an agent pointing at OAP for chat also gets model listing, embedding, and generation without any additional configuration.
+
+### Multi-Tool Injection
+
+Each chat round, `_discover_tools()` injects up to `MAX_INJECTED_TOOLS = 3` tools — the LLM's top-ranked manifest plus the next highest-scoring candidates, deduped by domain. This lets the LLM choose between related tools (e.g., `newsapi-top-headlines` vs. `newsapi-everything`) rather than being locked into a single discovery result.
+
+### oap_exec Meta-Tool
+
+A built-in tool always injected first in every chat round. Accepts `command` + optional `stdin`. This bridges LLM CLI knowledge to tool calls — LLMs write better regex in `grep` syntax than in tool parameter schemas.
+
+Security model:
+- `shlex.split()` parsing (no `shell=True`)
+- PATH allowlist: `/usr/bin/`, `/usr/local/bin/`, `/bin/`, `/opt/homebrew/bin/`
+- Configurable `blocked_commands` (default: `rm, rmdir, dd, mkfs, shutdown, reboot`)
+- Shell-style pipes via `_split_pipeline()` — each stage validated independently
+- File path detection (`_task_has_file_path`) suppresses manifest discovery when file paths are present, making `oap_exec` the only available tool
+
+### Stdio Tool Suppression
+
+After discovery, stdio-invoked tools (those using stdin/stdout) are filtered out — only `oap_exec` and HTTP/API tools remain. Rationale: small LLMs prefer "named" tools over generic `oap_exec` but produce worse results with them. The LLM already knows how to use CLI tools via `oap_exec`; giving it both a named `grep` tool and `oap_exec` causes confusion.
+
+### Credential Injection
+
+API keys from `credentials.yaml` are injected into tool calls at execution time, transparent to the LLM. The system prompt tells the model "API credentials are pre-configured" so it never refuses to call authenticated APIs.
+
+Placement modes (via manifest `invoke.auth_in`):
+- `auth_in: "header"` (default) — key as HTTP header
+- `auth_in: "query"` — key as query parameter
+- `auth: "bearer"` — key as `Authorization: Bearer` header
+
+Domain lookup falls back from indexed domain (`local/alpha-vantage`) to invoke URL hostname (`www.alphavantage.co`), so `credentials.yaml` can use real domain names for local manifests.
+
+### Sandbox
+
+OS-level file-write protection via macOS `sandbox-exec` (Seatbelt). All subprocess execution — oap_exec single commands, pipelines, and manifest stdio tools — is wrapped with a profile that denies file writes except to a configurable sandbox directory (default `/tmp/oap-sandbox`).
+
+- Config: `tool_bridge.danger_will_robinson` (default `false` — sandbox ON)
+- The system prompt tells the LLM to write output files to the sandbox directory
+- Graceful degradation on Linux (unsandboxed, warning logged)
+
+### Conditional Thinking
+
+Per-fingerprint toggle for `think: true` on Ollama requests. When a task's fingerprint starts with a configured prefix (e.g., `compute`), thinking mode is enabled so the model can verify tool output (arithmetic, data validation). Default: thinking off for speed (~12 tokens per round).
+
+### Map-Reduce Summarization
+
+Fallback for large tool results when big LLM escalation is not configured. When a tool result exceeds `summarize_threshold` (default 16000 chars), it is chunked and summarized via multiple `ollama.generate()` calls, then the summaries are combined. Hierarchy: big LLM escalation (preferred) > map-reduce > truncation.
+
+### Big LLM Escalation
+
+Optional external model escalation for results the small model cannot handle. When enabled (`escalation.enabled: true`), two triggers send the final reasoning to Claude, GPT, or Gemini:
+
+1. **Prefix match** — task fingerprint starts with a configured `escalate_prefix`
+2. **Large output** — any `oap_exec` result exceeding `summarize_threshold` chars is automatically escalated, bypassing lossy map-reduce
+
+The small model still handles discovery and tool execution. The big model only reasons about the final result.
+
+Providers: `openai`, `anthropic`, `googleai` (OpenAI-compatible). Per-provider API key env vars (`OAP_OPENAI_API_KEY`, `OAP_ANTHROPIC_API_KEY`, `OAP_GOOGLEAI_API_KEY`) allow provider switching without redeployment. Fails silently on any error — falls back to small model response.
+
+### Debug Mode
+
+`POST /v1/chat` accepts `oap_debug: true` for full execution trace: tools discovered, experience cache status, fingerprint, hints, thinking/escalation flags, and per-round tool executions with timing.
+
+---
+
+## Experience Cache (Procedural Memory)
+
+The experience cache is a learning layer that sits in front of discovery. When the tool bridge successfully completes a task, it caches the full invocation — task text, fingerprint, tool used, parameters, result summary. On subsequent similar tasks, it replays the cached invocation without re-running discovery or LLM ranking.
+
+### Dual-Store Architecture
+
+**SQLite** (`oap_experience.db`) is the system of record. Stores all experience records, failure history, correction entries, and metadata. Survives restarts, supports exact fingerprint lookup.
+
+**ChromaDB** (`experience_vectors/`) is the vector index for similarity lookup. Task texts are embedded with nomic-embed-text and stored as vectors. Primary cache lookup path: embed incoming task (~50ms) > cosine search > cache hit if distance < `vector_similarity_threshold` (default 0.25) and confidence >= 0.85.
+
+Vector similarity replaced fingerprint string matching as the primary cache key because LLM fingerprints are non-deterministic — the same intent produces different fingerprint strings across runs. Embedding similarity is stable.
+
+### Cache Lookup Flow
+
+1. Embed task with nomic-embed-text (~50ms)
+2. ChromaDB cosine search for nearest neighbor
+3. If distance < 0.25 and confidence >= 0.85: **cache hit** — replay cached invocation
+4. Fallback: exact fingerprint match in SQLite
+5. If no match: **full discovery** — vector search + LLM ranking > execute > cache on success
+
+### Confidence Degradation
+
+Errors multiply confidence by 0.7. A single failure drops a cached entry below the 0.85 threshold, forcing re-discovery on the next attempt. This self-heals: if an API endpoint goes down and comes back, the next successful invocation restores confidence.
+
+### Negative Caching
+
+Failures are stored with `CorrectionEntry` records that become self-correction hints. `_build_experience_hints(fingerprint)` injects past failure/success hints into the system prompt, guiding the LLM away from known-bad approaches.
+
+### Backfill Migration
+
+On startup, if the vector collection is empty but SQLite has records, all task texts are embedded and upserted into ChromaDB. This handles upgrades from fingerprint-only caching to vector similarity.
+
+---
+
+## FTS5 Keyword Search
+
+SQLite FTS5 with BM25 ranking complements vector search for manifest discovery. Vector search excels at semantic similarity ("find me a way to check the weather" matches a weather API manifest), but drifts on proper nouns, tool names, and domain-specific terms. FTS5 provides deterministic keyword matching that fills these gaps.
+
+Config: `fts.enabled` (default false), `fts.db_path`. When enabled, keyword search runs in parallel with vector search during discovery, and results are merged and deduped before LLM ranking.
+
+---
+
+## Service Architecture
+
+The reference implementation runs six services on a single machine. Three are core (discovery, agent, Ollama), three are optional.
+
+### Port Map
+
+| Port | Service | Purpose |
+|------|---------|---------|
+| 8300 | Discovery API | Manifest search, tool bridge, experience cache, Ollama pass-through |
+| 8301 | Trust API | Domain attestation, capability testing |
+| 8302 | Dashboard API | Adoption tracking, manifest listing |
+| 8303 | Manifest Agent | Chat UI + autonomous tasks + voice (STT/TTS) |
+| 8304 | Reminder API | Recurring reminders for agents |
+| 8305 | Email Scanner | IMAP scanning, LLM classification, auto-filing |
+| 11434 | Ollama | LLM runtime (proxied through :8300 for chat) |
+
+### Manifest Agent (:8303)
+
+Chat + autonomous task execution. A thin orchestrator that calls `/v1/chat` on the discovery service for all LLM and tool work — it never talks to Ollama directly. Self-contained: `oap-agent-api` serves both the FastAPI backend and a Vite SPA frontend at `http://localhost:8303`.
+
+Key capabilities:
+- **Interactive chat** via SSE streaming, with personality and user memory
+- **Autonomous tasks** — cron-scheduled background jobs via APScheduler, max 20 tasks, minimum 5-minute intervals
+- **Notification queue** — task results produce notifications that power greeting briefings ("Good morning — here's what happened overnight")
+- **User memory** — learns facts about the user from conversations via fire-and-forget LLM extraction, stored in SQLite with dedup and LRU eviction
+- **Voice** — local STT via faster-whisper (CTranslate2) + TTS via Piper neural voices, both running on the backend
+
+### Reminder Service (:8304)
+
+SQLite-backed reminder service for AI agents. Supports one-time and recurring reminders (daily, weekly, monthly, yearly). Completing a recurring reminder auto-creates the next occurrence. Exposed as an OAP manifest for discovery by the tool bridge.
+
+### Email Scanner (:8305)
+
+IMAP email scanner with LLM-powered classification and auto-filing. Two-phase design:
+1. `POST /scan` fetches from IMAP and caches to SQLite (UID-based incremental scanning)
+2. Read endpoints query local cache — no IMAP connection needed for reads
+
+The classifier categorizes messages using the local LLM via Ollama. Default categories: `personal`, `machine`, `mailing-list`, `spam`, `offers` — user-configurable via `config.yaml`. Auto-filing moves classified messages into IMAP folders based on category. Designed for cron: `curl -s -X POST localhost:8305/scan && curl -s -X POST localhost:8305/file`.
+
+---
+
 ## Putting It All Together
 
 ### Minimal Viable Discovery Stack
 
-A working OAP discovery system in four components:
+A working OAP system in five components:
 
 ```
 +----------------+     +----------------+
 |   Crawler      |---->|   ChromaDB     |
-|   (Python      |     |   (embedded)   |
-|    script)     |     |                |
+|   (Python      |     |   (manifest    |
+|    script +    |     |    vectors +   |
+|    seed crawl) |     |    experience) |
 +----------------+     +-------+--------+
                                |
                         +------v--------+
                         |   Ollama      |
-                        |   (Qwen 3 4B  |
+                        |   (qwen3:8b   |
                         |    + nomic    |
                         |    embed)     |
                         +------+--------+
                                |
-                        +------v--------+
-                        |   Discovery   |
-                        |   API         |
-                        |   (FastAPI)   |
+                        +------v--------+     +-----------+
+                        |   Discovery + |---->| SQLite    |
+                        |   Tool Bridge |     | (FTS5 +   |
+                        |   (FastAPI)   |     |  experience|
+                        +------+--------+     |  + email  |
+                               |              |  + remind)|
+                        +------v--------+     +-----------+
+                        |   Manifest    |
+                        |   Agent       |
+                        |   (FastAPI +  |
+                        |    Vite SPA)  |
                         +---------------+
 ```
 
@@ -475,16 +695,16 @@ A working OAP discovery system in four components:
 
 **Setup time:** Under an hour. Most of that is downloading the model.
 
-### Example Discovery Query
+### Example: Direct Discovery Query
 
 ```python
-# Agent has a task
+# Agent has a task — use the discovery API directly
 task = "I need to transcribe a Portland city council meeting from last week"
 
-# 1. Embed the task intent
+# 1. Embed the task intent (intent extraction cleans the query first)
 task_vector = ollama.embed("nomic-embed-text", task)
 
-# 2. Search the manifest index
+# 2. Search the manifest index (vector + optional FTS5)
 results = chromadb.query(
     query_embeddings=[task_vector],
     n_results=5
@@ -500,14 +720,39 @@ Which of these capabilities best fits? Read each description carefully.
 
 Respond with the name of the best match and why."""
 
-best_match = ollama.generate("qwen3:4b", prompt)
+best_match = ollama.generate("qwen3:8b", prompt)
 
 # 4. Frontier LLM executes the task using the manifest's invoke field
 selected_manifest = get_manifest(best_match.name)
 # Hand off to Claude/GPT/etc. with the manifest as context
 ```
 
-### Production Discovery Stack
+### Example: Tool Bridge (End-to-End)
+
+The more common path now is the tool bridge, which handles discovery and execution in a single request:
+
+```bash
+# The tool bridge discovers tools, injects them, executes tool calls,
+# and loops until the LLM produces a final text response.
+curl -X POST http://localhost:8300/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:8b",
+    "messages": [{"role": "user", "content": "what are the top news headlines today?"}],
+    "oap_debug": true
+  }'
+
+# With debug, the response includes:
+# - tools_discovered: which manifests were found
+# - experience_cache: hit/miss status
+# - fingerprint: the task's intent fingerprint
+# - rounds: per-round tool calls with timing
+# - escalated: whether big LLM was used
+```
+
+The agent (Manifest or any Ollama-compatible client) just sends chat messages. Discovery, tool injection, execution, credential injection, sandboxing, caching, and escalation all happen transparently inside the tool bridge.
+
+### Production Stack
 
 For a team or service handling concurrent discovery queries:
 
@@ -520,31 +765,37 @@ For a team or service handling concurrent discovery queries:
 +----------------+             |
                         +------v--------+
                         |   Ollama      |
-                        |   (Qwen 2.5   |
-                        |    7B + GPU)  |
+                        |   (qwen3:8b   |
+                        |    or 3.5:9b  |
+                        |    + GPU)     |
                         +------+--------+
                                |
-                        +------v--------+
-                        |   Discovery   |
-                        |   Service     |
-                        |   (FastAPI +  |
-                        |    caching)   |
-                        +---------------+
+                        +------v--------+     +-----------+
+                        |   Discovery + |---->| Big LLM   |
+                        |   Tool Bridge |     | (Claude,  |
+                        |   (FastAPI +  |     |  GPT —    |
+                        |    experience |     |  escalation|
+                        |    cache)     |     |  only)    |
+                        +---------------+     +-----------+
 ```
 
-Add Redis for caching frequent queries. Add a queue (Celery, etc.) for crawl job distribution. Same architecture, just hardened for concurrent load.
+Add Redis for caching frequent queries. Add a queue (Celery, etc.) for crawl job distribution. Configure big LLM escalation for tasks that exceed the small model's capacity. Same architecture, just hardened for concurrent load.
 
 ---
 
 ## What This Architecture Enables
 
-**Anyone can run the whole stack.** A small LLM, a vector database, a crawler, and a thin API layer. That's a weekend project. No cloud dependency. No API costs for discovery. The frontier model only gets called when there's actual work to do.
+**Anyone can run the whole stack.** A small LLM, a vector database, a crawler, and a thin API layer. That's a weekend project. No cloud dependency. No API costs for discovery. The tool bridge means the small model handles end-to-end execution for most tasks — a frontier model is optional, not required.
 
-**Discovery is private.** Your agent's queries never leave your machine during the discovery phase. Only the execution phase — invoking the actual capability — requires a network call. What you're searching for stays local.
+**Discovery is private.** Your agent's queries never leave your machine during the discovery phase. Only the execution phase — invoking external APIs — requires a network call. What you're searching for stays local. The experience cache means repeated tasks don't even hit discovery.
+
+**The system learns from use.** The experience cache turns every successful task into a cached shortcut. The first time you ask "what's the weather in Portland?" it runs full discovery. The second time, it replays the cached invocation in ~50ms. Negative caching prevents repeating known failures. Over time, the system converges on fast paths for its owner's common tasks.
 
 **Multiple competing indexes can coexist.** Just like there are multiple web search engines, there can be multiple OAP crawlers and indexes. A general-purpose index. A healthcare-specific index. An enterprise-internal index. Competition at the discovery layer. Standardization at the manifest layer.
 
 **The manifest quality drives discovery quality.** The `description` field is simultaneously what the small LLM reads for reasoning, and what gets embedded for vector similarity search. A well-written description clusters near relevant queries in vector space. A vague description gets lost. The quality of discovery is directly proportional to the quality of the manifest — same as the web.
+
+**The small model does more than expected.** The tool bridge revealed that an 8B model with good tool-calling support handles the vast majority of real-world tasks end-to-end — news lookup, weather queries, email scanning, reminder management, file processing, text extraction. Big LLM escalation exists for the long tail (large outputs, complex reasoning), but most users find the small model sufficient for daily use.
 
 ---
 
@@ -556,4 +807,4 @@ We publish this reference architecture to prove the ecosystem is buildable — b
 
 ---
 
-*This document accompanies the [Open Application Protocol specification](SPEC.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), [OpenClaw integration](OPENCLAW.md), and [Ollama tool bridge](OLLAMA.md). OAP is released under CC0 1.0 Universal — no rights reserved.*
+*This document accompanies the [Open Application Protocol specification](SPEC.md), [trust overlay](TRUST.md), [manifesto](MANIFESTO.md), [A2A integration](A2A.md), [robotics](ROBOTICS.md), [OpenClaw integration](OPENCLAW.md), [Ollama tool bridge](OLLAMA.md), [Manifest agent](AGENT.md), [MCP server](MCP.md), [security model](SECURITY.md), and [procedural memory paper](OAP-PROCEDURAL-MEMORY-PAPER.md). OAP is released under CC0 1.0 Universal — no rights reserved.*

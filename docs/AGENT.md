@@ -48,6 +48,15 @@ The discovery service (`oap_discovery`, :8300) handles tool finding, execution, 
 
 The agent service adds the stateful layer: conversation history, task definitions, cron scheduling, and real-time event notifications. Keeping it separate means the discovery service stays focused and the agent is optional — you can use OAP discovery via CLI (`ollama run`), MCP (Claude Desktop), OpenAPI (Open WebUI), or Manifest.
 
+### Integrated Services
+
+Manifest doesn't call these services directly — it sends tasks to the discovery service (`/v1/chat`), which discovers and invokes the right manifests. But scheduled tasks make these services particularly useful:
+
+- **Email scanner** (`oap-email-api` :8305) — IMAP scanning with LLM-powered classification and auto-filing. A scheduled task like "check my email for new personal messages" discovers the email manifest, queries the scanner, and produces a notification with the summary. Tasks can also trigger classification and filing.
+- **Reminder service** (`oap-reminder-api` :8304) — SQLite-backed reminders with recurrence support. A scheduled task like "check for due reminders" discovers the reminder manifest and surfaces due items in the notification queue. Chat can also create reminders conversationally ("remind me to call mom Friday at 2pm").
+
+Both services have OAP manifests in `reference/oap_discovery/manifests/` and are auto-indexed by the discovery service on startup.
+
 ## Backend: `reference/oap_agent/`
 
 ### Data Model
@@ -138,13 +147,13 @@ Tasks produce results. Notifications make those results visible — surfaced in 
 ```
 Scheduler runs task
   → task succeeds
-  → scheduler creates notification (type=task_result, title=task name, body=first 200 chars)
+  → scheduler creates notification (type=task_result, title=task name, body=full task result)
   → EventBus publishes notification_new
   → frontend SSE listener updates badge count
   → user opens chat, says "good morning"
-  → greeting handler reads pending notifications, injects as system message context
+  → greeting handler reads pending notifications, formats as multi-line bullet list
   → greeting handler dismisses all presented notifications
-  → LLM produces natural briefing from notification content
+  → briefing presented directly to user (no LLM reprocessing — avoids latency and hallucination)
   → frontend refreshes badge count (now 0)
 ```
 
@@ -155,7 +164,7 @@ Scheduler runs task
 | id | text | `notif_` + short UUID |
 | type | text | `task_result` (extensible: `email_summary`, `reminder_due`, etc.) |
 | title | text | Human-readable title (typically the task name) |
-| body | text | Content snippet (first 200 chars of task output) |
+| body | text | Full task result (raw JSON filtered out, no-news results suppressed via regex) |
 | source | text | Producer identifier (`scheduler`, future: `email`, `reminder`) |
 | task_id | text | FK to tasks table (nullable) |
 | run_id | text | Associated task run (nullable) |
@@ -165,10 +174,11 @@ Scheduler runs task
 
 **Design decisions:**
 
-- **Notifications are the only briefing source.** The greeting handler doesn't call external APIs directly — it reads the notification queue. If you want reminders in the briefing, create a scheduled task that calls the reminder API. This keeps the agent thin and the data flow uniform.
+- **Notifications are the only briefing source.** The greeting handler doesn't call external APIs directly — it reads the notification queue. Scheduled tasks that call the email scanner or reminder service produce notifications like any other task. This keeps the agent thin and the data flow uniform.
+- **Full results, not snippets.** Notification body stores the complete task result rather than a truncated snippet. Raw JSON responses are filtered out (only human-readable text is stored). A no-news regex suppresses empty or "nothing to report" results from creating notifications at all.
 - **Dismissed after presentation.** The greeting handler dismisses all pending notifications after injecting them. This prevents the same results from appearing in the next greeting.
 - **Cleanup.** `cleanup_notifications(days=7)` deletes old dismissed notifications. Can be called from a maintenance cron or startup.
-- **Extensible type field.** Currently only `task_result`. Future producers (email scanner, reminder service, calendar) add new types without schema changes.
+- **Extensible type field.** Currently only `task_result`. Future producers (calendar, etc.) add new types without schema changes.
 
 ### Greeting Briefing
 
@@ -176,18 +186,17 @@ When a user opens a new conversation with a greeting ("hello", "good morning", "
 
 **Detection:** Regex match on the first message of a conversation. Patterns: hello, hey, hi, good morning/afternoon/evening, what's up, howdy, etc.
 
-**Injection:** Pending notifications are formatted as a bullet list and injected as a system message alongside the user's greeting. The LLM sees:
+**Presentation:** Pending notifications are formatted as a multi-line bullet list and presented directly to the user — the greeting handler builds the briefing itself rather than sending notifications through the LLM. This avoids latency (no extra LLM round-trip) and hallucination (the LLM can't misinterpret or embellish task results). Each notification becomes a labeled bullet:
 
 ```
-[system] You are Kai, a helpful personal AI assistant...
-[system] The user just greeted you. Today is 2026-03-10. Give a warm greeting,
-         then provide a concise briefing based on pending notifications below...
-         - [task_result] MyNewscast: Top stories: Portland weather...
-         - [task_result] Email Summary: 3 new messages from...
-[user]   Good morning!
+Good morning! Here's your briefing:
+
+• MyNewscast: Top stories: Portland weather clearing, trimet service restored...
+• Email Summary: 3 new personal messages — Amy re: dinner Friday, Keric re: network config...
+• Reminders: Submit quarterly report (due today)
 ```
 
-The LLM produces a natural summary. After injection, all presented notifications are dismissed.
+After presentation, all presented notifications are dismissed.
 
 **No notifications?** The greeting falls through to the normal conversational route — a simple friendly response with no briefing.
 
@@ -295,6 +304,25 @@ Manifest's UI is a standalone app layout — full-height sidebar:
 ```
 
 The persona avatar in the sidebar shows a red notification badge with the pending count. When notifications are pending and the avatar is idle, a gentle pulsing halo animation signals "I have something to tell you." The badge and halo clear when notifications are dismissed (either via greeting or manually).
+
+## Voice
+
+Local-first voice input and output — no cloud APIs, no browser Web Speech API.
+
+**Speech-to-text (STT):** `faster-whisper` (CTranslate2) on the backend. The browser records via MediaRecorder (WebM), sends to `POST /v1/agent/transcribe`, and the transcribed text appears in the chat input. Configurable model size (tiny/base/small), device (auto/cpu/cuda), and compute type.
+
+**Text-to-speech (TTS):** Piper neural TTS on the backend. `POST /v1/agent/tts` accepts text and returns WAV audio. `_clean_for_speech()` strips timestamps, URLs, markdown formatting, and other non-speakable content before synthesis. The frontend plays audio via `HTMLAudioElement` with a stop-speaking button to interrupt playback. Voice model configured via `voice.tts_model_path` (path to `.onnx` voice file).
+
+**Settings (persisted in `agent_settings`):**
+- `voice_input_enabled` — show mic button in chat input
+- `voice_auto_send` — automatically send after transcription completes
+- `voice_auto_speak` — automatically speak assistant responses
+
+**Current flow:** Press mic button → record → release → transcribe → text in input → (auto-send or manual send) → response → (auto-speak or manual). Wake word detection is planned but not yet implemented — currently requires manual mic activation.
+
+### Conversation Management
+
+Conversations can be deleted from the sidebar UI. Hover over a conversation in the sidebar to reveal a delete button. Deletion removes the conversation and all associated messages from the database.
 
 ## Known Limitations
 

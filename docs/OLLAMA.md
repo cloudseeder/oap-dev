@@ -379,12 +379,118 @@ Run the demo script to verify all endpoints work:
 
 The script tests `/api/tags`, `/api/ps`, `/api/show`, `/api/chat` (both streaming and non-streaming), and `/api/generate`.
 
+## Experience cache
+
+The tool bridge includes a procedural memory system — a dual-store experience cache that remembers past tool invocations and replays them for similar future requests, skipping the full discovery + LLM ranking pipeline.
+
+**Architecture:** SQLite (`oap_experience.db`) is the system of record for invocation history. ChromaDB (`experience_vectors/`) stores task embeddings for similarity lookup. Both stores are kept in sync.
+
+**Lookup flow:** Embed the incoming task with `nomic-embed-text` (~50ms) → ChromaDB cosine search → cache hit if distance < `vector_similarity_threshold` (default 0.25) and confidence >= 0.85. Fallback: exact fingerprint match in SQLite. On miss: full discovery → execute → cache the result for next time.
+
+**Why vectors instead of string matching:** LLM-generated fingerprints are non-deterministic — the same intent produces slightly different fingerprints across runs. Vector similarity on the original task text is stable and catches paraphrases ("what's the weather" vs "check the forecast").
+
+**Degradation:** Errors multiply confidence by 0.7, so a single failure drops the entry below the 0.85 threshold. Negative caching stores failures with `CorrectionEntry` records that provide self-correction hints on retry.
+
+**Backfill migration:** On startup, if the vector collection is empty but SQLite has records, all task texts are embedded and upserted automatically.
+
+Config: `experience.enabled` (default `true`), `experience.vector_similarity_threshold` (cosine distance, default 0.25).
+
+## Credential injection
+
+The bridge authenticates tool calls automatically via a local credential store. Manifests don't need to know about credentials — they declare auth requirements, and the bridge injects the right key at execution time.
+
+**Format:** `credentials.yaml`, keyed by domain:
+
+```yaml
+www.alphavantage.co:
+  api_key: "your-key-here"
+  auth_in: "query"       # "header" (default), "query", or "bearer"
+  auth_name: "apikey"    # query param or header name
+```
+
+**Placement modes** (via manifest `invoke.auth_in`):
+- `auth_in: "header"` (default) — key added as HTTP header (name from `auth_name`, default `X-API-Key`)
+- `auth_in: "query"` — key added as query parameter, merged into request params
+- `auth: "bearer"` — key added as `Authorization: Bearer <key>` header
+
+**Domain lookup:** First tries the indexed domain (e.g. `local/alpha-vantage`), then falls back to the invoke URL hostname (e.g. `www.alphavantage.co`). This lets `credentials.yaml` use real domain names for local manifests.
+
+Credential injection is transparent to the LLM — the system prompt tells it "API credentials are pre-configured" so it always calls the tool without hesitation.
+
+Config: `tool_bridge.credentials_file` (default `credentials.yaml`, relative to CWD).
+
+## Multi-tool injection
+
+The bridge injects up to 3 tools per chat round — the LLM's top discovery pick plus the next highest-scoring candidates (deduped by domain). This lets the model choose between related capabilities in a single round rather than requiring multiple discovery cycles.
+
+For example, a task like "check the news and weather" might inject `oap_newsapi_top_headlines`, `oap_open_meteo`, and `oap_wikipedia` in a single round, letting the model call whichever ones it needs.
+
+Config: `MAX_INJECTED_TOOLS = 3` (constant in `tool_api.py`).
+
+## Fingerprint optimization
+
+Intent fingerprinting uses `chat(think=False, temperature=0, format="json")` for deterministic ~15-token output in ~1s. JSON-aware fingerprints separate JSON tasks from text tasks in fingerprint space.
+
+Fingerprints are no longer the primary cache key (vector similarity replaced them), but they're still used for:
+- Logging and debug traces
+- Failure tracking and blacklisting
+- Experience hints (past failure/success context injected into system prompt)
+- Conditional thinking and escalation prefix matching
+
+## Conditional thinking
+
+By default, the bridge sends `think: false` to Ollama to keep responses fast (~12 tokens per round with qwen3:8b). For tasks that benefit from reasoning — like arithmetic verification — you can enable thinking selectively.
+
+Config: `tool_bridge.think_prefixes` (list of fingerprint prefixes, default empty). When a task's fingerprint starts with a listed prefix, `think: true` is sent to Ollama. Debug output includes `thinking_enabled: true/false`.
+
+```yaml
+tool_bridge:
+  think_prefixes:
+    - compute
+    - calculate
+```
+
+## Big LLM escalation
+
+The small local model (qwen3:8b) handles tool discovery and execution. For tasks that need deeper reasoning — complex analysis, large document processing, arithmetic verification — the final reasoning step can be escalated to a big cloud LLM (GPT-4, Claude, Gemini).
+
+**How it works:** The small model discovers tools and executes them as usual. When escalation triggers, the tool results and conversation context are sent to the big LLM for the final response instead of back to the small model.
+
+**Two escalation triggers:**
+1. **Prefix matching:** `tool_bridge.escalate_prefixes` (list of fingerprint prefixes). When a task's fingerprint starts with a listed prefix, escalation activates.
+2. **Large output:** When an `oap_exec` result exceeds `summarize_threshold` chars and escalation is enabled, it escalates automatically — catching any large-output scenario regardless of fingerprint prefix.
+
+**Providers:** OpenAI, Anthropic, and Google AI (via OpenAI-compatible endpoint). Per-provider env vars (`OAP_OPENAI_API_KEY`, `OAP_ANTHROPIC_API_KEY`, `OAP_GOOGLEAI_API_KEY`) let you switch providers without redeploying.
+
+Config:
+```yaml
+escalation:
+  enabled: true
+  provider: anthropic    # openai, anthropic, or googleai
+  model: claude-sonnet-4-20250514
+  timeout: 120
+
+tool_bridge:
+  escalate_prefixes:
+    - compute
+    - analyze
+```
+
+Fails silently — falls back to small LLM response on any error. Debug output includes `escalated: true/false`.
+
+## Map-reduce summarization
+
+When tool results exceed the small LLM's context window and big LLM escalation is not configured, the bridge falls back to map-reduce summarization via `ollama.generate()`. The result is chunked, each chunk summarized independently, then the summaries are combined. This is lossy — especially on prose and markdown — but preserves the key information.
+
+Hierarchy: big LLM escalation (if `escalation.enabled`) → map-reduce → truncation.
+
+Config: `tool_bridge.summarize_threshold` (default 16000 chars), `tool_bridge.chunk_size`, `tool_bridge.max_tool_result`.
+
 ## What's next
 
 Planned improvements:
 
 - **LLM-generated schemas at crawl time.** Instead of heuristic parameter extraction at request time, use the LLM during crawling to generate richer JSON Schema from manifest descriptions. Cache the schemas alongside the manifest embeddings.
-- **Auth credential management.** Manifests declare auth requirements (`api_key`, `bearer`, `oauth2`) but the bridge doesn't yet manage credentials. A local credential store keyed by domain would let the bridge authenticate tool calls automatically.
 - **Parallel tool execution.** When Ollama returns multiple tool calls in a single response, execute them concurrently instead of sequentially.
 - **OpenAI-compatible endpoint.** An `/v1/chat/completions` endpoint that speaks the OpenAI API format, so any OpenAI-compatible client gets OAP tool discovery for free.
 

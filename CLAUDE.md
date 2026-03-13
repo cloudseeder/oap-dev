@@ -36,7 +36,8 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/MANIFEST_2_0.md` — Manifest 2.0 roadmap: OpenClaw comparison, voice, channels, monitoring
 - `docs/SECURITY.md` — Security model: defense-in-depth from network isolation to OS sandbox
 - `docs/PIPER.md` — Piper TTS: local neural text-to-speech for the Manifest agent
-- `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Phase 7)
+- `docs/THE-SMALL-MODEL-PROBLEM.md` — The Small Model Problem: real-world failures switching between small LLMs, compensating logic, and why manifest descriptions matter
+- `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (all six services + voice setup)
 
 ### Next.js Application (oap.dev)
 
