@@ -174,7 +174,13 @@ class EmailDB:
             f"SELECT * FROM messages WHERE {where} ORDER BY received_at DESC LIMIT ?",
             (*params, limit),
         ).fetchall()
-        return [self._decode(dict(r)) for r in rows]
+        # Exclude body_text from list results — use get_message for full body
+        results = []
+        for r in rows:
+            d = self._decode(dict(r))
+            d.pop("body_text", None)
+            results.append(d)
+        return results
 
     def get_message(self, msg_id: str) -> dict | None:
         row = self.conn.execute(
