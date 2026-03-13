@@ -122,6 +122,22 @@ async def lifespan(app: FastAPI):
     task_count = len(_db.list_tasks())
     log.info("Manifest started — %d conversations, %d tasks", conv_count, task_count)
 
+    # Backfill embeddings for user facts that lack them
+    settings = _db.get_settings()
+    if settings.get("memory_enabled") == "true":
+        missing = _db.get_facts_without_embeddings()
+        if missing:
+            log.info("Backfilling embeddings for %d user fact(s)", len(missing))
+            async def _backfill():
+                try:
+                    from .memory import embed_missing_facts
+                    embedded = await embed_missing_facts(_db, _discovery_url)
+                    if embedded:
+                        log.info("Backfill complete — embedded %d fact(s)", embedded)
+                except Exception:
+                    log.warning("Embedding backfill failed — will retry next startup", exc_info=True)
+            asyncio.create_task(_backfill())
+
     yield
 
     _event_bus.shutdown()
@@ -364,7 +380,24 @@ async def chat(req: ChatRequest):
         persona_parts.append(intro)
 
     if settings.get("memory_enabled") == "true":
-        facts = _db.get_all_facts()
+        from .memory import embed_query as _embed_query
+
+        # RAG: embed the user message and retrieve relevant facts
+        query_vec = await _embed_query(_discovery_url, req.message)
+        if query_vec is not None:
+            facts = _db.search_facts(query_vec, top_k=10, min_similarity=0.3)
+            # Also include any unembedded facts (partial backfill state)
+            unembedded = _db.get_facts_without_embeddings()
+            if unembedded:
+                embedded_ids = {f["id"] for f in facts}
+                for uf in unembedded:
+                    if uf["id"] not in embedded_ids:
+                        facts.append(uf)
+        else:
+            # Embedding failed — fall back to all facts (current behavior)
+            log.warning("embed_query failed, falling back to all facts")
+            facts = _db.get_all_facts()
+
         if facts:
             _db.touch_facts([f["id"] for f in facts])
             pinned = [f for f in facts if f.get("pinned")]
@@ -988,6 +1021,9 @@ async def create_memory(req: CreateFactRequest):
     added = _db.add_facts([req.fact], "manual entry")
     if added == 0:
         raise HTTPException(status_code=409, detail="Fact already exists")
+    # Embed the new fact in the background
+    from .memory import embed_missing_facts
+    asyncio.create_task(embed_missing_facts(_db, _discovery_url))
     facts = _db.get_all_facts()
     return {"facts": facts, "total": len(facts)}
 
@@ -998,6 +1034,9 @@ async def update_memory(fact_id: str, req: UpdateFactRequest):
         raise HTTPException(status_code=503, detail="Service unavailable")
     if not _db.update_fact(fact_id, req.fact):
         raise HTTPException(status_code=404, detail="Fact not found")
+    # Re-embed the updated fact in the background
+    from .memory import embed_missing_facts
+    asyncio.create_task(embed_missing_facts(_db, _discovery_url))
     facts = _db.get_all_facts()
     return {"facts": facts, "total": len(facts)}
 

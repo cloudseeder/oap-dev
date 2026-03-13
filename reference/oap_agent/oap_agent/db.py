@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
+import struct
 import threading
 import uuid
 from datetime import datetime
@@ -103,6 +105,30 @@ CREATE INDEX IF NOT EXISTS idx_notifications_pending ON notifications(dismissed,
 """
 
 
+_EMBEDDING_DIM = 768
+_EMBEDDING_STRUCT = struct.Struct(f"<{_EMBEDDING_DIM}f")  # 3072 bytes
+
+
+def _pack_embedding(vec: list[float]) -> bytes:
+    """Pack a 768-dim float vector into a compact BLOB."""
+    return _EMBEDDING_STRUCT.pack(*vec)
+
+
+def _unpack_embedding(blob: bytes) -> list[float]:
+    """Unpack a BLOB back to a list of floats."""
+    return list(_EMBEDDING_STRUCT.unpack(blob))
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two vectors. Returns 0.0 on degenerate input."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 def _new_id(prefix: str) -> str:
     return prefix + uuid.uuid4().hex[:12]
 
@@ -128,6 +154,10 @@ class AgentDB:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(user_facts)").fetchall()}
         if "pinned" not in cols:
             self.conn.execute("ALTER TABLE user_facts ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+            self.conn.commit()
+
+        if "embedding" not in cols:
+            self.conn.execute("ALTER TABLE user_facts ADD COLUMN embedding BLOB")
             self.conn.commit()
 
         task_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(tasks)").fetchall()}
@@ -608,9 +638,14 @@ class AgentDB:
         rows = self.conn.execute(
             "SELECT * FROM user_facts ORDER BY pinned DESC, reference_count DESC"
         ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            d = dict(r)
+            d.pop("embedding", None)  # Don't leak BLOBs to callers
+            result.append(d)
+        return result
 
-    def add_facts(self, facts: list[str], source_message: str, max_facts: int = 50) -> int:
+    def add_facts(self, facts: list[str], source_message: str, max_facts: int = 500) -> int:
         """Insert new facts with UNIQUE dedup, evict excess unpinned. Returns count added."""
         import sqlite3 as _sqlite3
         now = _now()
@@ -659,14 +694,14 @@ class AgentDB:
         return cur.rowcount > 0
 
     def update_fact(self, fact_id: str, new_text: str) -> bool:
-        """Update fact text by ID. Returns True if updated."""
+        """Update fact text by ID. Clears embedding so it gets re-embedded. Returns True if updated."""
         new_text = new_text.strip()
         if not new_text:
             return False
         now = _now()
         with self._lock:
             cur = self.conn.execute(
-                "UPDATE user_facts SET fact = ?, last_referenced = ? WHERE id = ?",
+                "UPDATE user_facts SET fact = ?, last_referenced = ?, embedding = NULL WHERE id = ?",
                 (new_text, now, fact_id),
             )
             self.conn.commit()
@@ -694,6 +729,73 @@ class AgentDB:
     def count_facts(self) -> int:
         """Total number of stored user facts."""
         return self.conn.execute("SELECT COUNT(*) FROM user_facts").fetchone()[0]
+
+    def set_embedding(self, fact_id: str, embedding: list[float]) -> bool:
+        """Store an embedding BLOB for a single fact. Returns True if updated."""
+        blob = _pack_embedding(embedding)
+        with self._lock:
+            cur = self.conn.execute(
+                "UPDATE user_facts SET embedding = ? WHERE id = ?", (blob, fact_id)
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def set_embeddings_batch(self, pairs: list[tuple[str, list[float]]]) -> int:
+        """Store embeddings for multiple facts in one transaction. Returns count updated."""
+        updated = 0
+        with self._lock:
+            for fact_id, embedding in pairs:
+                blob = _pack_embedding(embedding)
+                cur = self.conn.execute(
+                    "UPDATE user_facts SET embedding = ? WHERE id = ?", (blob, fact_id)
+                )
+                updated += cur.rowcount
+            self.conn.commit()
+        return updated
+
+    def get_facts_without_embeddings(self) -> list[dict]:
+        """Return facts that have no embedding (NULL)."""
+        rows = self.conn.execute(
+            "SELECT id, fact FROM user_facts WHERE embedding IS NULL"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def search_facts(
+        self, query_embedding: list[float], top_k: int = 10, min_similarity: float = 0.3
+    ) -> list[dict]:
+        """Cosine similarity search over embedded facts.
+
+        Pinned facts are ALWAYS included regardless of similarity score.
+        Returns pinned facts first, then top-K learned facts above min_similarity.
+        """
+        rows = self.conn.execute(
+            "SELECT * FROM user_facts WHERE embedding IS NOT NULL OR pinned = 1"
+        ).fetchall()
+
+        pinned: list[dict] = []
+        scored: list[tuple[float, dict]] = []
+
+        for row in rows:
+            fact = dict(row)
+            if fact.get("pinned"):
+                pinned.append(fact)
+                continue
+            blob = fact.get("embedding")
+            if not blob:
+                continue
+            vec = _unpack_embedding(blob)
+            sim = _cosine_similarity(query_embedding, vec)
+            if sim >= min_similarity:
+                scored.append((sim, fact))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_learned = [f for _, f in scored[:top_k]]
+
+        # Strip embedding BLOBs from results
+        for f in pinned + top_learned:
+            f.pop("embedding", None)
+
+        return pinned + top_learned
 
     # --- Notifications ---
 

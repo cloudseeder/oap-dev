@@ -24,6 +24,73 @@ EXTRACTION_SYSTEM = (
 )
 
 
+async def embed_texts(
+    discovery_url: str,
+    texts: list[str],
+    prefix: str = "search_document: ",
+    timeout: int = 30,
+) -> list[list[float]] | None:
+    """Batch embed texts via discovery's Ollama pass-through.
+
+    Uses nomic-embed-text with task-type prefixes per its documentation.
+    Returns list of embedding vectors, or None on failure.
+    """
+    if not texts:
+        return []
+    prefixed = [f"{prefix}{t}" for t in texts]
+    url = f"{discovery_url.rstrip('/')}/api/embed"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json={
+                "model": "nomic-embed-text",
+                "input": prefixed,
+            })
+            resp.raise_for_status()
+            data = resp.json()
+        return data.get("embeddings")
+    except Exception:
+        log.warning("Embedding request failed", exc_info=True)
+        return None
+
+
+async def embed_query(
+    discovery_url: str,
+    text: str,
+    timeout: int = 30,
+) -> list[float] | None:
+    """Embed a single query text with the search_query prefix.
+
+    Returns the embedding vector, or None on failure.
+    """
+    result = await embed_texts(discovery_url, [text], prefix="search_query: ", timeout=timeout)
+    if result and len(result) > 0:
+        return result[0]
+    return None
+
+
+async def embed_missing_facts(db: "AgentDB", discovery_url: str) -> int:
+    """Embed all facts that lack embeddings. Returns count embedded."""
+    missing = db.get_facts_without_embeddings()
+    if not missing:
+        return 0
+
+    total = 0
+    # Batch in groups of 50
+    for i in range(0, len(missing), 50):
+        batch = missing[i : i + 50]
+        texts = [f["fact"] for f in batch]
+        embeddings = await embed_texts(discovery_url, texts)
+        if not embeddings or len(embeddings) != len(batch):
+            log.warning("Embedding batch failed (got %s for %d texts)", len(embeddings) if embeddings else "None", len(batch))
+            continue
+        pairs = [(batch[j]["id"], embeddings[j]) for j in range(len(batch))]
+        total += db.set_embeddings_batch(pairs)
+
+    if total:
+        log.info("Embedded %d user fact(s)", total)
+    return total
+
+
 async def extract_facts_from_text(
     discovery_url: str,
     text: str,
@@ -79,11 +146,12 @@ async def extract_and_store_facts(
     *,
     model: str = "qwen3:8b",
     timeout: int = 30,
-    max_facts: int = 50,
+    max_facts: int = 500,
 ) -> None:
     """Extract user facts from a conversation turn and store them.
 
     Calls discovery's /api/generate (Ollama pass-through) for LLM extraction.
+    After storing, embeds any facts that lack embeddings.
     Fire-and-forget — errors are logged, never raised.
     """
     try:
@@ -142,5 +210,6 @@ async def extract_and_store_facts(
             added = db.add_facts(clean, user_message, max_facts)
             if added:
                 log.info("Extracted %d new user fact(s): %s", added, clean)
+                await embed_missing_facts(db, discovery_url)
     except Exception:
         log.warning("User fact extraction failed", exc_info=True)
