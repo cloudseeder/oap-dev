@@ -310,6 +310,15 @@ def _is_conversational(message: str) -> bool:
     )
     if _task_starts.match(stripped):
         return False
+    # Check for task verbs anywhere in the message — catches cases like
+    # "Our anniversary is June 12, please add a reminder"
+    _task_anywhere = re.compile(
+        r"\b(remind|reminder|schedule|set\s+a|add\s+a|create\s+a|delete|remove"
+        r"|can\s+you|could\s+you|please\s+(add|set|create|check|find|get|send|remind))\b",
+        re.IGNORECASE,
+    )
+    if _task_anywhere.search(stripped):
+        return False
     # If it doesn't look like a task, treat longer personal statements
     # as conversational (e.g. "Amy likes to travel, she just got back from Ireland")
     if len(stripped) > 20:
