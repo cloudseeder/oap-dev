@@ -1092,11 +1092,20 @@ async def chat_proxy(req: ChatRequest) -> Any:
                         })
                     break
 
-                # Model skipped tool calls on round 1 despite having tools —
-                # likely hallucinating instead of using available tools.
+                # Model skipped tool calls on round 1 despite having tools.
+                # If the model produced a substantive text response (>50 chars),
+                # it likely decided the message is conversational, not a task —
+                # respect that and return the response as-is.
+                # Otherwise: likely hallucinating instead of using available tools.
                 # On cache hit: degrade and retry with full discovery.
                 # On cache miss: retry once (re-discover may find better tools).
-                if round_num == 0 and not tools_executed and tools:
+                model_response_text = resp_message.get("content", "")
+                if round_num == 0 and not tools_executed and tools and len(model_response_text) >= 50:
+                    log.info(
+                        "Model replied without tools (%d chars) — treating as conversational",
+                        len(model_response_text),
+                    )
+                elif round_num == 0 and not tools_executed and tools:
                     if exp_cache_hit and _attempt == 0:
                         log.warning(
                             "Cache hit but model made no tool calls — degrading cache entry and retrying"
