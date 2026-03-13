@@ -284,11 +284,37 @@ _CONVERSATIONAL_PATTERNS = re.compile(
 
 
 def _is_conversational(message: str) -> bool:
-    """Return True if message is a conversational turn that needs no tools."""
+    """Return True if message is a conversational turn that needs no tools.
+
+    Two categories:
+    1. Short pattern-based: "thanks", "ok", greetings, etc.
+    2. Personal declarative statements: sharing info, not requesting a task.
+       These are statements that don't contain questions or imperatives, and
+       don't reference actions the agent should perform (check, find, set, etc.)
+    """
     stripped = message.strip()
-    if len(stripped) > 100:
+    # Short conversational patterns
+    if len(stripped) <= 100 and _CONVERSATIONAL_PATTERNS.match(stripped):
+        return True
+    # Personal declarative statements — sharing info, not requesting tasks.
+    # Skip if it looks like a task: contains question marks, or starts with
+    # imperative verbs / task-oriented keywords.
+    if "?" in stripped:
         return False
-    return bool(_CONVERSATIONAL_PATTERNS.match(stripped))
+    _task_starts = re.compile(
+        r"^(check|find|search|look\s+up|get|fetch|set|create|delete|remove|update"
+        r"|send|tell|show|list|remind|schedule|run|execute|can\s+you|could\s+you"
+        r"|please|would\s+you|i\s+need\s+you\s+to|i\s+want\s+you\s+to"
+        r"|what|when|where|who|how|why|which|is\s+there|are\s+there|do\s+you)",
+        re.IGNORECASE,
+    )
+    if _task_starts.match(stripped):
+        return False
+    # If it doesn't look like a task, treat longer personal statements
+    # as conversational (e.g. "Amy likes to travel, she just got back from Ireland")
+    if len(stripped) > 20:
+        return True
+    return False
 
 
 _GREETING_RE = re.compile(
