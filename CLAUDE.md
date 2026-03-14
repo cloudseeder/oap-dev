@@ -202,6 +202,16 @@ Manifest — chat + autonomous task execution. Thin orchestrator that calls `/v1
 - SPA routes: `/` (redirect to `/chat`), `/chat`, `/chat/:id`, `/tasks`, `/tasks/:id`, `/settings`
 - API routes: `/v1/agent/chat` (POST SSE), `/v1/agent/conversations` (CRUD), `/v1/agent/tasks` (CRUD), `/v1/agent/tasks/:id/run` (POST), `/v1/agent/tasks/:id/runs` (GET), `/v1/agent/settings` (GET/PATCH), `/v1/agent/memory` (GET), `/v1/agent/memory/:id` (DELETE), `/v1/agent/models` (GET — dynamic from Ollama), `/v1/agent/notifications` (GET/dismiss/count), `/v1/agent/tts` (POST audio/wav), `/v1/agent/tts/voices` (GET), `/v1/agent/voice/status` (GET), `/v1/agent/transcribe` (POST), `/v1/agent/events` (SSE), `/v1/agent/health` (GET)
 - Task scheduling: APScheduler in-process, cron validation rejects intervals < 5 minutes, max 20 tasks
+- **Chat priority over tasks**: Ollama processes requests serially, so a running background task blocks conversational responses. When a user sends a chat message while a task is running:
+
+  | Ollama busy? | Conversational? | Escalation enabled? | Action |
+  |---|---|---|---|
+  | Yes | Yes | Yes | Escalate to big LLM — task keeps running on Ollama |
+  | Yes | Yes | No | Cancel task, use Ollama |
+  | Yes | No (tools) | — | Cancel task, use Ollama (tools need discovery) |
+  | No | — | — | Normal path, no change |
+
+  Escalation config in agent `config.yaml`: `escalation: {enabled: true, provider: anthropic, model: claude-sonnet-4-6}`. Uses same env var cascade as discovery: `OAP_ESCALATION_API_KEY` > `OAP_ANTHROPIC_API_KEY`. Falls back to cancel+Ollama if escalation fails. Cancelled tasks retry on next cron schedule. Key files: `scheduler.py` (`is_active()`, `cancel_active()`), `executor.py` (`execute_escalated()`).
 - Input validation: model names validated by length (max 100 chars), available models fetched dynamically from Ollama `/api/tags`. `max_length` on all string fields
 - **Notification queue**: Tasks produce notifications on completion (type=`task_result`, body=first 200 chars). Notifications power the greeting briefing and avatar badge. SSE `notification_new` events update the frontend badge count in real-time. See `docs/AGENT.md` for full event model.
 - **Greeting briefing**: When the first message of a conversation is a greeting (hello, good morning, etc.), pending notifications are injected as system context and the LLM produces a natural briefing. Notifications are dismissed after presentation.

@@ -126,6 +126,29 @@ On startup: load all enabled tasks from DB, schedule each with `CronTrigger.from
 
 Task execution follows the same path as chat — single user message → `/v1/chat` → store result in `task_runs` — but without conversation context.
 
+**Chat priority over tasks.** Ollama processes requests serially per model, so a running background task (e.g. hourly email summary) blocks conversational responses. The agent detects this and routes around the contention:
+
+| Ollama busy? | Conversational? | Escalation enabled? | Action |
+|---|---|---|---|
+| Yes | Yes | Yes | Escalate to big LLM — task keeps running on Ollama |
+| Yes | Yes | No | Cancel task, use Ollama |
+| Yes | No (tools) | — | Cancel task, use Ollama (tools need discovery) |
+| No | — | — | Normal path, no change |
+
+When escalation is enabled, conversational messages go to the configured big LLM (Claude, GPT-4, etc.) while the task finishes on Ollama — both get served. Tool-route messages always cancel the task because they need discovery on Ollama. If escalation fails (bad key, timeout), falls back to cancel+Ollama. Cancelled tasks retry on their next cron schedule.
+
+Config:
+```yaml
+escalation:
+  enabled: true
+  provider: anthropic    # or openai, googleai
+  model: claude-sonnet-4-6
+  timeout: 60
+  max_tokens: 4096
+```
+
+API key resolution: `escalation.api_key` > `OAP_ESCALATION_API_KEY` > provider-specific (`OAP_ANTHROPIC_API_KEY`, `OAP_OPENAI_API_KEY`, `OAP_GOOGLEAI_API_KEY`).
+
 ### SSE Event Bus
 
 In-memory pub/sub: one `asyncio.Queue` (maxsize 100) per connected SSE client, capped at 50 subscribers. Missed events when the browser is closed are acceptable — the user sees results on next visit via run history.
