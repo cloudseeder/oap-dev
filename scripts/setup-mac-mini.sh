@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# OAP Mac Mini Setup Script
-# Creates launchd plist files for all services and loads them.
+# OAP Mac Mini Setup Script — Trust + Dashboard only
+# Discovery, Agent, Reminder, and Email now live in the manifest repo.
 # Run from the repo root: ./scripts/setup-mac-mini.sh
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,7 +10,7 @@ VENV_DIR="$HOME/.oap-venv"
 LAUNCH_DIR="$HOME/Library/LaunchAgents"
 USER_NAME="$(whoami)"
 
-echo "=== OAP Mac Mini Service Setup ==="
+echo "=== OAP Mac Mini Service Setup (Trust + Dashboard) ==="
 echo "Repo:  $REPO_DIR"
 echo "Venv:  $VENV_DIR"
 echo "User:  $USER_NAME"
@@ -24,18 +24,16 @@ if [ ! -d "$VENV_DIR" ]; then
     exit 1
 fi
 
-for cmd in oap-api oap-trust-api oap-dashboard-api oap-crawl oap-agent-api; do
+for cmd in oap-trust-api oap-dashboard-api; do
     if [ ! -f "$VENV_DIR/bin/$cmd" ]; then
         echo "ERROR: $cmd not found in $VENV_DIR/bin/"
-        echo "Install services first: pip install -e reference/oap_discovery (etc.)"
+        echo "Install services first:"
+        echo "  source $VENV_DIR/bin/activate"
+        echo "  pip install -e reference/oap_trust"
+        echo "  pip install -e reference/oap_dashboard"
         exit 1
     fi
 done
-
-if ! command -v ollama &>/dev/null; then
-    echo "ERROR: ollama not found. Install from https://ollama.com/download"
-    exit 1
-fi
 
 # --- Generate or prompt for backend secret ---
 
@@ -133,11 +131,6 @@ PLIST
 
 echo "Creating launchd plist files..."
 
-write_plist "com.oap.discovery" \
-    "$VENV_DIR/bin/oap-api" \
-    "$REPO_DIR/reference/oap_discovery" \
-    "yes"
-
 write_plist "com.oap.trust" \
     "$VENV_DIR/bin/oap-trust-api" \
     "$REPO_DIR/reference/oap_trust" \
@@ -148,75 +141,12 @@ write_plist "com.oap.dashboard" \
     "$REPO_DIR/reference/oap_dashboard" \
     "yes"
 
-write_plist "com.oap.agent" \
-    "$VENV_DIR/bin/oap-agent-api" \
-    "$REPO_DIR/reference/oap_agent" \
-    "no"
-
-write_plist "com.oap.crawler" \
-    "$VENV_DIR/bin/oap-crawl" \
-    "$REPO_DIR/reference/oap_discovery" \
-    "no" \
-    "3600" \
-    "--once"
-
-echo ""
-
-# --- Log rotation script ---
-# newsyslog renames files, but launchd holds file descriptors by inode,
-# so the process keeps writing to the old (renamed) file. Instead, we
-# copy-then-truncate in place, which preserves the file descriptor.
-
-LOG_ROTATE_SCRIPT="$REPO_DIR/scripts/rotate-logs.sh"
-echo "Creating log rotation script..."
-
-cat > "$LOG_ROTATE_SCRIPT" <<'ROTATE'
-#!/usr/bin/env bash
-# OAP log rotation — copy-then-truncate (preserves launchd file descriptors)
-MAX_SIZE=$((5 * 1024 * 1024))  # 5MB
-KEEP=3
-
-for logfile in /tmp/com.oap.*.log /tmp/com.oap.*.err; do
-    [ -f "$logfile" ] || continue
-    size=$(stat -f%z "$logfile" 2>/dev/null || echo 0)
-    [ "$size" -lt "$MAX_SIZE" ] && continue
-
-    # Shift existing archives
-    i=$KEEP
-    while [ $i -gt 1 ]; do
-        prev=$((i - 1))
-        [ -f "${logfile}.${prev}.gz" ] && mv "${logfile}.${prev}.gz" "${logfile}.${i}.gz"
-        i=$prev
-    done
-
-    # Copy current to .1.gz, then truncate in place
-    gzip -c "$logfile" > "${logfile}.1.gz"
-    : > "$logfile"
-done
-ROTATE
-chmod +x "$LOG_ROTATE_SCRIPT"
-echo "  Created $LOG_ROTATE_SCRIPT"
-
-# Schedule rotation via launchd (runs hourly)
-write_plist "com.oap.log-rotate" \
-    "$LOG_ROTATE_SCRIPT" \
-    "/tmp" \
-    "no" \
-    "3600"
-echo "  Scheduled hourly log rotation"
-
-# Remove stale newsyslog config if present
-if [ -f "/etc/newsyslog.d/oap.conf" ]; then
-    echo "  Removing old /etc/newsyslog.d/oap.conf (requires sudo)..."
-    sudo rm -f "/etc/newsyslog.d/oap.conf"
-fi
-
 echo ""
 
 # --- Load all services ---
 
 echo "Loading services..."
-for label in com.oap.discovery com.oap.trust com.oap.dashboard com.oap.agent com.oap.crawler com.oap.log-rotate; do
+for label in com.oap.trust com.oap.dashboard; do
     launchctl load "$LAUNCH_DIR/$label.plist"
     echo "  Loaded $label"
 done
@@ -225,16 +155,15 @@ echo ""
 
 # --- Wait for services to start ---
 
-echo "Waiting for services to start (up to 60s)..."
+echo "Waiting for services to start (up to 30s)..."
 
 OK=0
 FAIL=0
-MAX_WAIT=60
+MAX_WAIT=30
 INTERVAL=5
 ELAPSED=0
 
-# Build list of services to check
-REMAINING="8300:Discovery:discovery:/health 8301:Trust:trust:/health 8302:Dashboard:dashboard:/health 8303:Agent:agent:/v1/agent/health"
+REMAINING="8301:Trust:trust:/health 8302:Dashboard:dashboard:/health"
 
 while [ $ELAPSED -lt $MAX_WAIT ] && [ -n "$REMAINING" ]; do
     sleep $INTERVAL
@@ -254,7 +183,6 @@ while [ $ELAPSED -lt $MAX_WAIT ] && [ -n "$REMAINING" ]; do
     REMAINING="$(echo "$STILL_WAITING" | xargs)"
 done
 
-# Mark anything still not responding as failed
 for port_name in $REMAINING; do
     port="$(echo "$port_name" | cut -d: -f1)"
     name="$(echo "$port_name" | cut -d: -f2)"
@@ -269,9 +197,9 @@ echo ""
 echo "Backend secret: saved in ~/.oap-secret"
 echo "Set this same value as BACKEND_SECRET in Vercel environment variables."
 echo ""
+echo "NOTE: Discovery, Agent, Reminder, and Email are now in the manifest repo."
+echo "See https://github.com/cloudseeder/manifest for setup."
+echo ""
 echo "Logs:"
-echo "  tail -f /tmp/com.oap.discovery.log"
 echo "  tail -f /tmp/com.oap.trust.log"
 echo "  tail -f /tmp/com.oap.dashboard.log"
-echo "  tail -f /tmp/com.oap.agent.log"
-echo "  tail -f /tmp/com.oap.crawler.log"

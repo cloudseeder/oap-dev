@@ -17,43 +17,6 @@ firebase_svc.json
 # database
 *.db
 
-# local config (deploy-specific overrides — track config.yaml.example instead)
-reference/oap_discovery/config.yaml
-reference/oap_agent/config.yaml
-
-# generated manifests (keep hand-coded starter set)
-reference/oap_discovery/manifests/*
-!reference/oap_discovery/manifests/.factory-exclude
-!reference/oap_discovery/manifests/grep.json
-!reference/oap_discovery/manifests/wc.json
-!reference/oap_discovery/manifests/jq.json
-!reference/oap_discovery/manifests/date.json
-!reference/oap_discovery/manifests/bc.json
-!reference/oap_discovery/manifests/apropos.json
-!reference/oap_discovery/manifests/man.json
-!reference/oap_discovery/manifests/sed.json
-!reference/oap_discovery/manifests/awk.json
-!reference/oap_discovery/manifests/cut.json
-!reference/oap_discovery/manifests/tr.json
-!reference/oap_discovery/manifests/paste.json
-!reference/oap_discovery/manifests/column.json
-# HTTP API manifests (curated, not factory-generated)
-!reference/oap_discovery/manifests/open-meteo.json
-!reference/oap_discovery/manifests/wikipedia.json
-!reference/oap_discovery/manifests/exchange-rate.json
-!reference/oap_discovery/manifests/coingecko.json
-!reference/oap_discovery/manifests/dictionary.json
-!reference/oap_discovery/manifests/earthquake.json
-!reference/oap_discovery/manifests/country-info.json
-!reference/oap_discovery/manifests/open-library.json
-!reference/oap_discovery/manifests/ip-geolocation.json
-!reference/oap_discovery/manifests/sunrise-sunset.json
-!reference/oap_discovery/manifests/geocode.json
-!reference/oap_discovery/manifests/zip-lookup.json
-!reference/oap_discovery/manifests/alpha-vantage.json
-!reference/oap_discovery/manifests/newsapi-top-headlines.json
-!reference/oap_discovery/manifests/newsapi-everything.json
-!reference/oap_discovery/manifests/oap-reminder.json
 
 # claude code
 .claude/
