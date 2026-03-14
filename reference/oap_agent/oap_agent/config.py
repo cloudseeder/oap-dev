@@ -41,11 +41,23 @@ class VoiceConfig:
 
 
 @dataclass
+class EscalationConfig:
+    enabled: bool = False
+    provider: str = "anthropic"  # "openai", "anthropic", or "googleai"
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""  # or OAP_ESCALATION_API_KEY / provider-specific env var
+    timeout: int = 60
+    max_tokens: int = 4096
+
+
+@dataclass
 class AgentConfig:
     api: ApiConfig = field(default_factory=ApiConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     voice: VoiceConfig = field(default_factory=VoiceConfig)
+    escalation: EscalationConfig = field(default_factory=EscalationConfig)
     debug: bool = True
     max_tasks: int = 20
     max_concurrent_tasks: int = 1
@@ -100,6 +112,25 @@ def load_config(config_path: str = "config.yaml") -> AgentConfig:
         cfg.voice.tts_enabled = v.get("tts_enabled", cfg.voice.tts_enabled)
         cfg.voice.tts_model_path = v.get("tts_model_path", cfg.voice.tts_model_path)
         cfg.voice.tts_models_dir = v.get("tts_models_dir", cfg.voice.tts_models_dir)
+
+    if "escalation" in raw:
+        esc = raw["escalation"]
+        cfg.escalation.enabled = esc.get("enabled", cfg.escalation.enabled)
+        cfg.escalation.provider = esc.get("provider", cfg.escalation.provider)
+        cfg.escalation.base_url = esc.get("base_url", cfg.escalation.base_url)
+        cfg.escalation.model = esc.get("model", cfg.escalation.model)
+        cfg.escalation.api_key = esc.get("api_key", cfg.escalation.api_key)
+        cfg.escalation.timeout = esc.get("timeout", cfg.escalation.timeout)
+        cfg.escalation.max_tokens = esc.get("max_tokens", cfg.escalation.max_tokens)
+
+    # Env var overrides for escalation
+    import os
+    if os.environ.get("OAP_ESCALATION_ENABLED", "").lower() in ("true", "1"):
+        cfg.escalation.enabled = True
+    if os.environ.get("OAP_ESCALATION_PROVIDER"):
+        cfg.escalation.provider = os.environ["OAP_ESCALATION_PROVIDER"]
+    if os.environ.get("OAP_ESCALATION_MODEL"):
+        cfg.escalation.model = os.environ["OAP_ESCALATION_MODEL"]
 
     cfg.debug = raw.get("debug", cfg.debug)
     cfg.max_tasks = raw.get("max_tasks", cfg.max_tasks)

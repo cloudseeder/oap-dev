@@ -62,6 +62,11 @@ class TaskScheduler:
         if self._scheduler.running:
             self._scheduler.shutdown(wait=False)
 
+    def is_active(self) -> bool:
+        """Return True if a background task is currently running."""
+        task = self._active_task
+        return task is not None and not task.done()
+
     async def cancel_active(self) -> bool:
         """Cancel the currently running task to free Ollama for chat.
 

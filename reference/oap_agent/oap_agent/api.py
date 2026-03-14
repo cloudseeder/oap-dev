@@ -21,7 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .config import load_config
 from .db import AgentDB
 from .events import EventBus
-from .executor import execute_chat, execute_conversational, execute_task
+from .config import EscalationConfig
+from .executor import execute_chat, execute_conversational, execute_escalated, execute_task
 from .scheduler import TaskScheduler
 
 
@@ -36,6 +37,7 @@ _discovery_timeout: int = 300
 _debug_mode: bool = False
 _max_tasks: int = 20
 _voice_cfg = None  # VoiceConfig, set in lifespan
+_escalation_cfg: EscalationConfig | None = None
 _tts_enabled = False
 
 def _validate_model(v: str | None) -> str | None:
@@ -73,7 +75,7 @@ def _validate_cron(schedule: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _db, _event_bus, _scheduler, _discovery_url, _discovery_model, _discovery_timeout
-    global _debug_mode, _max_tasks, _voice_cfg, _tts_enabled
+    global _debug_mode, _max_tasks, _voice_cfg, _escalation_cfg, _tts_enabled
 
     config_path = getattr(app, "_config_path", "config.yaml")
     cfg = load_config(config_path)
@@ -87,6 +89,12 @@ async def lifespan(app: FastAPI):
     _max_tasks = cfg.max_tasks
 
     _voice_cfg = cfg.voice
+
+    if cfg.escalation.enabled and cfg.escalation.model:
+        _escalation_cfg = cfg.escalation
+        log.info("Chat escalation enabled — %s/%s (used when Ollama is busy)", cfg.escalation.provider, cfg.escalation.model)
+    else:
+        _escalation_cfg = None
 
     _scheduler = TaskScheduler()
     _scheduler.start(_db, _event_bus, _discovery_url, debug=_debug_mode, max_concurrent=cfg.max_concurrent_tasks)
@@ -618,38 +626,67 @@ async def chat(req: ChatRequest):
                 yield _sse_event("done", {"conversation_id": conv_id})
                 return
 
-        # Cancel any in-flight background task so Ollama is free for chat
-        if _scheduler:
-            cancelled = await _scheduler.cancel_active()
-            if cancelled:
-                log.info("Preempted background task for chat priority")
-                # Brief pause to let Ollama finish aborting the cancelled request
-                await asyncio.sleep(0.5)
-
         # Route: conversational turns skip the tool bridge entirely
         conversational = _is_conversational(req.message) or greeting or notif_query
-        try:
-            if conversational:
-                log.info("Conversational route: %r", req.message[:80])
-                result = await execute_conversational(
-                    discovery_url=_discovery_url,
-                    messages=llm_messages,
-                    model=model,
-                    timeout=_discovery_timeout,
-                )
-            else:
-                result = await execute_chat(
-                    discovery_url=_discovery_url,
-                    messages=llm_messages,
-                    model=model,
-                    timeout=_discovery_timeout,
-                    debug=_debug_mode,
-                )
-        except Exception as exc:
-            log.error("Chat execution failed: %s", exc, exc_info=True)
-            yield _sse_event("error", {"message": "Execution failed"})
-            yield _sse_event("done", {"conversation_id": conv_id})
-            return
+
+        # Check if Ollama is busy with a background task
+        ollama_busy = _scheduler is not None and _scheduler.is_active()
+
+        if ollama_busy and conversational and _escalation_cfg:
+            # Escalate: send conversational request to big LLM while
+            # the background task keeps running on Ollama
+            log.info("Ollama busy — escalating conversational request to %s/%s",
+                     _escalation_cfg.provider, _escalation_cfg.model)
+            try:
+                result = await execute_escalated(llm_messages, _escalation_cfg)
+            except Exception:
+                result = None
+            if result is None:
+                # Escalation failed — fall back to cancel + Ollama
+                log.warning("Escalation failed — cancelling task for Ollama")
+                await _scheduler.cancel_active()
+                await asyncio.sleep(0.5)
+                try:
+                    result = await execute_conversational(
+                        discovery_url=_discovery_url,
+                        messages=llm_messages,
+                        model=model,
+                        timeout=_discovery_timeout,
+                    )
+                except Exception as exc:
+                    log.error("Chat execution failed: %s", exc, exc_info=True)
+                    yield _sse_event("error", {"message": "Execution failed"})
+                    yield _sse_event("done", {"conversation_id": conv_id})
+                    return
+        else:
+            # Cancel any in-flight background task so Ollama is free
+            if ollama_busy and _scheduler:
+                await _scheduler.cancel_active()
+                log.info("Preempted background task for chat priority")
+                await asyncio.sleep(0.5)
+
+            try:
+                if conversational:
+                    log.info("Conversational route: %r", req.message[:80])
+                    result = await execute_conversational(
+                        discovery_url=_discovery_url,
+                        messages=llm_messages,
+                        model=model,
+                        timeout=_discovery_timeout,
+                    )
+                else:
+                    result = await execute_chat(
+                        discovery_url=_discovery_url,
+                        messages=llm_messages,
+                        model=model,
+                        timeout=_discovery_timeout,
+                        debug=_debug_mode,
+                    )
+            except Exception as exc:
+                log.error("Chat execution failed: %s", exc, exc_info=True)
+                yield _sse_event("error", {"message": "Execution failed"})
+                yield _sse_event("done", {"conversation_id": conv_id})
+                return
 
         # Log debug trace from tool bridge
         if not conversational:
