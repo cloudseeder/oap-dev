@@ -47,7 +47,7 @@ class EscalationConfig:
     base_url: str = ""
     model: str = ""
     api_key: str = ""  # or OAP_ESCALATION_API_KEY / provider-specific env var
-    timeout: int = 60
+    timeout: int = 120
     max_tokens: int = 4096
 
 
