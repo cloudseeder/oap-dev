@@ -79,6 +79,11 @@ export default function Header() {
                     Manifesto
                   </Link>
                   <div className="my-1 border-t border-gray-100" />
+                  <span className="block px-4 py-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Built with OAP</span>
+                  <Link href="/docs/manifest" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    Manifest
+                  </Link>
+                  <div className="my-1 border-t border-gray-100" />
                   <span className="block px-4 py-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Experimental</span>
                   <Link href="/docs/robotics" onClick={() => setDocsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     Robotics

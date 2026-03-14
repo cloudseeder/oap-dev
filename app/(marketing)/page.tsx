@@ -130,6 +130,33 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Built with OAP */}
+      <section className="px-4 py-16">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="text-center text-2xl font-bold text-gray-900">Built with OAP</h2>
+          <p className="mx-auto mt-4 max-w-2xl text-center text-gray-600">
+            Real applications powered by OAP manifest discovery.
+          </p>
+          <div className="mt-8">
+            <Link
+              href="/docs/manifest"
+              className="block rounded-lg border border-gray-200 bg-white p-6 hover:border-primary-200 hover:shadow-sm"
+            >
+              <h3 className="text-lg font-semibold text-gray-900">Manifest</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                A companion chat app with autonomous task execution, running entirely on a Mac Mini.
+                A small LLM discovers and invokes tools via OAP manifests at runtime &mdash; weather,
+                news, reminders, email &mdash; with no hardcoded integrations. The model learns what
+                it can do by reading manifest descriptions, the same way a developer reads a man page.
+              </p>
+              <span className="mt-3 inline-block text-sm font-medium text-primary">
+                Read the case study &rarr;
+              </span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Open Infrastructure */}
       <section className="bg-gray-50 px-4 py-16">
         <div className="mx-auto max-w-3xl text-center">

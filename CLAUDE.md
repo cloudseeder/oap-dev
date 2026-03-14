@@ -32,6 +32,7 @@ Protocol version: 1.0. License: CC0 1.0 (Public Domain).
 - `docs/OLLAMA.md` — OAP + Ollama: manifest discovery as native Ollama tool calling via the tool bridge
 - `docs/OPENAPI-TOOL-SERVER.md` — OpenAPI tool server: exposing manifests as a standard OpenAPI 3.1 spec for Open WebUI, LangChain, etc.
 - `docs/MCP.md` — MCP server: exposing manifests as MCP tools for Claude Desktop and MCP clients
+- `docs/MANIFEST.md` — Manifest case study: companion chat app built on OAP discovery
 - `docs/MANIFEST_2_0.md` — Manifest 2.0 roadmap: OpenClaw comparison, voice, channels, monitoring
 - `docs/THE-SMALL-MODEL-PROBLEM.md` — The Small Model Problem: real-world failures switching between small LLMs, compensating logic, and why manifest descriptions matter
 - `DEPLOYMENT.md` — Mac Mini + Vercel deployment guide (Trust + Dashboard only)
