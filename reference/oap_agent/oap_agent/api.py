@@ -618,6 +618,14 @@ async def chat(req: ChatRequest):
                 yield _sse_event("done", {"conversation_id": conv_id})
                 return
 
+        # Cancel any in-flight background task so Ollama is free for chat
+        if _scheduler:
+            cancelled = await _scheduler.cancel_active()
+            if cancelled:
+                log.info("Preempted background task for chat priority")
+                # Brief pause to let Ollama finish aborting the cancelled request
+                await asyncio.sleep(0.5)
+
         # Route: conversational turns skip the tool bridge entirely
         conversational = _is_conversational(req.message) or greeting or notif_query
         try:

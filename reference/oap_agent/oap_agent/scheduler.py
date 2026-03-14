@@ -30,6 +30,8 @@ class TaskScheduler:
         self._discovery_url: str = "http://localhost:8300"
         self._debug: bool = False
         self._semaphore: asyncio.Semaphore | None = None
+        self._active_task: asyncio.Task | None = None
+        self._active_task_id: str | None = None
 
     @property
     def semaphore(self) -> asyncio.Semaphore | None:
@@ -59,6 +61,20 @@ class TaskScheduler:
     def stop(self) -> None:
         if self._scheduler.running:
             self._scheduler.shutdown(wait=False)
+
+    async def cancel_active(self) -> bool:
+        """Cancel the currently running task to free Ollama for chat.
+
+        Returns True if a task was cancelled, False if nothing was running.
+        The cancelled task will retry on its next scheduled run.
+        """
+        task = self._active_task
+        task_id = self._active_task_id
+        if task is not None and not task.done():
+            task.cancel()
+            log.info("Cancelled active task %s to prioritize chat", task_id)
+            return True
+        return False
 
     def schedule_task(self, task: dict) -> None:
         """Add or replace a job for the given task."""
@@ -189,6 +205,10 @@ class TaskScheduler:
             log.info("Task %s (%s) run=%s queued (waiting for slot)", task_id, task["name"], run_id)
             await self._semaphore.acquire()
 
+        # Track this as the active task so cancel_active() can interrupt it
+        self._active_task = asyncio.current_task()
+        self._active_task_id = task_id
+
         try:
             started = time.monotonic()
             log.info("Running task %s (%s) run=%s", task_id, task["name"], run_id)
@@ -251,6 +271,24 @@ class TaskScheduler:
                             "count": self._db.count_pending_notifications(),
                         })
 
+            except asyncio.CancelledError:
+                duration_ms = int((time.monotonic() - started) * 1000)
+                log.info("Task %s (%s) cancelled after %dms — chat took priority",
+                         task_id, task["name"], duration_ms)
+                self._db.finish_run(
+                    run_id=run_id,
+                    status="cancelled",
+                    error="Cancelled: chat message took priority",
+                    duration_ms=duration_ms,
+                )
+                if self._event_bus:
+                    await self._event_bus.publish("task_run_finished", {
+                        "task_id": task_id,
+                        "run_id": run_id,
+                        "status": "cancelled",
+                        "task_name": task["name"],
+                    })
+
             except Exception as exc:
                 duration_ms = int((time.monotonic() - started) * 1000)
                 log.error("Task run %s failed: %s", run_id, exc, exc_info=True)
@@ -271,5 +309,7 @@ class TaskScheduler:
                         "task_name": task["name"],
                     })
         finally:
+            self._active_task = None
+            self._active_task_id = None
             if self._semaphore:
                 self._semaphore.release()
