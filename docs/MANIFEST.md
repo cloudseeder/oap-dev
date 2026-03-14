@@ -1,6 +1,6 @@
 # Manifest: A Companion Chat App Built on OAP
 
-Manifest is a companion chat app with autonomous task execution, running entirely on a Mac Mini. It uses OAP manifest discovery to give a small language model (qwen3:8b) the ability to discover and invoke tools at runtime — no hardcoded integrations, no retraining.
+Manifest is a companion chat app with autonomous task execution, running entirely on a Mac Mini. It uses OAP manifest discovery to give a small language model (qwen3.5:9b) the ability to discover and invoke tools at runtime — no hardcoded integrations, no retraining.
 
 The project started as a proof-of-concept for the OAP spec and evolved into a real product: a conversational assistant for a family member with memory issues, combining chat, scheduled background tasks, reminders, email scanning, and voice I/O.
 
@@ -122,6 +122,6 @@ cd manifest
 ./setup.sh
 ```
 
-Prerequisites: macOS with Homebrew, Python 3.12, Ollama with qwen3:8b and nomic-embed-text.
+Prerequisites: macOS with Homebrew, Python 3.12, Ollama with qwen3.5:9b and nomic-embed-text.
 
 See the [manifest repo](https://github.com/cloudseeder/manifest) for full setup instructions.
